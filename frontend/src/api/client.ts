@@ -204,3 +204,74 @@ export async function fetchDashboard(): Promise<DashboardEntry[]> {
     throw err;
   }
 }
+
+export interface BacktestSegment {
+  label: string;
+  n: number;
+  metrics: Record<string, number>;
+}
+
+export interface CalibrationBucket {
+  bucket: string;
+  n: number;
+  avg_predicted: number | null;
+  actual_rate: number | null;
+}
+
+export interface WinProbReport {
+  model_name: string;
+  overall: BacktestSegment;
+  by_season: BacktestSegment[];
+  by_team: BacktestSegment[];
+  by_conviction: BacktestSegment[];
+  calibration: CalibrationBucket[];
+}
+
+export interface ScoringReport {
+  overall: BacktestSegment;
+  by_season: BacktestSegment[];
+}
+
+export interface TrackedSelection {
+  match_id: number;
+  market_type: MarketType;
+  selection: string;
+  line_value: number | null;
+  bookmaker_name: string;
+  price_decimal: number;
+  is_closing_line: boolean;
+  model_probability: number;
+  won: boolean | null;
+  pnl_units: number;
+}
+
+export interface LoggedOddsReport {
+  n_total: number;
+  n_resolved: number;
+  n_void: number;
+  win_rate: number | null;
+  roi_pct: number | null;
+  yield_pct: number | null;
+  total_pnl_units: number;
+  brier_score: number | null;
+  log_loss: number | null;
+  selections: TrackedSelection[];
+}
+
+export interface BacktestOverview {
+  elo: WinProbReport;
+  poisson_win: WinProbReport;
+  poisson_scoring: ScoringReport;
+  logged_odds: LoggedOddsReport;
+}
+
+export async function fetchBacktest(): Promise<BacktestOverview | null> {
+  try {
+    return await request("/api/backtest");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}

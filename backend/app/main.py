@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import dashboard, edges, health, matches, odds, predictions
+from app.api.routes import backtest, dashboard, edges, health, matches, odds, predictions
 from app.config import get_settings
 
 settings = get_settings()
@@ -41,3 +41,4 @@ app.include_router(odds.bookmakers_router)
 app.include_router(edges.router)
 app.include_router(predictions.router)
 app.include_router(dashboard.router)
+app.include_router(backtest.router)

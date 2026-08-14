@@ -123,3 +123,73 @@ class DashboardEntry(BaseModel):
     match: MatchSummary
     predictions: MatchPredictionsRead
     best_edge: MarketEdgeRead | None
+
+
+class BacktestSegmentRead(BaseModel):
+    label: str
+    n: int
+    metrics: dict[str, float]
+
+    model_config = {"from_attributes": True}
+
+
+class CalibrationBucketRead(BaseModel):
+    bucket: str
+    n: int
+    avg_predicted: float | None
+    actual_rate: float | None
+
+
+class WinProbReportRead(BaseModel):
+    model_name: str
+    overall: BacktestSegmentRead
+    by_season: list[BacktestSegmentRead]
+    by_team: list[BacktestSegmentRead]
+    by_conviction: list[BacktestSegmentRead]
+    calibration: list[CalibrationBucketRead]
+
+    model_config = {"from_attributes": True}
+
+
+class ScoringReportRead(BaseModel):
+    overall: BacktestSegmentRead
+    by_season: list[BacktestSegmentRead]
+
+    model_config = {"from_attributes": True}
+
+
+class TrackedSelectionRead(BaseModel):
+    match_id: int
+    market_type: str
+    selection: str
+    line_value: float | None
+    bookmaker_name: str
+    price_decimal: float
+    is_closing_line: bool
+    model_probability: float
+    won: bool | None
+    pnl_units: float
+
+    model_config = {"from_attributes": True}
+
+
+class LoggedOddsReportRead(BaseModel):
+    n_total: int
+    n_resolved: int
+    n_void: int
+    win_rate: float | None
+    roi_pct: float | None
+    yield_pct: float | None
+    total_pnl_units: float
+    brier_score: float | None
+    log_loss: float | None
+    selections: list[TrackedSelectionRead]
+
+    model_config = {"from_attributes": True}
+
+
+class BacktestOverview(BaseModel):
+    elo: WinProbReportRead
+    poisson_win: WinProbReportRead
+    poisson_scoring: ScoringReportRead
+    logged_odds: LoggedOddsReportRead

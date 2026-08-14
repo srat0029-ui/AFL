@@ -98,8 +98,33 @@ on that match's card. The full 13-section match page from the original brief
 data this project doesn't have yet — that's Stage 3 territory, not part of
 the MVP.
 
-No player markets, backtesting UI, or tracking dashboard yet — those are
-later Stage 1 sub-stages and beyond.
+**Stage 1.7 (backtesting engine) is done:** a `/backtest` page giving full
+visibility into how both models actually perform, split into two genuinely
+different things that shouldn't be conflated. First, statistical validation —
+Brier score, log loss, accuracy, and a 10-bucket calibration table for both
+Elo and Poisson's win-probability output, each broken down by season, by
+team, and by the model's own conviction level (not the same axis as the live
+confidence tiers on the dashboard, which also factor in market data this
+backtest doesn't use), plus Poisson's total-points/margin MAE by season. This
+needs no odds data — it's recomputed live from each `ModelRun`'s persisted
+config via the same walk-forward functions Stage 1.2/1.3 already built, so it
+reflects the current model exactly, not a stale snapshot. Second, logged-odds
+performance — real win rate, ROI, and P&L, but computed *only* from odds
+you've actually recorded on fixtures that have since resolved (via the
+Stage 1.4 odds-entry flow), never from historical market data, because no
+free source of that exists for AFL and fabricating one would defeat the
+point of this whole project. That section starts empty and fills in as
+logged quotes resolve — verified this by logging a real quote against an
+already-completed match (Richmond @ 1.85 h2h, which they won), confirming
+the report correctly showed it as a resolved win with `pnl_units = 0.85`
+and `roi_pct = 85%`, then deleting the test quote to leave the real database
+untouched. Correctly handles the AFL rule that drawn h2h bets are void
+(refunded), not losses. All 2,052 completed matches across the 10 loaded
+seasons run through both reports in well under a second — no caching
+needed.
+
+No player markets or a standing bet-tracking dashboard yet — those are later
+Stage 1 sub-stages and beyond.
 
 See `backend/` and `frontend/` for their own setup notes below.
 
@@ -175,8 +200,9 @@ npm run dev
 
 App runs at http://localhost:5173. Routes: `/` (dashboard — upcoming matches
 with model win probability and best edge), `/matches/:id` (match detail —
-model probabilities, odds entry, edges), `/status` (backend/DB connectivity
-check from Stage 0).
+model probabilities, odds entry, edges), `/backtest` (statistical validation
+and logged-odds performance for both models), `/status` (backend/DB
+connectivity check from Stage 0).
 
 ### Database
 
