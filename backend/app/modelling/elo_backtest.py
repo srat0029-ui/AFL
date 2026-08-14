@@ -13,19 +13,9 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from app.modelling.elo import EloConfig, EloEngine
+from app.modelling.types import MatchResult
 
-
-@dataclass(frozen=True)
-class MatchResult:
-    """Minimal, DB-decoupled view of a completed match for walk-forward replay."""
-
-    match_id: int
-    season_year: int
-    scheduled_start: datetime
-    home_team_id: int
-    away_team_id: int
-    home_score: int
-    away_score: int
+__all__ = ["MatchResult", "EloPrediction", "run_walk_forward", "current_ratings"]
 
 
 @dataclass(frozen=True)

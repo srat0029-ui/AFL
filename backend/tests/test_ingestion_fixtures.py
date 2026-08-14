@@ -70,6 +70,43 @@ def test_ingest_updates_existing_match_on_result_change(db_session):
     assert len(db_session.scalars(select(Match)).all()) == 1
 
 
+def test_ingest_stores_goals_and_behinds_breakdown(db_session):
+    completed = _fixture(
+        status="completed",
+        home_score=86,
+        away_score=81,
+        home_score_breakdown={"goals": 12, "behinds": 14},
+        away_score_breakdown={"goals": 12, "behinds": 9},
+    )
+    ingest_fixtures(db_session, [completed])
+
+    match = db_session.scalar(select(Match))
+    assert match.home_goals == 12
+    assert match.home_behinds == 14
+    assert match.away_goals == 12
+    assert match.away_behinds == 9
+    assert 6 * match.home_goals + match.home_behinds == match.home_score
+
+
+def test_ingest_updates_goals_behinds_when_result_arrives(db_session):
+    ingest_fixtures(db_session, [_fixture(status="scheduled")])
+    assert db_session.scalar(select(Match)).home_goals is None
+
+    completed = _fixture(
+        status="completed",
+        home_score=86,
+        away_score=81,
+        home_score_breakdown={"goals": 12, "behinds": 14},
+        away_score_breakdown={"goals": 12, "behinds": 9},
+    )
+    result = ingest_fixtures(db_session, [completed])
+
+    assert result.matches_updated == 1
+    match = db_session.scalar(select(Match))
+    assert match.home_goals == 12
+    assert match.away_behinds == 9
+
+
 def test_teams_and_venues_reused_across_fixtures(db_session):
     fixtures = [
         _fixture(external_id="1", round_number=1),

@@ -72,6 +72,8 @@ def ingest_fixtures(db: Session, fixtures: list[Fixture], provider_key: str = SQ
         status = _STATUS_MAP.get(fixture.status, MatchStatus.SCHEDULED)
 
         if existing is None:
+            home_goals, home_behinds = _extract_goals_behinds(fixture.home_score_breakdown)
+            away_goals, away_behinds = _extract_goals_behinds(fixture.away_score_breakdown)
             match = Match(
                 sport_id=sport.id,
                 season_id=season.id,
@@ -83,6 +85,10 @@ def ingest_fixtures(db: Session, fixtures: list[Fixture], provider_key: str = SQ
                 status=status,
                 home_score=fixture.home_score,
                 away_score=fixture.away_score,
+                home_goals=home_goals,
+                home_behinds=home_behinds,
+                away_goals=away_goals,
+                away_behinds=away_behinds,
                 home_score_by_quarter=fixture.home_score_by_quarter,
                 away_score_by_quarter=fixture.away_score_by_quarter,
                 external_ids={provider_key: fixture.external_id},
@@ -194,6 +200,12 @@ def _index_existing_matches(db: Session, season_id: int, provider_key: str) -> d
     return index
 
 
+def _extract_goals_behinds(breakdown: dict[str, int] | None) -> tuple[int | None, int | None]:
+    if not breakdown:
+        return None, None
+    return breakdown.get("goals"), breakdown.get("behinds")
+
+
 def _normalize_dt(dt: datetime) -> datetime:
     """SQLite doesn't preserve tzinfo across a round trip, so a value just
     read back from the DB may come back naive even though we always store
@@ -218,6 +230,22 @@ def _apply_fixture_to_match(
     if match.away_score != fixture.away_score:
         match.away_score = fixture.away_score
         changed = True
+
+    home_goals, home_behinds = _extract_goals_behinds(fixture.home_score_breakdown)
+    away_goals, away_behinds = _extract_goals_behinds(fixture.away_score_breakdown)
+    if match.home_goals != home_goals:
+        match.home_goals = home_goals
+        changed = True
+    if match.home_behinds != home_behinds:
+        match.home_behinds = home_behinds
+        changed = True
+    if match.away_goals != away_goals:
+        match.away_goals = away_goals
+        changed = True
+    if match.away_behinds != away_behinds:
+        match.away_behinds = away_behinds
+        changed = True
+
     if match.home_score_by_quarter != fixture.home_score_by_quarter:
         match.home_score_by_quarter = fixture.home_score_by_quarter
         changed = True

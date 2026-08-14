@@ -80,6 +80,8 @@ def test_get_fixtures_parses_completed_game():
     assert fixture.round_name == "Round 1"
     assert fixture.venue_name == "M.C.G."
     assert fixture.scheduled_start.year == 2024
+    assert fixture.home_score_breakdown == {"goals": 12, "behinds": 14}
+    assert fixture.away_score_breakdown == {"goals": 12, "behinds": 9}
 
 
 def test_get_fixtures_scheduled_game_has_no_score():
@@ -89,6 +91,8 @@ def test_get_fixtures_scheduled_game_has_no_score():
     assert fixtures[0].status == "scheduled"
     assert fixtures[0].home_score is None
     assert fixtures[0].away_score is None
+    assert fixtures[0].home_score_breakdown is None
+    assert fixtures[0].away_score_breakdown is None
 
 
 def test_malformed_game_is_skipped_not_raised():

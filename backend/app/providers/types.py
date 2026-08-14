@@ -34,6 +34,11 @@ class Fixture:
     away_score: int | None = None
     home_score_by_quarter: list[int] | None = None
     away_score_by_quarter: list[int] | None = None
+    # Sport-specific scoring subcomponents that sum to the total, e.g. AFL's
+    # {"goals": 12, "behinds": 14} (worth 6 and 1 point respectively) — kept
+    # generic like TeamStatLine.stats rather than hardcoding AFL fields here.
+    home_score_breakdown: dict[str, int] | None = None
+    away_score_breakdown: dict[str, int] | None = None
 
 
 @dataclass(frozen=True)

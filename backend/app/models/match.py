@@ -35,6 +35,14 @@ class Match(TimestampMixin, Base):
 
     home_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     away_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Goals (worth 6) and behinds (worth 1) are stored separately, not just
+    # derived from home_score, because the scoring model (Stage 1.3) treats
+    # them as two independent Poisson processes — total points alone doesn't
+    # have Poisson-like variance and would produce overconfident probabilities.
+    home_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    home_behinds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_goals: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    away_behinds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     home_score_by_quarter: Mapped[list | None] = mapped_column(JSON, nullable=True)
     away_score_by_quarter: Mapped[list | None] = mapped_column(JSON, nullable=True)
     attendance: Mapped[int | None] = mapped_column(Integer, nullable=True)
