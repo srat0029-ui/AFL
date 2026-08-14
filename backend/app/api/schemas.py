@@ -1,0 +1,82 @@
+"""Pydantic request/response models for the API layer.
+
+Kept separate from the SQLAlchemy models (app/models/) so the API's public
+shape can evolve independently of the DB schema — e.g. nesting team/venue
+details inline in a match response without that shape leaking back into the
+ORM layer.
+"""
+
+from datetime import datetime
+from enum import Enum
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class TeamSummary(BaseModel):
+    id: int
+    name: str
+    short_name: str
+    primary_colour: str | None
+    secondary_colour: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class VenueSummary(BaseModel):
+    id: int
+    name: str
+    city: str | None
+
+    model_config = {"from_attributes": True}
+
+
+class MatchSummary(BaseModel):
+    id: int
+    season_year: int
+    round_number: int
+    status: str
+    scheduled_start: datetime
+    home_team: TeamSummary
+    away_team: TeamSummary
+    venue: VenueSummary | None
+    home_score: int | None
+    away_score: int | None
+
+
+class MarketType(str, Enum):
+    H2H = "h2h"
+    LINE = "line"
+    TOTAL = "total"
+
+
+class OddsQuoteCreate(BaseModel):
+    bookmaker_name: str = Field(..., min_length=1, max_length=64)
+    market_type: MarketType
+    selection: str = Field(..., min_length=1, max_length=64)
+    line_value: float | None = None
+    price_decimal: float = Field(..., gt=1.0, le=1000.0)
+    recorded_at: datetime | None = None
+    is_closing_line: bool = False
+
+    @model_validator(mode="after")
+    def _validate_market_shape(self) -> "OddsQuoteCreate":
+        if self.market_type in (MarketType.LINE, MarketType.TOTAL) and self.line_value is None:
+            raise ValueError(f"line_value is required for market_type={self.market_type.value!r}")
+        if self.market_type == MarketType.H2H and self.line_value is not None:
+            raise ValueError("line_value must not be set for market_type='h2h'")
+        if self.market_type == MarketType.TOTAL and self.selection.lower() not in ("over", "under"):
+            raise ValueError("selection must be 'over' or 'under' for market_type='total'")
+        return self
+
+
+class OddsQuoteRead(BaseModel):
+    id: int
+    match_id: int
+    bookmaker_name: str
+    market_type: str
+    selection: str
+    line_value: float | None
+    price_decimal: float
+    recorded_at: datetime
+    source: str
+    is_closing_line: bool

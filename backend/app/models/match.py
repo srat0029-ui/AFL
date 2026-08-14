@@ -56,6 +56,7 @@ class Match(TimestampMixin, Base):
     venue: Mapped["Venue"] = relationship(back_populates="matches")
     home_team: Mapped["Team"] = relationship(back_populates="home_matches", foreign_keys=[home_team_id])
     away_team: Mapped["Team"] = relationship(back_populates="away_matches", foreign_keys=[away_team_id])
+    odds_quotes: Mapped[list["OddsQuote"]] = relationship(back_populates="match")
 
     def __repr__(self) -> str:
         return f"<Match {self.home_team_id} v {self.away_team_id} @ {self.scheduled_start}>"

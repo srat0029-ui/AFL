@@ -45,7 +45,19 @@ attack/defense ratios alone capture relative strength (winner/margin) well,
 but total-points/pace likely needs richer features (Stage 2) to move beyond
 a trivial baseline. Predictions persist to `poisson_match_predictions`.
 
-No odds, edge calculation, or dashboard yet — that's the rest of Stage 1.
+**Stage 1.4 (manual odds entry) is done:** `bookmakers`/`odds_quotes` tables
+(market_type kept as an open-ended string, not a fixed enum, so new markets
+never need a migration), a `ManualOddsProvider` implementing the `OddsProvider`
+interface from Stage 0 (so Stage 1.5's edge calculation can query odds
+uniformly regardless of source later), REST endpoints with real validation
+(selection must match an actual team for h2h/line, must be over/under for
+totals, price must be valid decimal odds >1.0), and a frontend page — with
+routing introduced for the first time — to browse upcoming fixtures and log
+h2h/line/total prices. Verified end-to-end in-browser against the real API
+and database, including via `ManualOddsProvider` reading the entered quotes
+back correctly.
+
+No edge calculation or full dashboard yet — that's the rest of Stage 1.
 
 See `backend/` and `frontend/` for their own setup notes below.
 
@@ -114,7 +126,9 @@ copy .env.example .env
 npm run dev
 ```
 
-App runs at http://localhost:5173.
+App runs at http://localhost:5173. Routes: `/` (odds entry — pick an
+upcoming fixture, log bookmaker prices), `/status` (backend/DB connectivity
+check from Stage 0).
 
 ### Database
 

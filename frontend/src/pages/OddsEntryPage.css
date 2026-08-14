@@ -1,0 +1,212 @@
+.odds-page {
+  max-width: 1000px;
+  margin: 3rem auto;
+  padding: 0 1.5rem;
+}
+
+.odds-page h1 {
+  font-size: 1.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.odds-page .subtitle {
+  color: #9aa4b2;
+  margin-top: 0;
+  margin-bottom: 2rem;
+}
+
+.odds-page__error {
+  background: #1f1414;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  color: #fca5a5;
+}
+
+.odds-page__layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .odds-page__layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 0.5rem;
+  background: #161a22;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+.match-list__item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  color: #cbd2db;
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+}
+
+.match-list__item:hover {
+  background: #1c212b;
+}
+
+.match-list__item--active {
+  border-color: #3b82f6;
+  background: #16233a;
+}
+
+.match-list__teams {
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.match-list__meta {
+  font-size: 0.8rem;
+  color: #9aa4b2;
+}
+
+.odds-panel {
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 1.5rem;
+  background: #161a22;
+}
+
+.odds-panel h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.3rem;
+}
+
+.odds-panel h3 {
+  margin-top: 2rem;
+  margin-bottom: 0.75rem;
+  font-size: 1rem;
+  color: #cbd2db;
+}
+
+.odds-form {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.odds-form__row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.odds-form__row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: #9aa4b2;
+  flex: 1;
+  min-width: 140px;
+}
+
+.odds-form input,
+.odds-form select {
+  background: #0d0f14;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  color: #f3f4f6;
+  font: inherit;
+}
+
+.odds-form input:focus,
+.odds-form select:focus {
+  outline: 2px solid #3b82f6;
+  outline-offset: -1px;
+}
+
+.odds-form__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: #9aa4b2;
+}
+
+.odds-form__checkbox input {
+  width: auto;
+}
+
+.odds-form button[type="submit"] {
+  align-self: flex-start;
+  background: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.odds-form button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.odds-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.odds-table th {
+  text-align: left;
+  color: #9aa4b2;
+  font-weight: 500;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #2a2f3a;
+}
+
+.odds-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid #1c212b;
+}
+
+.odds-table__badge {
+  margin-left: 0.5rem;
+  font-size: 0.7rem;
+  background: #14532d;
+  color: #86efac;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+}
+
+.odds-table__delete {
+  background: transparent;
+  border: 1px solid #7f1d1d;
+  color: #fca5a5;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.odds-table__delete:hover {
+  background: #1f1414;
+}

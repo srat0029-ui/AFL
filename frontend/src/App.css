@@ -1,3 +1,35 @@
+.app-nav {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.9rem 1.5rem;
+  border-bottom: 1px solid #2a2f3a;
+  background: #10131a;
+}
+
+.app-nav__brand {
+  font-weight: 700;
+  color: #f3f4f6;
+  margin-right: 0.5rem;
+}
+
+.app-nav__link {
+  color: #9aa4b2;
+  text-decoration: none;
+  font-size: 0.9rem;
+  padding: 0.3rem 0;
+  border-bottom: 2px solid transparent;
+}
+
+.app-nav__link:hover {
+  color: #f3f4f6;
+}
+
+.app-nav__link--active {
+  color: #f3f4f6;
+  border-bottom-color: #3b82f6;
+}
+
 .status-page {
   max-width: 640px;
   margin: 4rem auto;
