@@ -11,7 +11,8 @@
       "name": "frontend",
       "runtimeExecutable": "C:\\Users\\resol\\AFL\\frontend\\run_dev.bat",
       "runtimeArgs": [],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }
