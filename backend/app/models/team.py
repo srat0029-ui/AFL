@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, JSON, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,10 @@ class Team(TimestampMixin, Base):
     short_name: Mapped[str] = mapped_column(String(8), nullable=False)
     primary_colour: Mapped[str | None] = mapped_column(String(7), nullable=True)
     secondary_colour: Mapped[str | None] = mapped_column(String(7), nullable=True)
+    # Matches Match.external_ids: {"squiggle": 3}. Matching is still by
+    # (sport_id, name) — this is enrichment for future providers/debugging,
+    # not a change to how teams are deduplicated.
+    external_ids: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     sport: Mapped["Sport"] = relationship(back_populates="teams")
     home_matches: Mapped[list["Match"]] = relationship(

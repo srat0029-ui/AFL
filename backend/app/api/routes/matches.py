@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.api.match_queries import query_matches
 from app.api.schemas import MatchSummary, TeamSummary, VenueSummary
 from app.database import get_db
-from app.models import Match, MatchStatus, Sport
+from app.models import Match, MatchStatus
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 
@@ -28,11 +28,7 @@ def _to_summary(match: Match) -> MatchSummary:
 def list_matches(
     status: MatchStatus | None = None, sport: str = "AFL", db: Session = Depends(get_db)
 ) -> list[MatchSummary]:
-    query = select(Match).join(Sport).where(Sport.code == sport)
-    if status is not None:
-        query = query.where(Match.status == status)
-    query = query.order_by(Match.scheduled_start)
-    matches = db.scalars(query).all()
+    matches = query_matches(db, sport=sport, status=status)
     return [_to_summary(m) for m in matches]
 
 

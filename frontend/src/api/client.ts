@@ -106,6 +106,12 @@ export function fetchMatches(status?: string): Promise<MatchSummary[]> {
   return request(`/api/matches${query}`);
 }
 
+// Recent completed results for the dashboard — reads directly from
+// normalised match data, no prediction/odds record required.
+export function fetchRecentResults(limit = 8): Promise<MatchSummary[]> {
+  return request(`/api/afl/matches?status=completed&order=desc&limit=${limit}`);
+}
+
 export function fetchMatch(matchId: number): Promise<MatchSummary> {
   return request(`/api/matches/${matchId}`);
 }
@@ -190,7 +196,9 @@ export async function fetchPredictions(matchId: number): Promise<MatchPrediction
 
 export interface DashboardEntry {
   match: MatchSummary;
-  predictions: MatchPredictions;
+  // null when the Elo/Poisson modelling CLIs haven't been run yet — the
+  // fixture still shows, just without a model view.
+  predictions: MatchPredictions | null;
   best_edge: MarketEdge | null;
 }
 

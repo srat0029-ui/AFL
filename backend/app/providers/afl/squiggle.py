@@ -133,6 +133,9 @@ class SquiggleFixtureProvider(FixtureProvider):
         if status != "scheduled" and game.get("agoals") is not None and game.get("abehinds") is not None:
             away_breakdown = {"goals": game["agoals"], "behinds": game["abehinds"]}
 
+        home_team_id = game.get("hteamid")
+        away_team_id = game.get("ateamid")
+
         return Fixture(
             external_id=str(game["id"]),
             sport_code="AFL",
@@ -142,6 +145,8 @@ class SquiggleFixtureProvider(FixtureProvider):
             home_team=game["hteam"],
             away_team=game["ateam"],
             venue_name=game.get("venue") or None,
+            home_team_external_id=str(home_team_id) if home_team_id is not None else None,
+            away_team_external_id=str(away_team_id) if away_team_id is not None else None,
             scheduled_start=datetime.fromtimestamp(game["unixtime"], tz=timezone.utc),
             status=status,
             home_score=game.get("hscore") if status != "scheduled" else None,

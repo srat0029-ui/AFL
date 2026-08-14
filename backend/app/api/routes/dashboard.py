@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -29,13 +29,19 @@ def get_dashboard(sport: str = "AFL", db: Session = Depends(get_db)) -> list[Das
     if not matches:
         return []
 
+    # Fixture/result data and model availability are independent concerns —
+    # the dashboard should still show real matches even before the modelling
+    # CLIs have been run, just without predictions/edges attached.
     try:
         context = build_model_context(db)
-    except ModelsUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ModelsUnavailableError:
+        context = None
 
     entries = []
     for match in matches:
+        if context is None:
+            entries.append(DashboardEntry(match=_to_summary(match), predictions=None, best_edge=None))
+            continue
         predictions = compute_match_predictions(match, context)
         edges = compute_match_edges(db, match, context)
         top_edge = best_edge(edges)

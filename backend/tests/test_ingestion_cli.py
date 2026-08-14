@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import select
 
 from app.ingestion.cli import backfill_seasons, ingest_upcoming, main
+from app.ingestion.fixtures import ingest_fixtures
 from app.models import Match
 from app.providers.fixtures import FixtureProvider
 from app.providers.types import Fixture
@@ -94,3 +95,70 @@ def test_main_requires_at_least_one_action():
 def test_main_rejects_reversed_season_range(capsys):
     with pytest.raises(SystemExit):
         main(["--seasons", "2025", "2020"])
+
+
+def _valid_fixture() -> Fixture:
+    return Fixture(
+        external_id="1",
+        sport_code="AFL",
+        season_year=2024,
+        round_number=1,
+        home_team="Carlton",
+        away_team="Richmond",
+        venue_name="M.C.G.",
+        scheduled_start=datetime(2024, 3, 14, 19, 30, tzinfo=timezone.utc),
+        status="completed",
+        home_score=90,
+        away_score=80,
+    )
+
+
+def test_main_validate_exits_zero_for_clean_dataset(db_session, monkeypatch):
+    monkeypatch.setattr("app.ingestion.cli.SessionLocal", lambda: db_session)
+    ingest_fixtures(db_session, [_valid_fixture()])
+
+    assert main(["--validate"]) == 0
+
+
+def test_main_validate_exits_nonzero_on_genuine_failure(db_session, monkeypatch, capsys):
+    monkeypatch.setattr("app.ingestion.cli.SessionLocal", lambda: db_session)
+    ingest_fixtures(db_session, [_valid_fixture()])
+
+    # Fabricate a duplicate Squiggle match id — a genuine integrity failure
+    # that ingestion itself should never produce, but the validator must
+    # still catch it if it somehow occurs (e.g. a future second provider).
+    match = db_session.scalar(select(Match))
+    dup = Match(
+        sport_id=match.sport_id,
+        season_id=match.season_id,
+        round_id=match.round_id,
+        home_team_id=match.away_team_id,
+        away_team_id=match.home_team_id,
+        scheduled_start=match.scheduled_start,
+        status=match.status,
+        home_score=1,
+        away_score=0,
+        external_ids={"squiggle": "1"},
+    )
+    db_session.add(dup)
+    db_session.commit()
+
+    exit_code = main(["--validate"])
+
+    assert exit_code == 1
+    captured = capsys.readouterr()
+    assert "FAIL" in captured.out
+    assert "Duplicate Squiggle match ids" in captured.out
+
+
+def test_main_validate_does_not_fail_on_warnings_only(db_session, monkeypatch, capsys):
+    monkeypatch.setattr("app.ingestion.cli.SessionLocal", lambda: db_session)
+    # Only 2 teams (Carlton/Richmond) is a real, otherwise-clean dataset shape
+    # that trips just the soft "team count outside expected range" warning.
+    ingest_fixtures(db_session, [_valid_fixture()])
+
+    exit_code = main(["--validate"])
+
+    captured = capsys.readouterr()
+    assert "WARNING" in captured.out
+    assert exit_code == 0

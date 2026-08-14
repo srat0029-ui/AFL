@@ -137,3 +137,24 @@ def test_single_sport_and_season_row_created_once(db_session):
 
     assert len(db_session.scalars(select(Sport)).all()) == 1
     assert len(db_session.scalars(select(Season)).all()) == 1
+
+
+def test_team_external_ids_populated_from_fixture(db_session):
+    ingest_fixtures(db_session, [_fixture(home_team_external_id="3", away_team_external_id="14")])
+
+    carlton = db_session.scalar(select(Team).where(Team.name == "Carlton"))
+    richmond = db_session.scalar(select(Team).where(Team.name == "Richmond"))
+    assert carlton.external_ids == {"squiggle": "3"}
+    assert richmond.external_ids == {"squiggle": "14"}
+
+
+def test_team_external_ids_backfilled_on_existing_team(db_session):
+    # first sighting has no team id (e.g. an older/degraded payload) — a
+    # later fixture that does carry one should still enrich the existing row
+    ingest_fixtures(db_session, [_fixture(external_id="1")])
+    carlton = db_session.scalar(select(Team).where(Team.name == "Carlton"))
+    assert carlton.external_ids is None
+
+    ingest_fixtures(db_session, [_fixture(external_id="2", round_number=2, home_team_external_id="3")])
+    db_session.refresh(carlton)
+    assert carlton.external_ids == {"squiggle": "3"}

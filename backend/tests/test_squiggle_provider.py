@@ -82,6 +82,16 @@ def test_get_fixtures_parses_completed_game():
     assert fixture.scheduled_start.year == 2024
     assert fixture.home_score_breakdown == {"goals": 12, "behinds": 14}
     assert fixture.away_score_breakdown == {"goals": 12, "behinds": 9}
+    assert fixture.home_team_external_id == "3"
+    assert fixture.away_team_external_id == "14"
+
+
+def test_get_fixtures_missing_team_ids_are_none():
+    provider = _make_provider(lambda url: _json_response({"games": [SAMPLE_GAME_SCHEDULED]}))
+    fixtures = provider.get_fixtures("AFL", 2026)
+
+    assert fixtures[0].home_team_external_id is None
+    assert fixtures[0].away_team_external_id is None
 
 
 def test_get_fixtures_scheduled_game_has_no_score():

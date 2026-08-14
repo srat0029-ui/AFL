@@ -1,9 +1,11 @@
-"""CLI entrypoint for ingesting AFL fixtures/results from Squiggle.
+"""CLI entrypoint for ingesting AFL fixtures/results from Squiggle, and for
+validating the resulting data.
 
 Usage:
     python -m app.ingestion.cli --seasons 2016 2025
     python -m app.ingestion.cli --upcoming
     python -m app.ingestion.cli --seasons 2016 2025 --upcoming
+    python -m app.ingestion.cli --validate
 """
 
 import argparse
@@ -14,6 +16,8 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.ingestion.fixtures import ingest_fixtures
 from app.providers.afl.squiggle import SquiggleFixtureProvider
+from app.validation.report import format_report
+from app.validation.run import run_validation
 
 
 def backfill_seasons(db: Session, provider: SquiggleFixtureProvider, start_year: int, end_year: int) -> list[int]:
@@ -68,29 +72,45 @@ def main(argv: list[str] | None = None) -> int:
         default=0.5,
         help="Seconds to wait between Squiggle requests (default 0.5 — be a good citizen of a free hobby API)",
     )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help="Run data-validation checks against the current database and print a PASS/WARNING/FAIL report. "
+        "Combinable with --seasons/--upcoming to validate right after ingesting.",
+    )
     args = parser.parse_args(argv)
 
-    if not args.seasons and not args.upcoming:
+    if not args.seasons and not args.upcoming and not args.validate:
         parser.print_help()
         return 1
 
     if args.seasons and args.seasons[0] > args.seasons[1]:
         parser.error("START_YEAR must be <= END_YEAR")
 
-    provider = SquiggleFixtureProvider(request_delay_seconds=args.request_delay)
     db = SessionLocal()
     failed_years: list[int] = []
+    report_has_failures = False
     try:
-        if args.seasons:
-            failed_years = backfill_seasons(db, provider, args.seasons[0], args.seasons[1])
-        if args.upcoming:
-            ingest_upcoming(db, provider)
+        if args.seasons or args.upcoming:
+            provider = SquiggleFixtureProvider(request_delay_seconds=args.request_delay)
+            if args.seasons:
+                failed_years = backfill_seasons(db, provider, args.seasons[0], args.seasons[1])
+            if args.upcoming:
+                ingest_upcoming(db, provider)
+        if args.validate:
+            report = run_validation(db)
+            print()
+            print(format_report(report))
+            report_has_failures = report.has_failures
     finally:
         db.close()
 
     if failed_years:
         print(f"\nSeasons that failed and can be retried: {failed_years}")
         print(f"  e.g. python -m app.ingestion.cli --seasons {min(failed_years)} {max(failed_years)}")
+        return 1
+
+    if report_has_failures:
         return 1
 
     return 0

@@ -30,6 +30,13 @@ class VenueSummary(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SeasonSummary(BaseModel):
+    id: int
+    year: int
+
+    model_config = {"from_attributes": True}
+
+
 class MatchSummary(BaseModel):
     id: int
     season_year: int
@@ -121,7 +128,9 @@ class MatchPredictionsRead(BaseModel):
 
 class DashboardEntry(BaseModel):
     match: MatchSummary
-    predictions: MatchPredictionsRead
+    # None when the Elo/Poisson modelling CLIs haven't been run yet — the
+    # match itself should still show, per the model/data separation rule.
+    predictions: MatchPredictionsRead | None
     best_edge: MarketEdgeRead | None
 
 

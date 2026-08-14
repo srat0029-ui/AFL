@@ -30,6 +30,12 @@ class Fixture:
     status: str
     round_name: str | None = None
     venue_name: str | None = None
+    # The provider's own stable id for each team, when it exposes one (e.g.
+    # Squiggle's hteamid/ateamid) — kept optional since not every provider
+    # will have this. Teams are still matched by (sport, name); this is
+    # enrichment only, not the dedup key.
+    home_team_external_id: str | None = None
+    away_team_external_id: str | None = None
     home_score: int | None = None
     away_score: int | None = None
     home_score_by_quarter: list[int] | None = None

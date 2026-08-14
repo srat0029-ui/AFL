@@ -61,8 +61,12 @@ def ingest_fixtures(db: Session, fixtures: list[Fixture], provider_key: str = SQ
         sport = _get_or_create_sport(db, sport_cache, fixture.sport_code)
         season = _get_or_create_season(db, season_cache, sport, fixture.season_year, result)
         round_ = _get_or_create_round(db, round_cache, season, fixture.round_number, fixture.round_name, result)
-        home_team = _get_or_create_team(db, team_cache, sport, fixture.home_team, result)
-        away_team = _get_or_create_team(db, team_cache, sport, fixture.away_team, result)
+        home_team = _get_or_create_team(
+            db, team_cache, sport, fixture.home_team, result, fixture.home_team_external_id
+        )
+        away_team = _get_or_create_team(
+            db, team_cache, sport, fixture.away_team, result, fixture.away_team_external_id
+        )
         venue = _get_or_create_venue(db, venue_cache, fixture.venue_name, result) if fixture.venue_name else None
 
         if season.id not in match_index_cache:
@@ -122,7 +126,13 @@ def _get_or_create_sport(db: Session, cache: dict[str, Sport], code: str) -> Spo
 
 
 def _get_or_create_team(
-    db: Session, cache: dict[tuple[int, str], Team], sport: Sport, name: str, result: IngestionResult
+    db: Session,
+    cache: dict[tuple[int, str], Team],
+    sport: Sport,
+    name: str,
+    result: IngestionResult,
+    external_id: str | None = None,
+    provider_key: str = SQUIGGLE_KEY,
 ) -> Team:
     key = (sport.id, name)
     if key in cache:
@@ -130,10 +140,19 @@ def _get_or_create_team(
     team = db.scalar(select(Team).where(Team.sport_id == sport.id, Team.name == name))
     if team is None:
         abbrev, primary, secondary = get_team_metadata(name)
-        team = Team(sport_id=sport.id, name=name, short_name=abbrev, primary_colour=primary, secondary_colour=secondary)
+        team = Team(
+            sport_id=sport.id,
+            name=name,
+            short_name=abbrev,
+            primary_colour=primary,
+            secondary_colour=secondary,
+            external_ids={provider_key: external_id} if external_id is not None else None,
+        )
         db.add(team)
         db.flush()
         result.teams_created += 1
+    elif external_id is not None and (team.external_ids or {}).get(provider_key) != external_id:
+        team.external_ids = {**(team.external_ids or {}), provider_key: external_id}
     cache[key] = team
     return team
 

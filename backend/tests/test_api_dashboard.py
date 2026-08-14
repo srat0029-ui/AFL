@@ -52,10 +52,15 @@ def test_dashboard_empty_when_no_upcoming_matches(client, db_session):
     assert response.json() == []
 
 
-def test_dashboard_503_when_models_not_run_and_matches_exist(client, db_session):
-    _seed_match(db_session)
+def test_dashboard_shows_matches_without_predictions_when_models_not_run(client, db_session):
+    match = _seed_match(db_session)
     response = client.get("/api/dashboard")
-    assert response.status_code == 503
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body) == 1
+    assert body[0]["match"]["id"] == match.id
+    assert body[0]["predictions"] is None
+    assert body[0]["best_edge"] is None
 
 
 def test_dashboard_lists_upcoming_matches_with_predictions(client, db_session):
