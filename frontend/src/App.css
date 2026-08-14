@@ -1,0 +1,61 @@
+.status-page {
+  max-width: 640px;
+  margin: 4rem auto;
+  padding: 0 1.5rem;
+  text-align: left;
+}
+
+.status-page h1 {
+  font-size: 1.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.subtitle {
+  color: #9aa4b2;
+  margin-top: 0;
+  margin-bottom: 2rem;
+}
+
+.status-card {
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid #2a2f3a;
+  background: #161a22;
+}
+
+.status-card--error {
+  border-color: #7f1d1d;
+  background: #1f1414;
+}
+
+.status-card--success {
+  border-color: #14532d;
+  background: #101c14;
+}
+
+.status-card__headline {
+  font-weight: 600;
+  font-size: 1.05rem;
+  margin-top: 0;
+}
+
+.status-card dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0.75rem 0 0;
+}
+
+.status-card dt {
+  color: #9aa4b2;
+}
+
+.status-card dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.hint {
+  color: #9aa4b2;
+  font-size: 0.9rem;
+}
