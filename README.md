@@ -19,7 +19,16 @@ pull upcoming fixtures. The dev database currently holds the 10 most recent
 completed AFL seasons (2016–2025) plus upcoming 2026 fixtures — 2,070 real
 matches, 18 teams, 31 venues.
 
-No modelling, odds, or dashboard yet — that's the rest of Stage 1.
+**Stage 1.2 (Elo model) is done:** a margin-of-victory-adjusted Elo rating
+engine with season-carryover regression, walk-forward validated with no data
+leakage (each prediction uses only strictly-earlier matches). Hyperparameters
+were selected on a 2016–2022 tune window and validated on a genuinely
+held-out 2023–2025 window: **Brier score 0.2012, accuracy 68.1%** on data the
+tuning process never saw, with tight calibration (predicted probability
+buckets track actual outcome rates closely). Ratings are persisted to the
+`elo_ratings` table.
+
+No odds, edge calculation, or dashboard yet — that's the rest of Stage 1.
 
 See `backend/` and `frontend/` for their own setup notes below.
 
@@ -62,6 +71,20 @@ to re-run — idempotent, updates in place rather than duplicating):
 Requires `curl` on PATH (bundled with Windows 10+ and most Linux/macOS
 installs) — see the note at the top of `app/providers/afl/squiggle.py` for why
 the provider shells out to curl instead of using an in-process HTTP client.
+
+### Modelling
+
+Tune, validate, and persist the Elo match-winner model (safe to re-run —
+wholesale recompute, not additive):
+
+```bash
+.venv\Scripts\python -m app.modelling.cli
+```
+
+Prints tune-window vs holdout-window Brier score / log loss / accuracy /
+calibration, then a sanity-check preview of upcoming fixture probabilities.
+See the module docstrings in `app/modelling/` for the walk-forward and
+tune/holdout-split methodology.
 
 ### Frontend
 
