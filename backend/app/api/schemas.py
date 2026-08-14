@@ -202,3 +202,124 @@ class BacktestOverview(BaseModel):
     poisson_win: WinProbReportRead
     poisson_scoring: ScoringReportRead
     logged_odds: LoggedOddsReportRead
+
+
+# --- Model evaluation / rigorous backtesting (Stage 1B) ---
+# Deliberately separate from the WinProbReportRead/BacktestOverview family
+# above: those validate a model's own history end-to-end with no comparison
+# point, these evaluate predictive *quality* against baselines and each
+# other over a fixed warm-up-excluded evaluation window. See
+# app/backtesting/evaluation.py's module docstring for why this is a
+# different question from app/backtesting/model_report.py's.
+
+
+class EvaluationPeriodRead(BaseModel):
+    warmup_start_year: int
+    warmup_end_year: int
+    evaluation_start_year: int
+    evaluation_end_year: int
+    current_season_year: int
+    n_warmup: int
+    n_evaluation: int
+    n_current_season: int
+
+    model_config = {"from_attributes": True}
+
+
+class BaselineComparisonRowRead(BaseModel):
+    name: str
+    n: int
+    metrics: dict[str, float]
+
+    model_config = {"from_attributes": True}
+
+
+class WinProbEvaluationRead(BaseModel):
+    model_name: str
+    period: EvaluationPeriodRead
+    evaluation_metrics: dict[str, float]
+    warmup_metrics: dict[str, float]
+    full_history_metrics: dict[str, float]
+    baseline_comparison: list[BaselineComparisonRowRead]
+    calibration: list[CalibrationBucketRead]
+    calibration_ece: float | None
+    by_season: list[BacktestSegmentRead]
+
+    model_config = {"from_attributes": True}
+
+
+class ScoringEvaluationRead(BaseModel):
+    period: EvaluationPeriodRead
+    evaluation_metrics: dict[str, float]
+    warmup_metrics: dict[str, float]
+    full_history_metrics: dict[str, float]
+    by_season: list[BacktestSegmentRead]
+    interval_coverage: dict[str, dict[str, float]]
+
+    model_config = {"from_attributes": True}
+
+
+class BacktestSummaryRead(BaseModel):
+    id: str
+    model_name: str
+    run_at: datetime
+    tune_end_year: int
+    evaluation_start_year: int
+    n_evaluation: int
+    headline_metrics: dict[str, float]
+
+
+class BacktestDetailRead(BaseModel):
+    id: str
+    model_name: str
+    config: dict
+    tune_end_year: int
+    run_at: datetime
+    win_prob: WinProbEvaluationRead
+    scoring: ScoringEvaluationRead | None
+
+
+class CalibrationReportRead(BaseModel):
+    model_name: str
+    buckets: list[CalibrationBucketRead]
+    ece: float | None
+
+
+class SeasonBreakdownRead(BaseModel):
+    model_name: str
+    win_prob_by_season: list[BacktestSegmentRead]
+    scoring_by_season: list[BacktestSegmentRead] | None
+
+
+class DisagreementBucketRead(BaseModel):
+    label: str
+    n: int
+    elo_metrics: dict[str, float]
+    poisson_metrics: dict[str, float]
+    actual_home_win_rate: float | None
+
+    model_config = {"from_attributes": True}
+
+
+class SeasonStabilityRowRead(BaseModel):
+    season_year: str
+    n_games: int
+    elo_accuracy: float
+    elo_brier: float
+    elo_log_loss: float
+    poisson_total_mae: float
+    poisson_margin_mae: float
+    home_win_rate: float
+
+    model_config = {"from_attributes": True}
+
+
+class ModelComparisonRead(BaseModel):
+    n_matches: int
+    overall_elo_metrics: dict[str, float]
+    overall_poisson_metrics: dict[str, float]
+    mean_absolute_disagreement: float
+    disagreement_buckets: list[DisagreementBucketRead]
+    season_stability: list[SeasonStabilityRowRead]
+
+    model_config = {"from_attributes": True}

@@ -98,3 +98,67 @@
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+
+.segment-table__highlight {
+  background: #1a2230;
+}
+
+.segment-table__highlight td:first-child {
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.backtest-callout {
+  border-radius: 10px;
+  padding: 0.9rem 1.1rem;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.backtest-callout--info {
+  background: #12202f;
+  border: 1px solid #1e3a5f;
+  color: #cdd8e6;
+}
+
+.backtest-callout--warning {
+  background: #241a0f;
+  border: 1px solid #5f3d1e;
+  color: #e6d3c0;
+  margin-bottom: 1rem;
+}
+
+.calibration-chart {
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  margin: 0.5rem 0 1rem;
+}
+
+.calibration-chart__diagonal {
+  stroke: #3a4152;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.calibration-chart__axis {
+  stroke: #4a5266;
+  stroke-width: 1;
+}
+
+.calibration-chart__tick-label {
+  fill: #9aa4b2;
+  font-size: 10px;
+}
+
+.calibration-chart__axis-label {
+  fill: #9aa4b2;
+  font-size: 11px;
+}
+
+.calibration-chart__point {
+  fill: #3b82f6;
+  fill-opacity: 0.75;
+  stroke: #93c5fd;
+  stroke-width: 1;
+}

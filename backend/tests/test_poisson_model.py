@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from app.modelling.poisson_model import (
+    central_interval,
     expected_value,
     margin_distribution,
     poisson_pmf,
@@ -126,3 +127,52 @@ def test_prob_margin_over_zero_matches_win_probability():
     prob_margin_over_zero = prob_margin_over(home_pmf, away_pmf, 0.0)
 
     assert prob_margin_over_zero == pytest.approx(home_win, abs=1e-6)
+
+
+def test_central_interval_contains_the_stated_coverage():
+    pmf = score_distribution(13.0, 15.0, 30, 30)
+    total_pmf = total_points_distribution(pmf, pmf)
+    lo, hi = central_interval(total_pmf, coverage=0.8)
+
+    covered = total_pmf[lo : hi + 1].sum()
+    assert covered >= 0.8
+    # and shouldn't be dramatically wider than necessary (loose sanity bound)
+    assert covered < 0.95
+
+
+def test_central_interval_widens_with_higher_coverage():
+    pmf = score_distribution(13.0, 15.0, 30, 30)
+    lo_50, hi_50 = central_interval(pmf, coverage=0.5)
+    lo_90, hi_90 = central_interval(pmf, coverage=0.9)
+
+    assert (hi_90 - lo_90) > (hi_50 - lo_50)
+
+
+def test_central_interval_is_centred_on_the_mean_for_a_symmetric_pmf():
+    pmf = poisson_pmf(lam=50.0, k_max=150)  # large lambda -> roughly symmetric
+    mean = expected_value(pmf)
+    lo, hi = central_interval(pmf, coverage=0.8)
+
+    assert lo < mean < hi
+
+
+def test_central_interval_respects_offset():
+    home_pmf = score_distribution(13.0, 15.0, 30, 30)
+    away_pmf = score_distribution(12.0, 14.0, 30, 30)
+    margin_pmf, min_margin = margin_distribution(home_pmf, away_pmf)
+
+    lo, hi = central_interval(margin_pmf, coverage=0.8, offset=min_margin)
+
+    # without the offset, indices would start at 0 — with it, they should
+    # be shifted into plausible real AFL-margin territory (roughly -150..150)
+    assert -200 < lo < 200
+    assert -200 < hi < 200
+    assert lo < hi
+
+
+def test_central_interval_rejects_invalid_coverage():
+    pmf = poisson_pmf(lam=10.0, k_max=30)
+    with pytest.raises(ValueError):
+        central_interval(pmf, coverage=1.5)
+    with pytest.raises(ValueError):
+        central_interval(pmf, coverage=0.0)

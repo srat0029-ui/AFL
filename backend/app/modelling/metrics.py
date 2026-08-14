@@ -65,6 +65,19 @@ def rmse(predictions: list[float], actuals: list[float]) -> float:
     return math.sqrt(sum((p - a) ** 2 for p, a in zip(predictions, actuals)) / len(predictions))
 
 
+def bias(predictions: list[float], actuals: list[float]) -> float:
+    """Mean signed error (predicted - actual) — unlike mae/rmse this can be
+    negative. Near zero means errors cancel out on average; a persistent
+    positive or negative value means the model systematically over- or
+    under-predicts, which mae alone can't reveal (a model that's +20 half
+    the time and -20 the other half has the same mae as one that's
+    consistently +0.5, but very different practical implications).
+    """
+    if not predictions:
+        return float("nan")
+    return sum(p - a for p, a in zip(predictions, actuals)) / len(predictions)
+
+
 def beats_naive_baseline(model_metric: float, naive_metric: float, min_improvement: float = 0.05) -> bool:
     """True if `model_metric` (lower-is-better: Brier score, MAE, ...) beats
     `naive_metric` by at least `min_improvement` (relative). A model that
@@ -104,3 +117,70 @@ def calibration_table(predictions: list[float], outcomes: list[float], n_bins: i
             }
         )
     return rows
+
+
+# 50-55%, 55-60%, ..., 95-100% — finer near the decision boundary than
+# calibration_table's 10 even bins, and folded onto the "favourite" side
+# (see favourite_calibration_table) so a 90% prediction on either team
+# lands in the same bucket instead of splitting evidence across two tails.
+_FAVOURITE_BUCKET_EDGES = [0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95, 1.0001]
+
+
+def favourite_calibration_table(
+    predictions: list[float], outcomes: list[float], bucket_edges: list[float] | None = None
+) -> list[dict]:
+    """Like calibration_table, but folded onto the side the model actually
+    favoured: a prediction of 0.12 (away favoured at 88%) and one of 0.88
+    (home favoured at 88%) both land in the "85-90%" bucket, scored against
+    whether the favoured side actually won. This roughly doubles the
+    effective sample size per bucket vs. bucketing raw home-win probability,
+    and answers the question buyers of a probability actually care about:
+    "when this model says 70%, does the favoured side win about 70% of the
+    time?" — regardless of which team that happened to be.
+
+    Draws contribute 0.5 to both "sides" and are handled by
+    actual_home_outcome's existing 0.5 convention, so a draw partially
+    counts against calibration in both directions rather than being
+    dropped, matching how brier_score/log_loss already treat draws.
+    """
+    edges = bucket_edges or _FAVOURITE_BUCKET_EDGES
+    buckets: list[list[tuple[float, float]]] = [[] for _ in range(len(edges) - 1)]
+
+    for p, o in zip(predictions, outcomes):
+        favourite_prob = max(p, 1 - p)
+        favourite_won = o if p >= 0.5 else 1 - o
+        for i in range(len(edges) - 1):
+            if edges[i] <= favourite_prob < edges[i + 1]:
+                buckets[i].append((favourite_prob, favourite_won))
+                break
+
+    rows = []
+    for i, bucket in enumerate(buckets):
+        lo, hi = edges[i], min(edges[i + 1], 1.0)
+        label = f"{lo:.0%}-{hi:.0%}"
+        if not bucket:
+            rows.append({"bucket": label, "n": 0, "avg_predicted": None, "actual_rate": None})
+            continue
+        rows.append(
+            {
+                "bucket": label,
+                "n": len(bucket),
+                "avg_predicted": sum(p for p, _ in bucket) / len(bucket),
+                "actual_rate": sum(o for _, o in bucket) / len(bucket),
+            }
+        )
+    return rows
+
+
+def expected_calibration_error(calibration_rows: list[dict]) -> float | None:
+    """A single number summarising a calibration table: the sample-weighted
+    average gap between predicted and actual rate across all non-empty
+    buckets. 0.0 is perfect calibration; larger is worse. Standard "ECE"
+    from the classifier-calibration literature, applied here to a
+    calibration_table()/favourite_calibration_table() result.
+    """
+    populated = [row for row in calibration_rows if row["n"] > 0]
+    total_n = sum(row["n"] for row in populated)
+    if total_n == 0:
+        return None
+    return sum(row["n"] * abs(row["avg_predicted"] - row["actual_rate"]) for row in populated) / total_n

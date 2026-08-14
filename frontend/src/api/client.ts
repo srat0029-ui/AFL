@@ -283,3 +283,117 @@ export async function fetchBacktest(): Promise<BacktestOverview | null> {
     throw err;
   }
 }
+
+// --- Model evaluation / rigorous backtesting (Stage 1B) ---
+
+export interface EvaluationPeriod {
+  warmup_start_year: number;
+  warmup_end_year: number;
+  evaluation_start_year: number;
+  evaluation_end_year: number;
+  current_season_year: number;
+  n_warmup: number;
+  n_evaluation: number;
+  n_current_season: number;
+}
+
+export interface BaselineComparisonRow {
+  name: string;
+  n: number;
+  metrics: Record<string, number>;
+}
+
+export interface WinProbEvaluation {
+  model_name: string;
+  period: EvaluationPeriod;
+  evaluation_metrics: Record<string, number>;
+  warmup_metrics: Record<string, number>;
+  full_history_metrics: Record<string, number>;
+  baseline_comparison: BaselineComparisonRow[];
+  calibration: CalibrationBucket[];
+  calibration_ece: number | null;
+  by_season: BacktestSegment[];
+}
+
+export interface ScoringEvaluation {
+  period: EvaluationPeriod;
+  evaluation_metrics: Record<string, number>;
+  warmup_metrics: Record<string, number>;
+  full_history_metrics: Record<string, number>;
+  by_season: BacktestSegment[];
+  interval_coverage: Record<string, Record<string, number>>;
+}
+
+export interface BacktestSummary {
+  id: string;
+  model_name: string;
+  run_at: string;
+  tune_end_year: number;
+  evaluation_start_year: number;
+  n_evaluation: number;
+  headline_metrics: Record<string, number>;
+}
+
+export interface BacktestDetail {
+  id: string;
+  model_name: string;
+  config: Record<string, unknown>;
+  tune_end_year: number;
+  run_at: string;
+  win_prob: WinProbEvaluation;
+  scoring: ScoringEvaluation | null;
+}
+
+export interface DisagreementBucket {
+  label: string;
+  n: number;
+  elo_metrics: Record<string, number>;
+  poisson_metrics: Record<string, number>;
+  actual_home_win_rate: number | null;
+}
+
+export interface SeasonStabilityRow {
+  season_year: string;
+  n_games: number;
+  elo_accuracy: number;
+  elo_brier: number;
+  elo_log_loss: number;
+  poisson_total_mae: number;
+  poisson_margin_mae: number;
+  home_win_rate: number;
+}
+
+export interface ModelComparison {
+  n_matches: number;
+  overall_elo_metrics: Record<string, number>;
+  overall_poisson_metrics: Record<string, number>;
+  mean_absolute_disagreement: number;
+  disagreement_buckets: DisagreementBucket[];
+  season_stability: SeasonStabilityRow[];
+}
+
+export function fetchBacktests(): Promise<BacktestSummary[]> {
+  return request("/api/backtests");
+}
+
+export async function fetchBacktestDetail(id: string): Promise<BacktestDetail | null> {
+  try {
+    return await request(`/api/backtests/${id}`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function fetchModelComparison(): Promise<ModelComparison | null> {
+  try {
+    return await request("/api/backtests/comparison");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}

@@ -2,7 +2,18 @@ import math
 
 import pytest
 
-from app.modelling.metrics import accuracy, beats_naive_baseline, brier_score, calibration_table, log_loss, mae, rmse
+from app.modelling.metrics import (
+    accuracy,
+    beats_naive_baseline,
+    bias,
+    brier_score,
+    calibration_table,
+    expected_calibration_error,
+    favourite_calibration_table,
+    log_loss,
+    mae,
+    rmse,
+)
 
 
 def test_brier_score_perfect_predictions_is_zero():
@@ -115,3 +126,86 @@ def test_beats_naive_baseline_respects_custom_threshold():
     # 6% improvement: passes a 5% bar, fails a 10% bar
     assert beats_naive_baseline(model_metric=0.235, naive_metric=0.25, min_improvement=0.05) is True
     assert beats_naive_baseline(model_metric=0.235, naive_metric=0.25, min_improvement=0.10) is False
+
+
+def test_bias_zero_for_perfect_predictions():
+    assert bias([100.0, 150.0], [100.0, 150.0]) == pytest.approx(0.0)
+
+
+def test_bias_positive_means_overprediction():
+    assert bias([110.0, 120.0], [100.0, 100.0]) == pytest.approx(15.0)
+
+
+def test_bias_negative_means_underprediction():
+    assert bias([90.0, 80.0], [100.0, 100.0]) == pytest.approx(-15.0)
+
+
+def test_bias_cancels_out_symmetric_errors_unlike_mae():
+    predictions = [110.0, 90.0]
+    actuals = [100.0, 100.0]
+    assert bias(predictions, actuals) == pytest.approx(0.0)
+    assert mae(predictions, actuals) == pytest.approx(10.0)  # mae doesn't cancel
+
+
+def test_bias_empty_is_nan():
+    assert math.isnan(bias([], []))
+
+
+def test_favourite_calibration_table_folds_home_and_away_favourites_together():
+    # 0.85 (home favoured, wins) and 0.12 (away favoured at 88%, away wins,
+    # i.e. home loses) should land in the same "85-90%" favourite bucket,
+    # both counted as the favourite winning.
+    predictions = [0.85, 0.12]
+    outcomes = [1.0, 0.0]
+    table = favourite_calibration_table(predictions, outcomes)
+    bucket = next(r for r in table if r["bucket"] == "85%-90%")
+    assert bucket["n"] == 2
+    assert bucket["actual_rate"] == pytest.approx(1.0)  # the favourite won both times
+
+
+def test_favourite_calibration_table_scores_favourite_losses_correctly():
+    predictions = [0.9]  # home strongly favoured
+    outcomes = [0.0]  # but away actually won — favourite lost
+    table = favourite_calibration_table(predictions, outcomes)
+    bucket = next(r for r in table if r["n"] > 0)
+    assert bucket["actual_rate"] == pytest.approx(0.0)
+
+
+def test_favourite_calibration_table_empty_buckets_have_none_rate():
+    table = favourite_calibration_table([0.9], [1.0])
+    empty_bucket = next(r for r in table if r["bucket"] == "50%-55%")
+    assert empty_bucket["n"] == 0
+    assert empty_bucket["actual_rate"] is None
+
+
+def test_expected_calibration_error_zero_for_perfect_calibration():
+    # every bucket's avg_predicted exactly matches its actual_rate
+    rows = [
+        {"bucket": "a", "n": 10, "avg_predicted": 0.6, "actual_rate": 0.6},
+        {"bucket": "b", "n": 10, "avg_predicted": 0.8, "actual_rate": 0.8},
+    ]
+    assert expected_calibration_error(rows) == pytest.approx(0.0)
+
+
+def test_expected_calibration_error_weights_by_bucket_size():
+    rows = [
+        {"bucket": "a", "n": 90, "avg_predicted": 0.6, "actual_rate": 0.6},  # perfectly calibrated, most of the data
+        {"bucket": "b", "n": 10, "avg_predicted": 0.9, "actual_rate": 0.5},  # badly off, small bucket
+    ]
+    ece = expected_calibration_error(rows)
+    # (90*0 + 10*0.4) / 100 = 0.04 — much closer to 0 than to the small bucket's raw 0.4 gap
+    assert ece == pytest.approx(0.04)
+    assert 0 < ece < 0.4
+
+
+def test_expected_calibration_error_ignores_empty_buckets():
+    rows = [
+        {"bucket": "a", "n": 10, "avg_predicted": 0.6, "actual_rate": 0.6},
+        {"bucket": "b", "n": 0, "avg_predicted": None, "actual_rate": None},
+    ]
+    assert expected_calibration_error(rows) == pytest.approx(0.0)
+
+
+def test_expected_calibration_error_none_when_no_data():
+    rows = [{"bucket": "a", "n": 0, "avg_predicted": None, "actual_rate": None}]
+    assert expected_calibration_error(rows) is None

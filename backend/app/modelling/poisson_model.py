@@ -103,3 +103,22 @@ def win_draw_loss(home_pmf: np.ndarray, away_pmf: np.ndarray) -> tuple[float, fl
 
 def expected_value(pmf: np.ndarray, offset: int = 0) -> float:
     return float(np.sum((np.arange(len(pmf)) + offset) * pmf))
+
+
+def central_interval(pmf: np.ndarray, coverage: float, offset: int = 0) -> tuple[int, int]:
+    """The narrowest [lower, upper] integer range (inclusive both ends,
+    offset by `offset` — e.g. margin_distribution's negative minimum) whose
+    cumulative probability is >= `coverage`, taken symmetrically from the
+    two tails. Used to evaluate the model's full predicted distribution, not
+    just its mean: if the model is well-calibrated, the actual outcome
+    should fall inside its own 80% interval roughly 80% of the time.
+    """
+    if not 0.0 < coverage < 1.0:
+        raise ValueError("coverage must be strictly between 0 and 1")
+    tail = (1.0 - coverage) / 2.0
+    cumulative = np.cumsum(pmf)
+    lower_idx = int(np.searchsorted(cumulative, tail, side="left"))
+    upper_idx = int(np.searchsorted(cumulative, 1.0 - tail, side="left"))
+    lower_idx = min(lower_idx, len(pmf) - 1)
+    upper_idx = min(max(upper_idx, lower_idx), len(pmf) - 1)
+    return lower_idx + offset, upper_idx + offset
