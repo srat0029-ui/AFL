@@ -27,13 +27,15 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.modelling.data_loading import load_completed_matches
 from app.modelling.elo import EloEngine
-from app.modelling.elo_backtest import current_ratings, run_walk_forward
+from app.modelling.elo_backtest import current_ratings, rating_for_upcoming_match, run_walk_forward
 from app.modelling.elo_persistence import persist_elo_ratings
 from app.modelling.elo_tuning import select_best_config
-from app.modelling.metrics import accuracy, brier_score, calibration_table, log_loss
+from app.modelling.metrics import accuracy, beats_naive_baseline, brier_score, calibration_table, log_loss
+from app.modelling.model_run_persistence import persist_model_run
 from app.models import Match, MatchStatus, Sport
 
 DEFAULT_TUNE_END_YEAR = 2022
+NAIVE_BRIER_BASELINE = 0.25  # what always guessing 50% scores against a 50/50 coin
 
 
 def _print_metrics(label: str, predictions) -> None:
@@ -64,22 +66,13 @@ def print_upcoming_predictions(db: Session, engine: EloEngine, ratings: dict[int
     print(f"\nUpcoming fixture predictions ({len(upcoming)}):")
     for match in upcoming:
         season_year = match.season.year
-        home_rating = _rating_for_upcoming(ratings, engine, match.home_team_id, season_year)
-        away_rating = _rating_for_upcoming(ratings, engine, match.away_team_id, season_year)
+        home_rating = rating_for_upcoming_match(ratings, engine, match.home_team_id, season_year)
+        away_rating = rating_for_upcoming_match(ratings, engine, match.away_team_id, season_year)
         prob = engine.expected_home_win_prob(home_rating, away_rating)
         print(
             f"  {match.home_team.name:22s} {prob:5.1%}  vs  "
             f"{match.away_team.name:22s} {1 - prob:5.1%}   ({match.scheduled_start:%Y-%m-%d})"
         )
-
-
-def _rating_for_upcoming(
-    ratings: dict[int, tuple[float, int]], engine: EloEngine, team_id: int, season_year: int
-) -> float:
-    rating, last_season = ratings.get(team_id, (engine.config.initial_rating, season_year))
-    if last_season != season_year:
-        rating = engine.regress_to_mean(rating)
-    return rating
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -138,6 +131,28 @@ def main(argv: list[str] | None = None) -> int:
 
         written = persist_elo_ratings(db, final_predictions)
         print(f"\nPersisted {written} team-match rating snapshots.")
+
+        holdout_brier = brier_score(
+            [p.home_win_probability for p in holdout_preds], [p.actual_home_outcome for p in holdout_preds]
+        )
+        has_edge = beats_naive_baseline(holdout_brier, NAIVE_BRIER_BASELINE)
+        persist_model_run(
+            db,
+            model_name="elo",
+            config=best_config,
+            tune_end_year=args.tune_end_year,
+            metrics=[
+                {
+                    "market_type": "h2h",
+                    "metric_name": "brier_score",
+                    "holdout_n": len(holdout_preds),
+                    "holdout_value": holdout_brier,
+                    "naive_baseline_value": NAIVE_BRIER_BASELINE,
+                    "has_edge_over_naive": has_edge,
+                }
+            ],
+        )
+        print(f"Recorded validation metrics: h2h holdout brier={holdout_brier:.4f} (beats naive: {has_edge}).")
 
         engine = EloEngine(best_config)
         ratings = current_ratings(final_predictions)

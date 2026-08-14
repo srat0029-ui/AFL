@@ -268,6 +268,12 @@ class PoissonModelState:
     league: _LeagueSplit
     config: PoissonConfig
 
+    def games_played(self, team_id: int) -> int:
+        """How many games are in this team's rolling-form window right now —
+        used as a sample-size signal for confidence tiering (app/edges/confidence.py)."""
+        hist = self.team_histories.get(team_id)
+        return len(hist) if hist is not None else 0
+
     def predict(self, home_team_id: int, away_team_id: int):
         blended_goals = self.league.blended_avg_goals()
         blended_behinds = self.league.blended_avg_behinds()

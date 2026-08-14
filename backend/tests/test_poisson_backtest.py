@@ -211,3 +211,15 @@ def test_model_state_predict_unknown_teams_reflects_only_league_home_split():
     # only 1 league match observed so far (default min_league_games_for_home_split=40),
     # so the split is barely shrunk away from neutral — expect a small, not large, gap
     assert expected_value(home_pmf) == pytest.approx(expected_value(away_pmf), abs=2.0)
+
+
+def test_games_played_reflects_rolling_history():
+    matches = [
+        _match(1, 2024, 3, 1, home=1, away=2, home_goals=13, home_behinds=15, away_goals=11, away_behinds=13),
+        _match(2, 2024, 3, 8, home=1, away=3, home_goals=12, home_behinds=14, away_goals=10, away_behinds=12),
+    ]
+    _, state = run_walk_forward(matches, NEUTRAL_CONFIG, return_state=True)
+
+    assert state.games_played(1) == 2  # team 1 played both matches
+    assert state.games_played(2) == 1
+    assert state.games_played(999) == 0  # never seen

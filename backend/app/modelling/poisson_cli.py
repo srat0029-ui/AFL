@@ -27,7 +27,8 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.modelling.data_loading import load_completed_matches
-from app.modelling.metrics import accuracy, brier_score, calibration_table, log_loss, mae, rmse
+from app.modelling.metrics import accuracy, beats_naive_baseline, brier_score, calibration_table, log_loss, mae, rmse
+from app.modelling.model_run_persistence import persist_model_run
 from app.modelling.poisson_backtest import PoissonModelState, run_walk_forward
 from app.modelling.poisson_model import expected_value, win_draw_loss
 from app.modelling.poisson_persistence import persist_poisson_predictions
@@ -35,6 +36,7 @@ from app.modelling.poisson_tuning import select_best_config
 from app.models import Match, MatchStatus, Sport
 
 DEFAULT_TUNE_END_YEAR = 2022
+NAIVE_BRIER_BASELINE = 0.25  # what always guessing 50% scores against a 50/50 coin
 
 
 def _print_metrics(label: str, predictions, naive_total: float, naive_margin: float) -> None:
@@ -61,8 +63,8 @@ def _print_metrics(label: str, predictions, naive_total: float, naive_margin: fl
     model_margin_mae = mae(margin_pred, margin_actual)
 
     def _edge_flag(model_mae: float, naive_mae: float) -> str:
-        improvement = (naive_mae - model_mae) / naive_mae
-        if improvement > 0.05:
+        if beats_naive_baseline(model_mae, naive_mae):
+            improvement = (naive_mae - model_mae) / naive_mae
             return f"beats naive by {improvement:.0%}"
         return "NO CLEAR EDGE over naive 'always predict the average'"
 
@@ -171,6 +173,50 @@ def main(argv: list[str] | None = None) -> int:
 
         written = persist_poisson_predictions(db, final_predictions)
         print(f"\nPersisted {written} match predictions.")
+
+        holdout_total_actual = [p.actual_total_points for p in holdout_preds]
+        holdout_margin_actual = [p.actual_margin for p in holdout_preds]
+        holdout_total_mae = mae([p.expected_total_points for p in holdout_preds], holdout_total_actual)
+        holdout_margin_mae = mae([p.expected_margin for p in holdout_preds], holdout_margin_actual)
+        holdout_brier = brier_score(
+            [p.home_win_probability for p in holdout_preds], [p.actual_home_outcome for p in holdout_preds]
+        )
+        naive_total_mae_holdout = mae([naive_total] * len(holdout_preds), holdout_total_actual)
+        naive_margin_mae_holdout = mae([naive_margin] * len(holdout_preds), holdout_margin_actual)
+
+        persist_model_run(
+            db,
+            model_name="poisson",
+            config=best_config,
+            tune_end_year=args.tune_end_year,
+            metrics=[
+                {
+                    "market_type": "h2h",
+                    "metric_name": "brier_score",
+                    "holdout_n": len(holdout_preds),
+                    "holdout_value": holdout_brier,
+                    "naive_baseline_value": NAIVE_BRIER_BASELINE,
+                    "has_edge_over_naive": beats_naive_baseline(holdout_brier, NAIVE_BRIER_BASELINE),
+                },
+                {
+                    "market_type": "line",
+                    "metric_name": "mae",
+                    "holdout_n": len(holdout_preds),
+                    "holdout_value": holdout_margin_mae,
+                    "naive_baseline_value": naive_margin_mae_holdout,
+                    "has_edge_over_naive": beats_naive_baseline(holdout_margin_mae, naive_margin_mae_holdout),
+                },
+                {
+                    "market_type": "total",
+                    "metric_name": "mae",
+                    "holdout_n": len(holdout_preds),
+                    "holdout_value": holdout_total_mae,
+                    "naive_baseline_value": naive_total_mae_holdout,
+                    "has_edge_over_naive": beats_naive_baseline(holdout_total_mae, naive_total_mae_holdout),
+                },
+            ],
+        )
+        print("Recorded validation metrics for h2h, line, and total markets.")
 
         print_upcoming_predictions(db, state)
 

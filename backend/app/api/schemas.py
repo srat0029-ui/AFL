@@ -80,3 +80,46 @@ class OddsQuoteRead(BaseModel):
     recorded_at: datetime
     source: str
     is_closing_line: bool
+
+
+class MarketEdgeRead(BaseModel):
+    match_id: int
+    odds_quote_id: int
+    market_type: str
+    selection: str
+    line_value: float | None
+    bookmaker_name: str
+    price_decimal: float
+    model_probability: float
+    secondary_model_probability: float | None
+    market_implied_probability: float
+    fair_market_probability: float
+    overround_removed: bool
+    fair_odds: float
+    model_edge: float
+    expected_value: float
+    edge_tier: str
+    confidence_tier: str
+    confidence_reasons: list[str]
+
+    model_config = {"from_attributes": True}
+
+
+class MatchPredictionsRead(BaseModel):
+    match_id: int
+    elo_home_win_probability: float
+    poisson_home_win_probability: float
+    poisson_draw_probability: float
+    poisson_away_win_probability: float
+    poisson_home_expected_score: float
+    poisson_away_expected_score: float
+    poisson_expected_total_points: float
+    poisson_expected_margin: float
+
+    model_config = {"from_attributes": True}
+
+
+class DashboardEntry(BaseModel):
+    match: MatchSummary
+    predictions: MatchPredictionsRead
+    best_edge: MarketEdgeRead | None

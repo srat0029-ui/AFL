@@ -1,0 +1,166 @@
+.dashboard-page {
+  max-width: 1200px;
+  margin: 3rem auto;
+  padding: 0 1.5rem;
+}
+
+.dashboard-page h1 {
+  font-size: 1.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.dashboard-page .subtitle {
+  color: #9aa4b2;
+  margin-top: 0;
+  margin-bottom: 2rem;
+}
+
+.dashboard-page__error {
+  background: #1f1414;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  color: #fca5a5;
+}
+
+.match-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+.match-card {
+  display: block;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 1.1rem;
+  background: #161a22;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease;
+}
+
+.match-card:hover {
+  border-color: #3b82f6;
+}
+
+.match-card__meta {
+  font-size: 0.78rem;
+  color: #9aa4b2;
+  margin-bottom: 0.6rem;
+}
+
+.match-card__teams {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.match-card__swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.match-card__team-name {
+  font-weight: 600;
+  color: #f3f4f6;
+  font-size: 0.95rem;
+}
+
+.match-card__vs {
+  color: #9aa4b2;
+  font-size: 0.8rem;
+}
+
+.match-card__prob-bar {
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: #0d0f14;
+}
+
+.match-card__prob-bar-home,
+.match-card__prob-bar-away {
+  height: 100%;
+}
+
+.match-card__prob-labels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #9aa4b2;
+  margin-top: 0.3rem;
+  margin-bottom: 0.9rem;
+}
+
+.match-card__edge {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+}
+
+.match-card__edge--none {
+  color: #6b7280;
+}
+
+.match-card__edge-selection {
+  color: #9aa4b2;
+}
+
+.edge-badge,
+.confidence-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+}
+
+.edge-badge--strong {
+  background: #14532d;
+  color: #86efac;
+}
+
+.edge-badge--moderate {
+  background: #1e3a2f;
+  color: #6ee7b7;
+}
+
+.edge-badge--weak {
+  background: #3f3a1c;
+  color: #fde68a;
+}
+
+.edge-badge--none {
+  background: #1c212b;
+  color: #9aa4b2;
+}
+
+.confidence-badge--higher {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+.confidence-badge--moderate {
+  background: #1c212b;
+  color: #cbd2db;
+}
+
+.confidence-badge--lower {
+  background: #3f2e1c;
+  color: #fdba74;
+}
+
+.confidence-badge--insufficient_data {
+  background: #1f1414;
+  color: #fca5a5;
+}
+

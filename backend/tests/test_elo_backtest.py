@@ -3,8 +3,8 @@ from datetime import datetime, timezone
 
 import pytest
 
-from app.modelling.elo import EloConfig
-from app.modelling.elo_backtest import MatchResult, current_ratings, run_walk_forward
+from app.modelling.elo import EloConfig, EloEngine
+from app.modelling.elo_backtest import MatchResult, current_ratings, rating_for_upcoming_match, run_walk_forward
 
 CONFIG = EloConfig(k_factor=32.0, home_advantage=0.0, initial_rating=1500.0, use_margin_of_victory=False)
 
@@ -117,3 +117,27 @@ def test_current_ratings_reflects_latest_rating_per_team():
     team1_rating, team1_season = ratings[1]
     assert team1_rating == pytest.approx(predictions[-1].home_rating_after)
     assert team1_season == 2024
+
+
+def test_rating_for_upcoming_match_same_season_uses_rating_directly():
+    config = EloConfig(initial_rating=1500.0, season_carryover=0.5)
+    engine = EloEngine(config)
+    ratings = {1: (1650.0, 2024)}
+
+    assert rating_for_upcoming_match(ratings, engine, team_id=1, season_year=2024) == pytest.approx(1650.0)
+
+
+def test_rating_for_upcoming_match_new_season_applies_carryover():
+    config = EloConfig(initial_rating=1500.0, season_carryover=0.5)
+    engine = EloEngine(config)
+    ratings = {1: (1700.0, 2024)}
+
+    rating = rating_for_upcoming_match(ratings, engine, team_id=1, season_year=2025)
+    assert rating == pytest.approx(1500.0 + 0.5 * (1700.0 - 1500.0))
+
+
+def test_rating_for_upcoming_match_unknown_team_uses_initial_rating():
+    config = EloConfig(initial_rating=1500.0)
+    engine = EloEngine(config)
+
+    assert rating_for_upcoming_match({}, engine, team_id=999, season_year=2025) == pytest.approx(1500.0)

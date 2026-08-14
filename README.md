@@ -57,7 +57,49 @@ h2h/line/total prices. Verified end-to-end in-browser against the real API
 and database, including via `ManualOddsProvider` reading the entered quotes
 back correctly.
 
-No edge calculation or full dashboard yet — that's the rest of Stage 1.
+**Stage 1.5 (fair odds & edge calculation) is done:** the core insight the
+platform exists to produce. Overround removal (proportional de-vig, matching
+a bookmaker's own two-sided quotes rather than mixing prices across
+bookmakers), fair odds, expected value, and a documented sign convention for
+handicap lines. Predictions are computed live per request (walk-forward is
+well under a second over the whole history) rather than persisted, avoiding
+a staleness problem for upcoming-match forecasts. Two distinct axes: **edge
+tier** (strong/moderate/weak/none, from the raw probability gap) and
+**confidence tier** (higher/moderate/lower/insufficient_data) — the latter
+hard-gated by each model's own validated performance per market (a new
+`model_runs`/`model_validation_metrics` pair the CLIs now persist), so
+Poisson's total-points market — which Stage 1.3 found has no real edge over
+naive — is automatically capped at "insufficient data" no matter how large
+its raw edge number looks, rather than needing that fact hand-maintained
+somewhere. h2h uses Elo as the primary model with Poisson's probability as a
+secondary cross-check feeding the model-agreement confidence factor (not
+blended into one number). Edges show inline on the odds entry page. Verified
+end-to-end with real data: de-vigging a two-sided Fremantle/Adelaide quote
+correctly surfaced a genuine value finding on the de-vigged underdog price,
+and a total-points quote correctly showed "Insufficient data" regardless of
+its raw numbers.
+
+**Stage 1.6 (dashboard & match detail page) is done:** the MVP's "clean
+dashboard" — an upcoming-matches grid with team-coloured win-probability bars
+and a best-edge badge per match (ranked by confidence first, raw edge size
+second, so a low-confidence "strong" edge never outranks a genuinely
+trustworthy smaller one — see `best_edge()`), and a match detail page
+combining the model-probabilities view with the odds/edges panel from Stage
+1.5, moved here from its old standalone picker page since it belongs on the
+match it's about. Two new endpoints support this: `GET /api/matches/{id}/predictions`
+(model view for a match regardless of whether odds exist yet — closed a real
+gap, since `/edges` only ever returned data for matches with odds already
+recorded) and `GET /api/dashboard` (all upcoming matches in one response,
+building the walk-forward model state once and reusing it, rather than once
+per match). Verified end-to-end in-browser: added a quote on the match detail
+page and confirmed it immediately appeared as the dashboard's best-edge badge
+on that match's card. The full 13-section match page from the original brief
+(weather, player availability, H2H charts, quarter-by-quarter trends) needs
+data this project doesn't have yet — that's Stage 3 territory, not part of
+the MVP.
+
+No player markets, backtesting UI, or tracking dashboard yet — those are
+later Stage 1 sub-stages and beyond.
 
 See `backend/` and `frontend/` for their own setup notes below.
 
@@ -117,6 +159,11 @@ table, then a sanity-check preview of upcoming fixture predictions. See the
 module docstrings in `app/modelling/` for the walk-forward, tune/holdout-split,
 and home-advantage-derivation methodology.
 
+**Both CLIs must be run at least once** before edges can be computed — they
+persist each model's config and per-market validation results
+(`model_runs`/`model_validation_metrics`), which `GET /api/matches/{id}/edges`
+reads to decide confidence tiers. Without that, the endpoint returns 503.
+
 ### Frontend
 
 ```bash
@@ -126,8 +173,9 @@ copy .env.example .env
 npm run dev
 ```
 
-App runs at http://localhost:5173. Routes: `/` (odds entry — pick an
-upcoming fixture, log bookmaker prices), `/status` (backend/DB connectivity
+App runs at http://localhost:5173. Routes: `/` (dashboard — upcoming matches
+with model win probability and best edge), `/matches/:id` (match detail —
+model probabilities, odds entry, edges), `/status` (backend/DB connectivity
 check from Stage 0).
 
 ### Database

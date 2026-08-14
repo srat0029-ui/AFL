@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from app.modelling.metrics import accuracy, brier_score, calibration_table, log_loss, mae, rmse
+from app.modelling.metrics import accuracy, beats_naive_baseline, brier_score, calibration_table, log_loss, mae, rmse
 
 
 def test_brier_score_perfect_predictions_is_zero():
@@ -95,3 +95,23 @@ def test_rmse_penalises_large_errors_more_than_mae():
 
 def test_rmse_empty_is_nan():
     assert math.isnan(rmse([], []))
+
+
+def test_beats_naive_baseline_true_for_clear_improvement():
+    # 20% better than naive
+    assert beats_naive_baseline(model_metric=0.20, naive_metric=0.25) is True
+
+
+def test_beats_naive_baseline_false_for_marginal_improvement():
+    # Poisson's actual holdout finding: ~0.2% better, nowhere near real skill
+    assert beats_naive_baseline(model_metric=23.47, naive_metric=23.52) is False
+
+
+def test_beats_naive_baseline_false_when_worse_than_naive():
+    assert beats_naive_baseline(model_metric=0.30, naive_metric=0.25) is False
+
+
+def test_beats_naive_baseline_respects_custom_threshold():
+    # 6% improvement: passes a 5% bar, fails a 10% bar
+    assert beats_naive_baseline(model_metric=0.235, naive_metric=0.25, min_improvement=0.05) is True
+    assert beats_naive_baseline(model_metric=0.235, naive_metric=0.25, min_improvement=0.10) is False

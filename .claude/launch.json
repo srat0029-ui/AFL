@@ -5,7 +5,8 @@
       "name": "backend",
       "runtimeExecutable": "C:\\Users\\resol\\AFL\\backend\\run_dev.bat",
       "runtimeArgs": [],
-      "port": 8000
+      "port": 8000,
+      "autoPort": true
     },
     {
       "name": "frontend",

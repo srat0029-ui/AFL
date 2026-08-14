@@ -15,7 +15,7 @@ from datetime import datetime
 from app.modelling.elo import EloConfig, EloEngine
 from app.modelling.types import MatchResult
 
-__all__ = ["MatchResult", "EloPrediction", "run_walk_forward", "current_ratings"]
+__all__ = ["MatchResult", "EloPrediction", "run_walk_forward", "current_ratings", "rating_for_upcoming_match"]
 
 
 @dataclass(frozen=True)
@@ -107,3 +107,18 @@ def current_ratings(predictions: list[EloPrediction]) -> dict[int, tuple[float, 
         latest[prediction.home_team_id] = (prediction.home_rating_after, prediction.season_year)
         latest[prediction.away_team_id] = (prediction.away_rating_after, prediction.season_year)
     return latest
+
+
+def rating_for_upcoming_match(
+    ratings: dict[int, tuple[float, int]], engine: EloEngine, team_id: int, season_year: int
+) -> float:
+    """A team's rating to use when predicting a not-yet-played match in
+    `season_year`, applying season-carryover regression if its most recent
+    known rating is from an earlier season. Shared by elo_cli.py's preview
+    and the live edge calculator (app/edges/calculator.py) so both use
+    exactly the same rule.
+    """
+    rating, last_season = ratings.get(team_id, (engine.config.initial_rating, season_year))
+    if last_season != season_year:
+        rating = engine.regress_to_mean(rating)
+    return rating

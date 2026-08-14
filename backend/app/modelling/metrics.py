@@ -65,6 +65,19 @@ def rmse(predictions: list[float], actuals: list[float]) -> float:
     return math.sqrt(sum((p - a) ** 2 for p, a in zip(predictions, actuals)) / len(predictions))
 
 
+def beats_naive_baseline(model_metric: float, naive_metric: float, min_improvement: float = 0.05) -> bool:
+    """True if `model_metric` (lower-is-better: Brier score, MAE, ...) beats
+    `naive_metric` by at least `min_improvement` (relative). A model that
+    barely edges out "always guess the average"/"always guess 50%" doesn't
+    have a real, demonstrated edge in that market — this is the gate Stage
+    1.5's confidence tiering checks before trusting any edge number.
+    """
+    if naive_metric <= 0:
+        return False
+    improvement = (naive_metric - model_metric) / naive_metric
+    return improvement > min_improvement
+
+
 def calibration_table(predictions: list[float], outcomes: list[float], n_bins: int = 10) -> list[dict]:
     """Buckets predictions by predicted probability and compares the average
     prediction in each bucket to the actual outcome rate. A well-calibrated

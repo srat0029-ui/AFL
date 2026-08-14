@@ -65,7 +65,14 @@ export interface OddsQuoteInput {
   is_closing_line?: boolean;
 }
 
-class ApiError extends Error {}
+export class ApiError extends Error {
+  status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
 
 async function parseErrorDetail(response: Response): Promise<string> {
   try {
@@ -86,7 +93,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
   });
   if (!response.ok) {
-    throw new ApiError(await parseErrorDetail(response));
+    throw new ApiError(await parseErrorDetail(response), response.status);
   }
   if (response.status === 204) {
     return undefined as T;
@@ -120,4 +127,80 @@ export function deleteOdds(oddsId: number): Promise<void> {
 
 export function fetchBookmakers(): Promise<string[]> {
   return request("/api/bookmakers");
+}
+
+export type EdgeTier = "none" | "weak" | "moderate" | "strong";
+export type ConfidenceTier = "insufficient_data" | "lower" | "moderate" | "higher";
+
+export interface MarketEdge {
+  match_id: number;
+  odds_quote_id: number;
+  market_type: MarketType;
+  selection: string;
+  line_value: number | null;
+  bookmaker_name: string;
+  price_decimal: number;
+  model_probability: number;
+  secondary_model_probability: number | null;
+  market_implied_probability: number;
+  fair_market_probability: number;
+  overround_removed: boolean;
+  fair_odds: number;
+  model_edge: number;
+  expected_value: number;
+  edge_tier: EdgeTier;
+  confidence_tier: ConfidenceTier;
+  confidence_reasons: string[];
+}
+
+export async function fetchEdges(matchId: number): Promise<MarketEdge[]> {
+  try {
+    return await request(`/api/matches/${matchId}/edges`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      // the modelling CLIs haven't been run yet — treat as "no edges available" rather than an error banner
+      return [];
+    }
+    throw err;
+  }
+}
+
+export interface MatchPredictions {
+  match_id: number;
+  elo_home_win_probability: number;
+  poisson_home_win_probability: number;
+  poisson_draw_probability: number;
+  poisson_away_win_probability: number;
+  poisson_home_expected_score: number;
+  poisson_away_expected_score: number;
+  poisson_expected_total_points: number;
+  poisson_expected_margin: number;
+}
+
+export async function fetchPredictions(matchId: number): Promise<MatchPredictions | null> {
+  try {
+    return await request(`/api/matches/${matchId}/predictions`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export interface DashboardEntry {
+  match: MatchSummary;
+  predictions: MatchPredictions;
+  best_edge: MarketEdge | null;
+}
+
+export async function fetchDashboard(): Promise<DashboardEntry[]> {
+  try {
+    return await request("/api/dashboard");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return [];
+    }
+    throw err;
+  }
 }
