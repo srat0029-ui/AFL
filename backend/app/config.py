@@ -14,6 +14,10 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
 
+    # Squiggle's usage policy requires a descriptive User-Agent identifying the
+    # client and a contact email. See https://api.squiggle.com.au/
+    squiggle_user_agent: str = "AFL Analytics Prototype (personal project) - samvrathore@gmail.com"
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
