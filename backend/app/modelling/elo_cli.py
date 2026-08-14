@@ -97,7 +97,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         matches = load_completed_matches(db)
         if not matches:
-            print("No completed matches found — run data ingestion first (Stage 1.1).")
+            print("No completed matches found - run data ingestion first (Stage 1.1).")
             return 1
 
         tune_matches = [m for m in matches if m.season_year <= args.tune_end_year]

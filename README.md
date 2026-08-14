@@ -28,6 +28,23 @@ tuning process never saw, with tight calibration (predicted probability
 buckets track actual outcome rates closely). Ratings are persisted to the
 `elo_ratings` table.
 
+**Stage 1.3 (Poisson scoring model) is done:** each team's score is modelled
+as 6×Goals + Behinds (independent Poisson processes), not raw points
+directly — a raw-points Poisson would have unrealistically narrow variance
+(std≈9.5 vs AFL's real ~20-25). Team attack/defense strength is a rolling-window
+ratio model; home-ground advantage is derived from data (separate rolling
+home/away league averages), not a guessed multiplier — an earlier guessed-multiplier
+version was caught double-counting home advantage and inflating predicted
+totals by a test, and was redesigned. Validated the same tune/holdout way as
+Elo: on the 2023–2025 holdout window, **margin predictions beat a naive
+"always guess the average" baseline by 13%** (correlation 0.54) and win
+probability is comparable to Elo's (Brier 0.2052 vs Elo's 0.2012) — but
+**total-points predictions show no clear edge over the naive baseline yet**
+(MAE 23.47 vs naive 23.52). That's reported honestly rather than hidden: team
+attack/defense ratios alone capture relative strength (winner/margin) well,
+but total-points/pace likely needs richer features (Stage 2) to move beyond
+a trivial baseline. Predictions persist to `poisson_match_predictions`.
+
 No odds, edge calculation, or dashboard yet — that's the rest of Stage 1.
 
 See `backend/` and `frontend/` for their own setup notes below.
@@ -74,17 +91,19 @@ the provider shells out to curl instead of using an in-process HTTP client.
 
 ### Modelling
 
-Tune, validate, and persist the Elo match-winner model (safe to re-run —
-wholesale recompute, not additive):
+Tune, validate, and persist the models (safe to re-run — wholesale recompute,
+not additive):
 
 ```bash
-.venv\Scripts\python -m app.modelling.cli
+.venv\Scripts\python -m app.modelling.elo_cli
+.venv\Scripts\python -m app.modelling.poisson_cli
 ```
 
-Prints tune-window vs holdout-window Brier score / log loss / accuracy /
-calibration, then a sanity-check preview of upcoming fixture probabilities.
-See the module docstrings in `app/modelling/` for the walk-forward and
-tune/holdout-split methodology.
+Each prints tune-window vs holdout-window validation metrics (with a naive-baseline
+comparison for the Poisson model's total-points/margin numbers), a calibration
+table, then a sanity-check preview of upcoming fixture predictions. See the
+module docstrings in `app/modelling/` for the walk-forward, tune/holdout-split,
+and home-advantage-derivation methodology.
 
 ### Frontend
 

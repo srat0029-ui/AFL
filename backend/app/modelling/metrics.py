@@ -49,6 +49,22 @@ def accuracy(predictions: list[float], outcomes: list[float]) -> float:
     return correct / total if total else float("nan")
 
 
+def mae(predictions: list[float], actuals: list[float]) -> float:
+    """Mean absolute error — for point predictions (expected total points,
+    expected margin), not probabilities. Same units as the quantity itself,
+    so directly interpretable (e.g. "off by 18 points on average")."""
+    if not predictions:
+        return float("nan")
+    return sum(abs(p - a) for p, a in zip(predictions, actuals)) / len(predictions)
+
+
+def rmse(predictions: list[float], actuals: list[float]) -> float:
+    """Root mean squared error — penalises large misses more than mae does."""
+    if not predictions:
+        return float("nan")
+    return math.sqrt(sum((p - a) ** 2 for p, a in zip(predictions, actuals)) / len(predictions))
+
+
 def calibration_table(predictions: list[float], outcomes: list[float], n_bins: int = 10) -> list[dict]:
     """Buckets predictions by predicted probability and compares the average
     prediction in each bucket to the actual outcome rate. A well-calibrated

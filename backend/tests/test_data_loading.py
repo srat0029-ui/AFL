@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from app.modelling.cli import load_completed_matches
+from app.modelling.data_loading import load_completed_matches
 from app.models import Match, MatchStatus, Round, Season, Sport, Team
 
 
@@ -29,6 +29,10 @@ def _seed(db_session):
         status=MatchStatus.COMPLETED,
         home_score=80,
         away_score=70,
+        home_goals=11,
+        home_behinds=14,
+        away_goals=10,
+        away_behinds=10,
     )
     scheduled = Match(
         sport_id=sport.id,
@@ -54,6 +58,17 @@ def test_load_completed_matches_excludes_scheduled_games(db_session):
     assert results[0].home_score == 80
     assert results[0].away_score == 70
     assert results[0].season_year == 2024
+
+
+def test_load_completed_matches_includes_goals_and_behinds(db_session):
+    completed, _scheduled = _seed(db_session)
+
+    results = load_completed_matches(db_session)
+
+    assert results[0].home_goals == 11
+    assert results[0].home_behinds == 14
+    assert results[0].away_goals == 10
+    assert results[0].away_behinds == 10
 
 
 def test_load_completed_matches_empty_db_returns_empty_list(db_session):
