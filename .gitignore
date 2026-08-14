@@ -16,3 +16,6 @@ frontend/.env
 !.vscode/extensions.json
 .idea/
 .DS_Store
+
+# Claude Code local settings (machine/session-specific)
+.claude/settings.local.json
