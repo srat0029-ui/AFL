@@ -65,6 +65,41 @@ def test_wayback_transport_returns_zero_status_when_resolve_output_is_not_a_url(
     assert status == 0
 
 
+def test_wayback_transport_returns_zero_status_when_resolve_step_times_out():
+    """Regression test for a real crash on a live backfill run: a hung curl
+    process raised subprocess.TimeoutExpired from inside subprocess.run,
+    uncaught, which took the whole CLI process down mid-run instead of
+    just failing that one team-season. Must degrade to a normal "this
+    attempt failed" result instead."""
+    import subprocess as subprocess_module
+
+    with patch("subprocess.run", side_effect=subprocess_module.TimeoutExpired(cmd="curl", timeout=50)):
+        status, ctype, body = wayback_transport("https://afltables.com/afl/stats/teams/melbourne/2016_gbg.html")
+
+    assert status == 0
+    assert body == ""
+
+
+def test_wayback_transport_returns_zero_status_when_fetch_step_times_out():
+    import subprocess as subprocess_module
+
+    resolve_stdout = "https://web.archive.org/web/20250108125025/https://afltables.com/afl/stats/teams/adelaide/2024_gbg.html"
+
+    def run(cmd, **kwargs):
+        if "-w" in cmd:  # the resolve step succeeds
+            result = type("Result", (), {})()
+            result.stdout = resolve_stdout
+            result.returncode = 0
+            return result
+        raise subprocess_module.TimeoutExpired(cmd="curl", timeout=50)  # the fetch step hangs
+
+    with patch("subprocess.run", side_effect=run):
+        status, ctype, body = wayback_transport("https://afltables.com/afl/stats/teams/adelaide/2024_gbg.html")
+
+    assert status == 0
+    assert body == ""
+
+
 def test_wayback_transport_returns_zero_status_when_fetch_step_fails():
     resolve_stdout = "https://web.archive.org/web/20250108125025/https://afltables.com/afl/stats/teams/adelaide/2024_gbg.html"
     with patch("subprocess.run", side_effect=_mock_run(resolve_stdout, 0, "", 1)):

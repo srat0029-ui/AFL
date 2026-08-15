@@ -40,6 +40,28 @@ def _target_wayback_year(url: str) -> int:
     return date.today().year
 
 
+def _run_curl(args: list[str], timeout: float):
+    """subprocess.run wrapper shared by both steps below. curl's own
+    --max-time is meant to bound each request, but on Windows a hung/stalled
+    connection can still leave the subprocess pipe-reading thread blocked
+    past that (a real crash caught on a live run: subprocess.run's *own*
+    timeout=... raised TimeoutExpired from deep inside communicate(), with
+    nothing catching it — it took the whole CLI process down mid-backfill).
+    Returns None on any failure to start/complete the process (missing
+    curl, timeout, or anything else) so every caller has exactly one
+    "this attempt failed, safe to retry" signal to check, matching how a
+    failed HTTP fetch is already handled everywhere else in this module.
+    """
+    try:
+        return subprocess.run(args, capture_output=True, text=True, timeout=timeout + 10)
+    except subprocess.TimeoutExpired:
+        return None
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "wayback_transport requires the `curl` command-line tool (bundled with Windows 10+ and most Linux/macOS installs)."
+        ) from exc
+
+
 def wayback_transport(url: str, timeout: float = 40.0) -> tuple[int, str, str]:
     """Same (status_code, content_type, body) contract as
     app/providers/afl/afltables.py's curl_transport(), for a real
@@ -53,24 +75,16 @@ def wayback_transport(url: str, timeout: float = 40.0) -> tuple[int, str, str]:
     year = _target_wayback_year(url)
     wayback_url = f"https://web.archive.org/web/{year}/{url}"
 
-    try:
-        resolve = subprocess.run(
-            ["curl", "-s", "-o", os.devnull, "-w", "%{url_effective}", "-L", "--max-time", str(timeout), wayback_url],
-            capture_output=True, text=True, timeout=timeout + 10,
-        )
-    except FileNotFoundError as exc:
-        raise RuntimeError(
-            "wayback_transport requires the `curl` command-line tool (bundled with Windows 10+ and most Linux/macOS installs)."
-        ) from exc
-    if resolve.returncode != 0 or not resolve.stdout.startswith("http"):
+    resolve = _run_curl(
+        ["curl", "-s", "-o", os.devnull, "-w", "%{url_effective}", "-L", "--max-time", str(timeout), wayback_url],
+        timeout,
+    )
+    if resolve is None or resolve.returncode != 0 or not resolve.stdout.startswith("http"):
         return 0, "", ""
     final_url = resolve.stdout.strip()
 
-    result = subprocess.run(
-        ["curl", "-s", "-i", "--max-time", str(timeout), final_url],
-        capture_output=True, text=True, timeout=timeout + 10,
-    )
-    if result.returncode != 0:
+    result = _run_curl(["curl", "-s", "-i", "--max-time", str(timeout), final_url], timeout)
+    if result is None or result.returncode != 0:
         return 0, "", ""
     # text=True applies universal-newline translation, so curl's \r\n
     # becomes \n; only one hop now (the redirect was already resolved
