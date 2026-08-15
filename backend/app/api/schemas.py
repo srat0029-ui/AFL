@@ -418,3 +418,143 @@ class LogisticComparisonOverviewRead(BaseModel):
     stats_plus_elo: LogisticVariantReportRead
 
     model_config = {"from_attributes": True}
+
+
+# --- Gradient boosting + ensemble (Stage 2A) ---
+
+
+class FeatureSetCandidateResultRead(BaseModel):
+    label: str
+    library: str
+    feature_names: list[str]
+    n_eval: int
+    brier_score: float
+    log_loss: float
+    accuracy: float
+
+    model_config = {"from_attributes": True}
+
+
+class BoostingAblationResultRead(BaseModel):
+    label: str
+    feature_names: list[str]
+    n_eval: int
+    brier_score: float
+    log_loss: float
+    brier_vs_elo_alone: float | None
+
+    model_config = {"from_attributes": True}
+
+
+class InteractionFindingRead(BaseModel):
+    feature_a: str
+    feature_b: str
+    label: str
+    mean_abs_interaction: float
+    mean_abs_main_effect_a: float
+    mean_abs_main_effect_b: float
+
+    model_config = {"from_attributes": True}
+
+
+class BoostingBestCandidateReportRead(BaseModel):
+    label: str
+    library: str
+    feature_names: list[str]
+    hyperparameters: dict
+    calibration_method: str
+    n_eval: int
+    brier_score: float
+    log_loss: float
+    accuracy: float
+    calibration: list[CalibrationBucketRead]
+    calibration_ece: float | None
+    permutation_importance: dict[str, float]
+    shap_importance: dict[str, float] | None
+    feature_group_ablation: list[BoostingAblationResultRead]
+    bootstrap_vs_elo: BootstrapResultRead
+    by_season: list[BacktestSegmentRead]
+    disagreement_vs_elo: LogisticComparisonReportRead
+    interactions: list[InteractionFindingRead]
+    promotion: PromotionDecisionRead
+
+    model_config = {"from_attributes": True}
+
+
+class EnsembleReportRead(BaseModel):
+    boosting_weight: float
+    elo: BaselineModelRowRead
+    boosting: BaselineModelRowRead
+    ensemble: BaselineModelRowRead
+    bootstrap_ensemble_vs_elo: BootstrapResultRead
+    bootstrap_ensemble_vs_boosting: BootstrapResultRead
+    use_ensemble: bool
+
+    model_config = {"from_attributes": True}
+
+
+class BoostingComparisonOverviewRead(BaseModel):
+    n_eval: int
+    evaluation_start_year: int
+    evaluation_end_year: int
+    feature_set_candidates: list[FeatureSetCandidateResultRead]
+    best: BoostingBestCandidateReportRead
+    ensemble: EnsembleReportRead
+
+    model_config = {"from_attributes": True}
+
+
+# --- Poisson season-transition revision (Stage 2B) ---
+
+
+class PoissonConfigRead(BaseModel):
+    rolling_window_games: int
+    min_games_for_reliable_strength: int
+    min_league_games_for_home_split: int
+    max_goals: int
+    max_behinds: int
+    league_window_games: int | None
+
+    model_config = {"from_attributes": True}
+
+
+class RoundBandMetricsRead(BaseModel):
+    label: str
+    n: int
+    metrics: dict[str, float]
+
+    model_config = {"from_attributes": True}
+
+
+class PoissonVariantReportRead(BaseModel):
+    label: str
+    config: PoissonConfigRead
+    period: EvaluationPeriodRead
+    evaluation_metrics: dict[str, float]
+    warmup_metrics: dict[str, float]
+    full_history_metrics: dict[str, float]
+    by_season: list[BacktestSegmentRead]
+    early_season_bands: list[RoundBandMetricsRead]
+    season_2021_bands: list[RoundBandMetricsRead]
+    interval_coverage: dict[str, dict[str, float]]
+
+    model_config = {"from_attributes": True}
+
+
+class TuneLeaderboardRowRead(BaseModel):
+    config: PoissonConfigRead
+    tune_total_points_mae: float
+
+    model_config = {"from_attributes": True}
+
+
+class PoissonRevisionComparisonRead(BaseModel):
+    original: PoissonVariantReportRead
+    revised: PoissonVariantReportRead
+    tune_leaderboard_top5: list[TuneLeaderboardRowRead]
+    common_match_count: int
+    revised_beats_original_2021: bool
+    revised_worse_than_original_full_history: bool
+    promotion: PromotionDecisionRead
+
+    model_config = {"from_attributes": True}

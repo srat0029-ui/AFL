@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://127.0.0.1:*)",
+      "mcp__Claude_Browser__get_page_text",
+      "mcp__Claude_Browser__read_console_messages",
+      "Bash(netstat -ano*)",
+      "mcp__Claude_Browser__read_page",
+      "mcp__Claude_Browser__read_network_requests",
+      "Bash(npm run build)",
+      "Bash(npm run lint)",
+      "mcp__Claude_Browser__preview_logs",
+      "mcp__Claude_Browser__preview_list"
+    ]
+  }
+}

@@ -3,18 +3,24 @@ import "./BacktestPage.css";
 import AdvancedModelComparison from "../components/AdvancedModelComparison";
 import CalibrationChart from "../components/CalibrationChart";
 import Disclaimer from "../components/Disclaimer";
+import GradientBoostingComparison from "../components/GradientBoostingComparison";
+import PoissonRevisionComparison from "../components/PoissonRevisionComparison";
 import {
   fetchBacktest,
   fetchBacktestDetail,
   fetchBacktests,
+  fetchBoostingComparison,
   fetchLogisticComparison,
   fetchModelComparison,
+  fetchPoissonRevision,
   type BacktestDetail,
   type BacktestOverview,
   type BacktestSegment,
   type BacktestSummary,
+  type BoostingComparisonOverview,
   type LogisticComparisonOverview,
   type ModelComparison,
+  type PoissonRevisionComparison as PoissonRevisionComparisonData,
   type WinProbReport,
 } from "../api/client";
 
@@ -320,6 +326,8 @@ function BacktestPage() {
   const [comparison, setComparison] = useState<ModelComparison | null>(null);
   const [overview, setOverview] = useState<BacktestOverview | null>(null);
   const [logisticOverview, setLogisticOverview] = useState<LogisticComparisonOverview | null>(null);
+  const [boostingOverview, setBoostingOverview] = useState<BoostingComparisonOverview | null>(null);
+  const [poissonRevision, setPoissonRevision] = useState<PoissonRevisionComparisonData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -331,14 +339,18 @@ function BacktestPage() {
       fetchModelComparison(),
       fetchBacktest(),
       fetchLogisticComparison(),
+      fetchBoostingComparison(),
+      fetchPoissonRevision(),
     ])
-      .then(([summaryList, elo, poisson, cmp, legacyOverview, logisticCmp]) => {
+      .then(([summaryList, elo, poisson, cmp, legacyOverview, logisticCmp, boostingCmp, poissonRev]) => {
         setSummaries(summaryList);
         setEloDetail(elo);
         setPoissonDetail(poisson);
         setComparison(cmp);
         setOverview(legacyOverview);
         setLogisticOverview(logisticCmp);
+        setBoostingOverview(boostingCmp);
+        setPoissonRevision(poissonRev);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load backtest"))
       .finally(() => setLoading(false));
@@ -416,6 +428,28 @@ function BacktestPage() {
               <h2>Advanced Model Comparison</h2>
               <p className="hint">
                 Not available yet — run <code>python -m app.modelling.logistic_cli</code> (see the README).
+              </p>
+            </section>
+          )}
+
+          {boostingOverview ? (
+            <GradientBoostingComparison overview={boostingOverview} />
+          ) : (
+            <section className="backtest-panel">
+              <h2>Gradient Boosting</h2>
+              <p className="hint">
+                Not available yet — requires the elo and poisson models to be run first (see the README).
+              </p>
+            </section>
+          )}
+
+          {poissonRevision ? (
+            <PoissonRevisionComparison comparison={poissonRevision} />
+          ) : (
+            <section className="backtest-panel">
+              <h2>Poisson Season-Transition Revision</h2>
+              <p className="hint">
+                Not available yet — run <code>python -m app.modelling.poisson_cli</code> first (see the README).
               </p>
             </section>
           )}

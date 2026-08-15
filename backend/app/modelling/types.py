@@ -29,3 +29,7 @@ class MatchResult:
     home_behinds: int | None = None
     away_goals: int | None = None
     away_behinds: int | None = None
+    # Defaults to 0 (unknown) rather than being required, so existing
+    # callers/tests that build MatchResult without it keep working — only
+    # the Poisson season-transition early-round diagnostics need this.
+    round_number: int = 0

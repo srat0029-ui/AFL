@@ -486,3 +486,141 @@ export async function fetchLogisticComparison(): Promise<LogisticComparisonOverv
     throw err;
   }
 }
+
+// --- Gradient boosting + ensemble (Stage 2A) ---
+
+export interface FeatureSetCandidateResult {
+  label: string;
+  library: string;
+  feature_names: string[];
+  n_eval: number;
+  brier_score: number;
+  log_loss: number;
+  accuracy: number;
+}
+
+export interface BoostingAblationResult {
+  label: string;
+  feature_names: string[];
+  n_eval: number;
+  brier_score: number;
+  log_loss: number;
+  brier_vs_elo_alone: number | null;
+}
+
+export interface InteractionFinding {
+  feature_a: string;
+  feature_b: string;
+  label: string;
+  mean_abs_interaction: number;
+  mean_abs_main_effect_a: number;
+  mean_abs_main_effect_b: number;
+}
+
+export interface BoostingBestCandidateReport {
+  label: string;
+  library: string;
+  feature_names: string[];
+  hyperparameters: Record<string, number>;
+  calibration_method: string;
+  n_eval: number;
+  brier_score: number;
+  log_loss: number;
+  accuracy: number;
+  calibration: CalibrationBucket[];
+  calibration_ece: number | null;
+  permutation_importance: Record<string, number>;
+  shap_importance: Record<string, number> | null;
+  feature_group_ablation: BoostingAblationResult[];
+  bootstrap_vs_elo: BootstrapResultData;
+  by_season: BacktestSegment[];
+  disagreement_vs_elo: LogisticComparisonReportData;
+  interactions: InteractionFinding[];
+  promotion: PromotionDecisionData;
+}
+
+export interface EnsembleReport {
+  boosting_weight: number;
+  elo: BaselineModelRow;
+  boosting: BaselineModelRow;
+  ensemble: BaselineModelRow;
+  bootstrap_ensemble_vs_elo: BootstrapResultData;
+  bootstrap_ensemble_vs_boosting: BootstrapResultData;
+  use_ensemble: boolean;
+}
+
+export interface BoostingComparisonOverview {
+  n_eval: number;
+  evaluation_start_year: number;
+  evaluation_end_year: number;
+  feature_set_candidates: FeatureSetCandidateResult[];
+  best: BoostingBestCandidateReport;
+  ensemble: EnsembleReport;
+}
+
+export async function fetchBoostingComparison(): Promise<BoostingComparisonOverview | null> {
+  try {
+    return await request("/api/backtests/boosting-comparison");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+// --- Poisson season-transition revision (Stage 2B) ---
+
+export interface PoissonConfigData {
+  rolling_window_games: number;
+  min_games_for_reliable_strength: number;
+  min_league_games_for_home_split: number;
+  max_goals: number;
+  max_behinds: number;
+  league_window_games: number | null;
+}
+
+export interface RoundBandMetrics {
+  label: string;
+  n: number;
+  metrics: Record<string, number>;
+}
+
+export interface PoissonVariantReport {
+  label: string;
+  config: PoissonConfigData;
+  period: EvaluationPeriod;
+  evaluation_metrics: Record<string, number>;
+  warmup_metrics: Record<string, number>;
+  full_history_metrics: Record<string, number>;
+  by_season: BacktestSegment[];
+  early_season_bands: RoundBandMetrics[];
+  season_2021_bands: RoundBandMetrics[];
+  interval_coverage: Record<string, Record<string, number>>;
+}
+
+export interface TuneLeaderboardRow {
+  config: PoissonConfigData;
+  tune_total_points_mae: number;
+}
+
+export interface PoissonRevisionComparison {
+  original: PoissonVariantReport;
+  revised: PoissonVariantReport;
+  tune_leaderboard_top5: TuneLeaderboardRow[];
+  common_match_count: number;
+  revised_beats_original_2021: boolean;
+  revised_worse_than_original_full_history: boolean;
+  promotion: PromotionDecisionData;
+}
+
+export async function fetchPoissonRevision(): Promise<PoissonRevisionComparison | null> {
+  try {
+    return await request("/api/backtests/poisson-revision");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}

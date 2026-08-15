@@ -31,6 +31,7 @@ def load_completed_matches(db: Session, sport_code: str = "AFL") -> list[MatchRe
             home_behinds=m.home_behinds,
             away_goals=m.away_goals,
             away_behinds=m.away_behinds,
+            round_number=m.round.round_number,
         )
         for m in matches
         if m.home_score is not None and m.away_score is not None

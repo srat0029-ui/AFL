@@ -1,5 +1,6 @@
 import random
-from datetime import datetime, timezone
+from dataclasses import replace
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -223,3 +224,107 @@ def test_games_played_reflects_rolling_history():
     assert state.games_played(1) == 2  # team 1 played both matches
     assert state.games_played(2) == 1
     assert state.games_played(999) == 0  # never seen
+
+
+def test_round_number_is_threaded_through_to_predictions():
+    matches = [
+        replace(
+            _match(1, 2024, 3, 1, home=1, away=2, home_goals=13, home_behinds=10, away_goals=11, away_behinds=10),
+            round_number=7,
+        ),
+    ]
+
+    predictions = run_walk_forward(matches, NEUTRAL_CONFIG)
+
+    assert predictions[0].round_number == 7
+
+
+def _dated_match(match_id, season_year, days_offset, home, away, goals, behinds) -> MatchResult:
+    """Like _match, but dated by an offset in days from a fixed epoch so a
+    test can lay out many matches (more than a single month's worth of
+    days) without hand-picking month/day. home==away goals/behinds by
+    design, so the data-derived home/away split factor stays exactly 1.0
+    throughout and the tests below isolate the league-wide blended-average
+    effect alone."""
+    return MatchResult(
+        match_id=match_id,
+        season_year=season_year,
+        scheduled_start=datetime(2020, 1, 1, tzinfo=timezone.utc) + timedelta(days=days_offset),
+        home_team_id=home,
+        away_team_id=away,
+        home_score=6 * goals + behinds,
+        away_score=6 * goals + behinds,
+        home_goals=goals,
+        home_behinds=behinds,
+        away_goals=goals,
+        away_behinds=behinds,
+    )
+
+
+def test_league_window_none_keeps_a_scoring_shock_baked_in_at_full_weight():
+    """Regression test for the original 2021-anomaly root cause: with
+    league_window_games=None (the default, preserved for backward
+    compatibility with the already-tuned persisted config), a block of
+    depressed-scoring matches (proxy for 2020's shortened quarters) still
+    drags the blended league average down even after 3x as many normal-
+    scoring matches have since been played, because the average is an
+    unbounded expanding mean over the whole history."""
+    shock = [_dated_match(i, 2020, i, home=10 + (i % 4), away=14 + (i % 4), goals=5, behinds=5) for i in range(1, 21)]
+    recovery = [
+        _dated_match(100 + i, 2021, 20 + i, home=10 + (i % 4), away=14 + (i % 4), goals=13, behinds=13)
+        for i in range(1, 61)
+    ]
+    probe = _dated_match(999, 2021, 90, home=1, away=2, goals=13, behinds=13)  # brand-new teams: neutral strength
+    config = PoissonConfig(league_window_games=None)
+
+    predictions = run_walk_forward(shock + recovery + [probe], config)
+
+    # hand-verified: blended_goals = (100+780)/(2*80) = 11.0, blended_behinds
+    # likewise 11.0 -> expected_total = 2*(6*11+11) = 154.0, well below the
+    # true "normal" level (182.0) despite 60 normal matches since the shock
+    assert predictions[-1].expected_total_points == pytest.approx(154.0)
+
+
+def test_bounded_league_window_fully_recovers_from_scoring_shock():
+    """The actual fix: a bounded league_window_games evicts the shock block
+    entirely once it's aged out of the window, fully recovering the true
+    scoring level — on the exact same synthetic shock+recovery data as the
+    unbounded test above, so the two are a direct apples-to-apples
+    comparison of only the one changed parameter."""
+    shock = [_dated_match(i, 2020, i, home=10 + (i % 4), away=14 + (i % 4), goals=5, behinds=5) for i in range(1, 21)]
+    recovery = [
+        _dated_match(100 + i, 2021, 20 + i, home=10 + (i % 4), away=14 + (i % 4), goals=13, behinds=13)
+        for i in range(1, 61)
+    ]
+    probe = _dated_match(999, 2021, 90, home=1, away=2, goals=13, behinds=13)
+    all_matches = shock + recovery + [probe]
+
+    bounded = run_walk_forward(all_matches, PoissonConfig(league_window_games=30))
+    unbounded = run_walk_forward(all_matches, PoissonConfig(league_window_games=None))
+
+    # window=30 is entirely filled by the most recent 30 (all-recovery,
+    # goals=behinds=13) matches by the time the probe is reached, so the
+    # blended average is exactly 13.0 -> expected_total = 2*(6*13+13) = 182.0,
+    # the true normal level - full recovery, unlike the unbounded case.
+    assert bounded[-1].expected_total_points == pytest.approx(182.0)
+    assert bounded[-1].expected_total_points > unbounded[-1].expected_total_points
+
+
+def test_league_window_none_matches_hand_verified_original_formula():
+    """Direct arithmetic check that league_window_games=None (default)
+    reproduces the exact original unbounded blended-average formula, not
+    just 'approximately the same' — the bounded-deque-plus-running-sum
+    rewrite must be bit-for-bit equivalent to the original whenever the
+    window never fills (which None guarantees, by never filling at all)."""
+    matches = [
+        _match(1, 2024, 3, 1, home=1, away=2, home_goals=10, home_behinds=10, away_goals=10, away_behinds=10),
+        _match(2, 2024, 3, 8, home=3, away=4, home_goals=14, home_behinds=6, away_goals=8, away_behinds=12),
+    ]
+    predictions = run_walk_forward(matches, PoissonConfig())
+
+    # entering match 2: teams 3 and 4 are brand new (neutral strength), and
+    # match 1's home/away goals and behinds were equal, so the home/away
+    # split factor is exactly 1.0 - isolating the blended league average,
+    # which after 1 match is exactly (10+10)/2 = 10.0
+    assert predictions[1].home_expected_goals == pytest.approx(10.0)
+    assert predictions[1].expected_total_points == pytest.approx(140.0)

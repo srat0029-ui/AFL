@@ -41,6 +41,7 @@ _FALLBACK_LEAGUE_AVG = 15.0  # used only before any match has been observed
 class PoissonPrediction:
     match_id: int
     season_year: int
+    round_number: int
     scheduled_start: datetime
     home_team_id: int
     away_team_id: int
@@ -86,16 +87,42 @@ class _TeamHistory:
 
 
 class _LeagueSplit:
-    """Tracks expanding home-only / away-only scoring averages, separately
-    from the blended average used for team ratings, so a home/away factor
-    can be derived directly from data instead of guessed."""
+    """Tracks home-only / away-only scoring averages, separately from the
+    blended average used for team ratings, so a home/away factor can be
+    derived directly from data instead of guessed.
 
-    def __init__(self) -> None:
+    `window_games`, if set, bounds this to the most recent N matches
+    league-wide — the same bounded-rolling-window treatment already used
+    for each team's own history (_TeamHistory), just applied league-wide
+    instead of per-team. This exists specifically to fix the 2021 anomaly:
+    the ORIGINAL model (window_games=None, an unbounded expanding average
+    over the whole dataset) needed years of subsequent matches to dilute a
+    real scoring-environment shock (2020's COVID-shortened quarters) back
+    out — a single season's worth of depressed scores gets permanently
+    baked in at full weight, no different from any other season, and a
+    handful of early-2021 games can't move an average built from 900+
+    historical matches. A bounded window self-corrects within roughly one
+    window's worth of matches instead. Implemented as a bounded deque (for
+    automatic eviction) plus incrementally-maintained running sums, so
+    per-match cost stays O(1) regardless of whether the window is bounded —
+    `deque(maxlen=None)` never evicts, so window_games=None reproduces the
+    original unbounded behaviour exactly, bit for bit.
+    """
+
+    def __init__(self, window_games: int | None = None) -> None:
+        self.window_games = window_games
+        self.home_goals_hist: deque[int] = deque(maxlen=window_games)
+        self.away_goals_hist: deque[int] = deque(maxlen=window_games)
+        self.home_behinds_hist: deque[int] = deque(maxlen=window_games)
+        self.away_behinds_hist: deque[int] = deque(maxlen=window_games)
         self.home_goals_sum = 0.0
         self.away_goals_sum = 0.0
         self.home_behinds_sum = 0.0
         self.away_behinds_sum = 0.0
-        self.matches_count = 0
+
+    @property
+    def matches_count(self) -> int:
+        return len(self.home_goals_hist)
 
     def blended_avg_goals(self) -> float:
         if self.matches_count == 0:
@@ -129,11 +156,20 @@ class _LeagueSplit:
         )
 
     def record(self, home_goals: int, away_goals: int, home_behinds: int, away_behinds: int) -> None:
+        if self.window_games is not None and len(self.home_goals_hist) == self.window_games:
+            # about to evict the oldest match — remove it from the running sums first
+            self.home_goals_sum -= self.home_goals_hist[0]
+            self.away_goals_sum -= self.away_goals_hist[0]
+            self.home_behinds_sum -= self.home_behinds_hist[0]
+            self.away_behinds_sum -= self.away_behinds_hist[0]
+        self.home_goals_hist.append(home_goals)
+        self.away_goals_hist.append(away_goals)
+        self.home_behinds_hist.append(home_behinds)
+        self.away_behinds_hist.append(away_behinds)
         self.home_goals_sum += home_goals
         self.away_goals_sum += away_goals
         self.home_behinds_sum += home_behinds
         self.away_behinds_sum += away_behinds
-        self.matches_count += 1
 
 
 def _avg(values: deque[int]) -> float:
@@ -168,7 +204,7 @@ def run_walk_forward(
     (see PoissonModelState.predict) without re-deriving team form from a
     separate, duplicate pass over history."""
     team_histories: dict[int, _TeamHistory] = {}
-    league = _LeagueSplit()
+    league = _LeagueSplit(window_games=config.league_window_games)
     predictions: list[PoissonPrediction] = []
 
     for match in sorted(matches, key=lambda m: (m.scheduled_start, m.match_id)):
@@ -212,6 +248,7 @@ def run_walk_forward(
             PoissonPrediction(
                 match_id=match.match_id,
                 season_year=match.season_year,
+                round_number=match.round_number,
                 scheduled_start=match.scheduled_start,
                 home_team_id=match.home_team_id,
                 away_team_id=match.away_team_id,

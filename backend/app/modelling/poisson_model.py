@@ -39,6 +39,14 @@ class PoissonConfig:
     min_league_games_for_home_split: int = 40  # below this, shrink the home/away split toward neutral (1.0)
     max_goals: int = 30
     max_behinds: int = 30
+    # Bounds the league-wide blended scoring baseline to the most recent N
+    # matches (same treatment as rolling_window_games, applied league-wide
+    # instead of per-team). None (the default, and the ORIGINAL model's
+    # exact behaviour) keeps an unbounded expanding average over the whole
+    # dataset — see app/modelling/poisson_backtest.py's _LeagueSplit
+    # docstring for why that let a real scoring-environment shock (2020's
+    # COVID-shortened quarters) distort predictions for months into 2021.
+    league_window_games: int | None = None
 
 
 def poisson_pmf(lam: float, k_max: int) -> np.ndarray:

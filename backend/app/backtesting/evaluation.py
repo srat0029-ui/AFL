@@ -190,7 +190,7 @@ def _scoring_metrics(predictions: list) -> dict[str, float]:
     }
 
 
-def _interval_coverage(predictions: list, config, coverage: float) -> dict[str, float]:
+def interval_coverage(predictions: list, config, coverage: float) -> dict[str, float]:
     """Fraction of matches where the actual total/margin fell inside the
     model's own `coverage`-width central prediction interval, reconstructed
     from the same lambdas used to build the point prediction — evaluating
@@ -246,8 +246,8 @@ def build_scoring_evaluation(
         full_history_metrics=_scoring_metrics(predictions),
         by_season=build_segments(evaluation, key_fn=lambda p: str(p.season_year), metrics_fn=_scoring_metrics),
         interval_coverage={
-            "50pct": _interval_coverage(evaluation, config, 0.5),
-            "80pct": _interval_coverage(evaluation, config, 0.8),
+            "50pct": interval_coverage(evaluation, config, 0.5),
+            "80pct": interval_coverage(evaluation, config, 0.8),
         },
     )
 

@@ -22,6 +22,13 @@ DEFAULT_GRID: dict[str, list] = {
     "rolling_window_games": [22, 44, 66, 9999],  # 9999 ≈ expanding (whole history)
     "min_games_for_reliable_strength": [4, 6, 8],
     "min_league_games_for_home_split": [20, 40, 80],
+    # None = unbounded expanding league-wide average (the ORIGINAL model's
+    # exact behaviour — see poisson_backtest.py's _LeagueSplit docstring for
+    # why this let 2020's shortened-quarter scoring shock distort 2021
+    # predictions for months). The other values bound it to roughly a half,
+    # full, or one-and-a-half AFL seasons, so a genuine scoring-environment
+    # shift self-corrects within about that many matches instead of years.
+    "league_window_games": [None, 100, 200, 300],
 }
 
 

@@ -18,13 +18,17 @@ from sqlalchemy.orm import Session
 from app.api.schemas import (
     BacktestDetailRead,
     BacktestSummaryRead,
+    BoostingComparisonOverviewRead,
     CalibrationReportRead,
     LogisticComparisonOverviewRead,
     ModelComparisonRead,
+    PoissonRevisionComparisonRead,
     ScoringEvaluationRead,
     SeasonBreakdownRead,
     WinProbEvaluationRead,
 )
+from app.backtesting.boosting_report import ModelsUnavailableError as BoostingModelsUnavailableError
+from app.backtesting.boosting_report import build_boosting_comparison
 from app.backtesting.evaluation import EVALUATION_START_YEAR
 from app.backtesting.evaluation import ModelsUnavailableError as EvaluationModelsUnavailableError
 from app.backtesting.evaluation import load_elo_evaluation, load_poisson_evaluation
@@ -32,13 +36,19 @@ from app.backtesting.logistic_report import ModelsUnavailableError as LogisticMo
 from app.backtesting.logistic_report import build_logistic_comparison
 from app.backtesting.model_comparison import ModelsUnavailableError as ComparisonModelsUnavailableError
 from app.backtesting.model_comparison import load_model_comparison
+from app.backtesting.poisson_revision_report import build_poisson_revision_comparison
 from app.database import get_db
 from app.models import ModelRun
 from sqlalchemy import select
 
 router = APIRouter(prefix="/api/backtests", tags=["backtests"])
 
-_UNAVAILABLE = (EvaluationModelsUnavailableError, ComparisonModelsUnavailableError, LogisticModelsUnavailableError)
+_UNAVAILABLE = (
+    EvaluationModelsUnavailableError,
+    ComparisonModelsUnavailableError,
+    LogisticModelsUnavailableError,
+    BoostingModelsUnavailableError,
+)
 
 
 def _load(db: Session, model_id: str):
@@ -111,6 +121,24 @@ def get_logistic_comparison(db: Session = Depends(get_db)) -> LogisticComparison
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return LogisticComparisonOverviewRead.model_validate(overview)
+
+
+@router.get("/boosting-comparison", response_model=BoostingComparisonOverviewRead)
+def get_boosting_comparison(db: Session = Depends(get_db)) -> BoostingComparisonOverviewRead:
+    try:
+        overview = build_boosting_comparison(db)
+    except _UNAVAILABLE as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return BoostingComparisonOverviewRead.model_validate(overview)
+
+
+@router.get("/poisson-revision", response_model=PoissonRevisionComparisonRead)
+def get_poisson_revision(db: Session = Depends(get_db)) -> PoissonRevisionComparisonRead:
+    try:
+        comparison = build_poisson_revision_comparison(db)
+    except _UNAVAILABLE as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return PoissonRevisionComparisonRead.model_validate(comparison)
 
 
 @router.get("/{model_id}", response_model=BacktestDetailRead)

@@ -46,6 +46,7 @@ def _prediction_for(match: Match) -> PoissonPrediction:
     return PoissonPrediction(
         match_id=match.id,
         season_year=2024,
+        round_number=1,
         scheduled_start=match.scheduled_start,
         home_team_id=match.home_team_id,
         away_team_id=match.away_team_id,
