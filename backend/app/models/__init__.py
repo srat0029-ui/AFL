@@ -12,6 +12,7 @@ from app.models.round import Round
 from app.models.season import Season
 from app.models.sport import Sport
 from app.models.team import Team
+from app.models.team_match_stat import TeamMatchStat
 from app.models.venue import Venue
 
 __all__ = [
@@ -28,4 +29,5 @@ __all__ = [
     "OddsQuote",
     "ModelRun",
     "ModelValidationMetric",
+    "TeamMatchStat",
 ]

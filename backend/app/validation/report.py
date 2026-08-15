@@ -27,6 +27,8 @@ class ValidationReport:
     # Readable "2016: 207 matches" style lines, separate from results
     # because it's a summary view over the same data, not a pass/fail check.
     season_summary: list[str] = field(default_factory=list)
+    # "2016: 195/207 matches (94%)" — advanced team-stats coverage per season.
+    team_stats_coverage: list[str] = field(default_factory=list)
 
     def add(self, level: Level, category: str, message: str) -> None:
         self.results.append(CheckResult(level, category, message))
@@ -55,6 +57,11 @@ def format_report(report: ValidationReport) -> str:
     if report.season_summary:
         lines.append("\n[season summary]")
         for line in report.season_summary:
+            lines.append(f"  {line}")
+
+    if report.team_stats_coverage:
+        lines.append("\n[advanced team-stats coverage]")
+        for line in report.team_stats_coverage:
             lines.append(f"  {line}")
 
     lines.append(

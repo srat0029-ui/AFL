@@ -19,6 +19,7 @@ from app.api.schemas import (
     BacktestDetailRead,
     BacktestSummaryRead,
     CalibrationReportRead,
+    LogisticComparisonOverviewRead,
     ModelComparisonRead,
     ScoringEvaluationRead,
     SeasonBreakdownRead,
@@ -27,13 +28,17 @@ from app.api.schemas import (
 from app.backtesting.evaluation import EVALUATION_START_YEAR
 from app.backtesting.evaluation import ModelsUnavailableError as EvaluationModelsUnavailableError
 from app.backtesting.evaluation import load_elo_evaluation, load_poisson_evaluation
+from app.backtesting.logistic_report import ModelsUnavailableError as LogisticModelsUnavailableError
+from app.backtesting.logistic_report import build_logistic_comparison
 from app.backtesting.model_comparison import ModelsUnavailableError as ComparisonModelsUnavailableError
 from app.backtesting.model_comparison import load_model_comparison
 from app.database import get_db
+from app.models import ModelRun
+from sqlalchemy import select
 
 router = APIRouter(prefix="/api/backtests", tags=["backtests"])
 
-_UNAVAILABLE = (EvaluationModelsUnavailableError, ComparisonModelsUnavailableError)
+_UNAVAILABLE = (EvaluationModelsUnavailableError, ComparisonModelsUnavailableError, LogisticModelsUnavailableError)
 
 
 def _load(db: Session, model_id: str):
@@ -89,6 +94,23 @@ def get_comparison(db: Session = Depends(get_db)) -> ModelComparisonRead:
     except _UNAVAILABLE as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return ModelComparisonRead.model_validate(report)
+
+
+@router.get("/logistic-comparison", response_model=LogisticComparisonOverviewRead)
+def get_logistic_comparison(db: Session = Depends(get_db)) -> LogisticComparisonOverviewRead:
+    stats_only_run = db.scalar(select(ModelRun).where(ModelRun.model_name == "logistic_stats_only"))
+    stats_plus_elo_run = db.scalar(select(ModelRun).where(ModelRun.model_name == "logistic_stats_plus_elo"))
+    if stats_only_run is None or stats_plus_elo_run is None:
+        raise HTTPException(status_code=503, detail="Run `python -m app.modelling.logistic_cli` first.")
+
+    try:
+        overview = build_logistic_comparison(
+            db, C_stats_only=stats_only_run.config_json["C"], C_stats_plus_elo=stats_plus_elo_run.config_json["C"]
+        )
+    except _UNAVAILABLE as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return LogisticComparisonOverviewRead.model_validate(overview)
 
 
 @router.get("/{model_id}", response_model=BacktestDetailRead)

@@ -162,3 +162,125 @@
   stroke: #93c5fd;
   stroke-width: 1;
 }
+
+.logistic-variant {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #2a2f3a;
+}
+
+.logistic-variant h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1.05rem;
+}
+
+.logistic-variant h4 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.88rem;
+  color: #cbd2db;
+}
+
+.promotion-badge {
+  display: inline-block;
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-top: 0.75rem;
+}
+
+.promotion-badge--promote {
+  background: #14532d;
+  color: #86efac;
+}
+
+.promotion-badge--keep {
+  background: #1f1414;
+  color: #fca5a5;
+}
+
+.promotion-reasons {
+  list-style: none;
+  padding: 0;
+  margin: 0.6rem 0 0;
+  font-size: 0.8rem;
+}
+
+.promotion-reasons li {
+  padding: 0.15rem 0;
+}
+
+.promotion-reason--pass {
+  color: #86efac;
+}
+
+.promotion-reason--fail {
+  color: #fca5a5;
+}
+
+.delta-positive {
+  color: #86efac;
+}
+
+.delta-negative {
+  color: #fca5a5;
+}
+
+.coef-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.coef-bar-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) 1fr 70px;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.78rem;
+}
+
+.coef-bar-label {
+  color: #9aa4b2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coef-bar-track {
+  position: relative;
+  height: 14px;
+  background: #0d0f14;
+  border-radius: 3px;
+}
+
+.coef-bar-zero {
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #3a4152;
+}
+
+.coef-bar-fill {
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  border-radius: 2px;
+}
+
+.coef-bar-fill--positive {
+  background: #3b82f6;
+}
+
+.coef-bar-fill--negative {
+  background: #ef4444;
+}
+
+.coef-bar-value {
+  text-align: right;
+  color: #cbd2db;
+  font-variant-numeric: tabular-nums;
+}

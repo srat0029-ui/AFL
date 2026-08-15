@@ -323,3 +323,98 @@ class ModelComparisonRead(BaseModel):
     season_stability: list[SeasonStabilityRowRead]
 
     model_config = {"from_attributes": True}
+
+
+# --- Advanced feature engineering / logistic regression (Stage 1C) ---
+
+
+class BaselineModelRowRead(BaseModel):
+    name: str
+    n: int
+    brier_score: float
+    log_loss: float
+    accuracy: float
+
+    model_config = {"from_attributes": True}
+
+
+class AblationResultRead(BaseModel):
+    label: str
+    feature_names: list[str]
+    n_eval: int
+    brier_score: float
+    log_loss: float
+    brier_vs_elo_alone: float | None
+
+    model_config = {"from_attributes": True}
+
+
+class BootstrapResultRead(BaseModel):
+    point_estimate: float
+    ci_low: float
+    ci_high: float
+    n_resamples: int
+    excludes_zero: bool
+
+    model_config = {"from_attributes": True}
+
+
+class PromotionDecisionRead(BaseModel):
+    promote: bool
+    reasons: list[str]
+
+    model_config = {"from_attributes": True}
+
+
+class LogisticDisagreementBucketRead(BaseModel):
+    label: str
+    n: int
+    elo_metrics: dict[str, float]
+    logistic_metrics: dict[str, float]
+    actual_home_win_rate: float | None
+
+    model_config = {"from_attributes": True}
+
+
+class LogisticComparisonReportRead(BaseModel):
+    n_matches: int
+    mean_absolute_disagreement: float
+    disagreement_buckets: list[LogisticDisagreementBucketRead]
+
+    model_config = {"from_attributes": True}
+
+
+class LogisticVariantReportRead(BaseModel):
+    variant: str
+    feature_names: list[str]
+    C: float
+    calibration_method: str
+    n_eval: int
+    brier_score: float
+    log_loss: float
+    accuracy: float
+    calibration: list[CalibrationBucketRead]
+    calibration_ece: float | None
+    standardized_coefficients: dict[str, float]
+    permutation_importance: dict[str, float]
+    single_feature_ablation: dict[str, float]
+    feature_group_ablation: list[AblationResultRead]
+    bootstrap_vs_elo: BootstrapResultRead
+    by_season: list[BacktestSegmentRead]
+    disagreement_vs_elo: LogisticComparisonReportRead
+    promotion: PromotionDecisionRead
+
+    model_config = {"from_attributes": True}
+
+
+class LogisticComparisonOverviewRead(BaseModel):
+    n_eval: int
+    evaluation_start_year: int
+    evaluation_end_year: int
+    baselines: list[BaselineModelRowRead]
+    elo: BaselineModelRowRead
+    poisson: BaselineModelRowRead
+    stats_only: LogisticVariantReportRead
+    stats_plus_elo: LogisticVariantReportRead
+
+    model_config = {"from_attributes": True}

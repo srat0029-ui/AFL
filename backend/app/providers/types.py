@@ -13,7 +13,7 @@ implementation, not a change to these shapes.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,13 @@ class TeamStatLine:
     # modelling question for later stages, not something the provider contract
     # should hardcode. e.g. {"disposals": 412, "clearances": 38, "inside_50s": 55}
     stats: dict[str, float] = field(default_factory=dict)
+    # A stats source doesn't necessarily share a fixture source's external id
+    # scheme (e.g. AFL Tables has no relationship to Squiggle's match ids) —
+    # opponent_name + match_date let ingestion resolve this row against an
+    # already-ingested Match by (season, team pair, date) instead. Optional
+    # since a source that *does* share the fixture id scheme won't need them.
+    opponent_name: str | None = None
+    match_date: date | None = None
 
 
 @dataclass(frozen=True)

@@ -1,16 +1,19 @@
 import { useEffect, useState } from "react";
 import "./BacktestPage.css";
+import AdvancedModelComparison from "../components/AdvancedModelComparison";
 import CalibrationChart from "../components/CalibrationChart";
 import Disclaimer from "../components/Disclaimer";
 import {
   fetchBacktest,
   fetchBacktestDetail,
   fetchBacktests,
+  fetchLogisticComparison,
   fetchModelComparison,
   type BacktestDetail,
   type BacktestOverview,
   type BacktestSegment,
   type BacktestSummary,
+  type LogisticComparisonOverview,
   type ModelComparison,
   type WinProbReport,
 } from "../api/client";
@@ -316,6 +319,7 @@ function BacktestPage() {
   const [poissonDetail, setPoissonDetail] = useState<BacktestDetail | null>(null);
   const [comparison, setComparison] = useState<ModelComparison | null>(null);
   const [overview, setOverview] = useState<BacktestOverview | null>(null);
+  const [logisticOverview, setLogisticOverview] = useState<LogisticComparisonOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -326,13 +330,15 @@ function BacktestPage() {
       fetchBacktestDetail("poisson"),
       fetchModelComparison(),
       fetchBacktest(),
+      fetchLogisticComparison(),
     ])
-      .then(([summaryList, elo, poisson, cmp, legacyOverview]) => {
+      .then(([summaryList, elo, poisson, cmp, legacyOverview, logisticCmp]) => {
         setSummaries(summaryList);
         setEloDetail(elo);
         setPoissonDetail(poisson);
         setComparison(cmp);
         setOverview(legacyOverview);
+        setLogisticOverview(logisticCmp);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load backtest"))
       .finally(() => setLoading(false));
@@ -403,6 +409,16 @@ function BacktestPage() {
           {eloDetail && <ModelEvaluationSection detail={eloDetail} />}
           {poissonDetail && <ModelEvaluationSection detail={poissonDetail} />}
           {comparison && <ModelComparisonSection comparison={comparison} />}
+          {logisticOverview ? (
+            <AdvancedModelComparison overview={logisticOverview} />
+          ) : (
+            <section className="backtest-panel">
+              <h2>Advanced Model Comparison</h2>
+              <p className="hint">
+                Not available yet — run <code>python -m app.modelling.logistic_cli</code> (see the README).
+              </p>
+            </section>
+          )}
 
           {overview && (
             <>

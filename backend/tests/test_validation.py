@@ -7,8 +7,16 @@ a database — see app/validation/checks.py's module docstring.
 
 from datetime import datetime, timezone
 
-from app.models import Match, MatchStatus, Round, Season, Sport, Team, Venue
-from app.validation.checks import build_season_summary, check_matches, check_seasons, check_teams, check_venues
+from app.models import Match, MatchStatus, Round, Season, Sport, Team, TeamMatchStat, Venue
+from app.validation.checks import (
+    build_season_summary,
+    build_team_stats_coverage,
+    check_matches,
+    check_seasons,
+    check_team_match_stats,
+    check_teams,
+    check_venues,
+)
 from app.validation.report import Level, ValidationReport
 from app.validation.run import run_validation
 
@@ -232,3 +240,66 @@ def test_run_validation_end_to_end_on_seeded_db(db_session):
 def test_run_validation_fails_cleanly_with_no_sport_row(db_session):
     report = run_validation(db_session)
     assert report.has_failures
+
+
+def _team_stat(id_: int, match_id: int, team_id: int, goals: int | None = None, behinds: int | None = None) -> TeamMatchStat:
+    s = TeamMatchStat(
+        match_id=match_id, team_id=team_id, source="afltables",
+        recorded_at=datetime(2024, 1, 1, tzinfo=timezone.utc), goals=goals, behinds=behinds,
+    )
+    s.id = id_
+    return s
+
+
+def test_check_team_match_stats_no_data_warns():
+    report = ValidationReport()
+    check_team_match_stats([], {}, report)
+    assert report.has_warnings
+    assert not report.has_failures
+
+
+def test_check_team_match_stats_detects_goal_mismatch():
+    stat = _team_stat(1, match_id=1, team_id=1, goals=20, behinds=10)
+    report = ValidationReport()
+    check_team_match_stats([stat], {(1, 1): (22, 10)}, report)  # official says 22 goals, source says 20
+    assert report.has_failures
+    assert any("goals disagree" in r.message for r in report.results)
+
+
+def test_check_team_match_stats_small_behinds_gap_is_expected_and_passes():
+    # 3-point gap is the documented "rushed behinds" case — should not fail or warn
+    stat = _team_stat(1, match_id=1, team_id=1, goals=22, behinds=9)
+    report = ValidationReport()
+    check_team_match_stats([stat], {(1, 1): (22, 12)}, report)
+    assert not report.has_failures
+    assert not report.has_warnings
+
+
+def test_check_team_match_stats_large_behinds_gap_warns():
+    stat = _team_stat(1, match_id=1, team_id=1, goals=22, behinds=2)
+    report = ValidationReport()
+    check_team_match_stats([stat], {(1, 1): (22, 20)}, report)  # 18-point gap is implausible as "rushed"
+    assert report.has_warnings
+    assert not report.has_failures
+
+
+def test_check_team_match_stats_detects_duplicates():
+    stats = [_team_stat(1, match_id=1, team_id=1), _team_stat(2, match_id=1, team_id=1)]
+    report = ValidationReport()
+    check_team_match_stats(stats, {}, report)
+    assert report.has_failures
+    assert any("Duplicate team-match-stat" in r.message for r in report.results)
+
+
+def test_build_team_stats_coverage_computes_percentage():
+    completed = {2024: {1, 2, 3, 4}}
+    covered = {2024: {1, 2, 3}}
+    lines = build_team_stats_coverage(completed, covered)
+    assert lines == ["2024: 3/4 matches (75%)"]
+
+
+def test_build_team_stats_coverage_handles_missing_season():
+    completed = {2024: {1, 2}}
+    covered = {}
+    lines = build_team_stats_coverage(completed, covered)
+    assert lines == ["2024: 0/2 matches (0%)"]

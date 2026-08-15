@@ -397,3 +397,92 @@ export async function fetchModelComparison(): Promise<ModelComparison | null> {
     throw err;
   }
 }
+
+// --- Advanced feature engineering / logistic regression (Stage 1C) ---
+
+export interface BaselineModelRow {
+  name: string;
+  n: number;
+  brier_score: number;
+  log_loss: number;
+  accuracy: number;
+}
+
+export interface AblationResult {
+  label: string;
+  feature_names: string[];
+  n_eval: number;
+  brier_score: number;
+  log_loss: number;
+  brier_vs_elo_alone: number | null;
+}
+
+export interface BootstrapResultData {
+  point_estimate: number;
+  ci_low: number;
+  ci_high: number;
+  n_resamples: number;
+  excludes_zero: boolean;
+}
+
+export interface PromotionDecisionData {
+  promote: boolean;
+  reasons: string[];
+}
+
+export interface LogisticDisagreementBucket {
+  label: string;
+  n: number;
+  elo_metrics: Record<string, number>;
+  logistic_metrics: Record<string, number>;
+  actual_home_win_rate: number | null;
+}
+
+export interface LogisticComparisonReportData {
+  n_matches: number;
+  mean_absolute_disagreement: number;
+  disagreement_buckets: LogisticDisagreementBucket[];
+}
+
+export interface LogisticVariantReport {
+  variant: string;
+  feature_names: string[];
+  C: number;
+  calibration_method: string;
+  n_eval: number;
+  brier_score: number;
+  log_loss: number;
+  accuracy: number;
+  calibration: CalibrationBucket[];
+  calibration_ece: number | null;
+  standardized_coefficients: Record<string, number>;
+  permutation_importance: Record<string, number>;
+  single_feature_ablation: Record<string, number>;
+  feature_group_ablation: AblationResult[];
+  bootstrap_vs_elo: BootstrapResultData;
+  by_season: BacktestSegment[];
+  disagreement_vs_elo: LogisticComparisonReportData;
+  promotion: PromotionDecisionData;
+}
+
+export interface LogisticComparisonOverview {
+  n_eval: number;
+  evaluation_start_year: number;
+  evaluation_end_year: number;
+  baselines: BaselineModelRow[];
+  elo: BaselineModelRow;
+  poisson: BaselineModelRow;
+  stats_only: LogisticVariantReport;
+  stats_plus_elo: LogisticVariantReport;
+}
+
+export async function fetchLogisticComparison(): Promise<LogisticComparisonOverview | null> {
+  try {
+    return await request("/api/backtests/logistic-comparison");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}

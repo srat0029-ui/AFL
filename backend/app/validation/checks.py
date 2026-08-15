@@ -9,7 +9,7 @@ the DB and hands rows to these functions.
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from app.models import Match, MatchStatus, Season, Team, Venue
+from app.models import Match, MatchStatus, Season, Team, TeamMatchStat, Venue
 from app.validation.report import Level, ValidationReport
 
 # AFL has fielded 18 teams since the 2012 Gold Coast/GWS expansion. Bounded
@@ -197,4 +197,71 @@ def build_season_summary(matches: list[Match], season_year_by_id: dict[int, int]
         else:
             flag = "" if low <= completed <= high else "  <- unusual match count, worth checking"
             lines.append(f"{year}: {completed} matches{flag}")
+    return lines
+
+
+# Rushed (unattributed defensive) behinds are a genuine, expected AFL Tables
+# vs official-score discrepancy — verified against real 2016 data before the
+# backfill ran (see app/providers/afl/afltables.py's module docstring).
+# Typically 0-4 per team per game; flagged only if it looks larger than that
+# plausibly-real range, which would suggest an actual parsing/matching bug.
+_BEHINDS_TOLERANCE = 6
+
+
+def check_team_match_stats(
+    stats: list[TeamMatchStat], match_scores: dict[tuple[int, int], tuple[int | None, int | None]], report: ValidationReport
+) -> None:
+    """match_scores: {(match_id, team_id): (official_goals, official_behinds)},
+    built from Match.home/away_goals/behinds — the Squiggle-sourced figures
+    that remain authoritative regardless of what this check finds."""
+    if not stats:
+        report.add(Level.WARNING, "team_stats", "No advanced team statistics found in database")
+        return
+
+    goal_mismatches = []
+    large_behind_mismatches = []
+    for s in stats:
+        official = match_scores.get((s.match_id, s.team_id))
+        if official is None or s.goals is None:
+            continue
+        official_goals, official_behinds = official
+        if official_goals is not None and s.goals != official_goals:
+            goal_mismatches.append(s.id)
+        if official_behinds is not None and s.behinds is not None and abs(s.behinds - official_behinds) > _BEHINDS_TOLERANCE:
+            large_behind_mismatches.append(s.id)
+
+    _report_ids(
+        report, "team_stats", goal_mismatches,
+        "Team-stat goals disagree with the official match score (unexpected — goals are always individually attributed)",
+        "All team-stat goal totals match the official match score",
+    )
+    if large_behind_mismatches:
+        report.add(
+            Level.WARNING, "team_stats",
+            f"Team-stat behinds differ from the official score by more than {_BEHINDS_TOLERANCE} "
+            f"(a few points of difference is expected — AFL Tables' team totals omit unattributed "
+            f"'rushed' behinds — but this is larger than that normally explains): {large_behind_mismatches}",
+        )
+    else:
+        report.add(Level.PASS, "team_stats", "Team-stat behinds are within the expected tolerance of the official score")
+
+    seen: dict[tuple[int, int, str], list[int]] = defaultdict(list)
+    for s in stats:
+        seen[(s.match_id, s.team_id, s.source)].append(s.id)
+    dupes = {k: v for k, v in seen.items() if len(v) > 1}
+    if dupes:
+        report.add(Level.FAIL, "team_stats", f"Duplicate team-match-stat rows found: {dupes}")
+    else:
+        report.add(Level.PASS, "team_stats", "No duplicate team-match-stat rows")
+
+
+def build_team_stats_coverage(
+    completed_match_ids_by_season: dict[int, set[int]], stat_match_ids_by_season: dict[int, set[int]]
+) -> list[str]:
+    lines = []
+    for year in sorted(completed_match_ids_by_season):
+        total = len(completed_match_ids_by_season[year])
+        covered = len(stat_match_ids_by_season.get(year, set()) & completed_match_ids_by_season[year])
+        pct = (covered / total * 100) if total else 0.0
+        lines.append(f"{year}: {covered}/{total} matches ({pct:.0f}%)")
     return lines
