@@ -7,11 +7,20 @@ Usage:
     python -m app.ingestion.cli --seasons 2016 2025 --upcoming
     python -m app.ingestion.cli --team-stats 2016 2025
     python -m app.ingestion.cli --player-stats 2016 2025
+    python -m app.ingestion.cli --player-stats 2016 2025 --source wayback
     python -m app.ingestion.cli --validate
+
+--source wayback fetches the same real AFL Tables pages via the Wayback
+Machine instead of afltables.com directly — use this when afltables.com
+returns a 302 to every request (its own bot-mitigation, observed to persist
+for hours/days at a time; see app/providers/afl/wayback_transport.py). Applies
+to --team-stats and --player-stats; --seasons/--upcoming (Squiggle) are
+unaffected, since Squiggle isn't the source of this blocking.
 """
 
 import argparse
 import sys
+from typing import Callable
 
 from sqlalchemy.orm import Session
 
@@ -22,8 +31,11 @@ from app.ingestion.team_stats import ingest_team_stats
 from app.providers.afl.afltables import AFLTablesStatsProvider
 from app.providers.afl.afltables_players import AFLTablesPlayerStatsProvider
 from app.providers.afl.squiggle import SquiggleFixtureProvider
+from app.providers.afl.wayback_transport import wayback_transport
 from app.validation.report import format_report
 from app.validation.run import run_validation
+
+Transport = Callable[[str], tuple[int, str, str]]
 
 
 def backfill_seasons(db: Session, provider: SquiggleFixtureProvider, start_year: int, end_year: int) -> list[int]:
@@ -170,6 +182,14 @@ def main(argv: list[str] | None = None) -> int:
         help="Seconds to wait between AFL Tables requests (default 1.0 — one request per team-season)",
     )
     parser.add_argument(
+        "--source",
+        choices=["direct", "wayback"],
+        default="direct",
+        help="Where --team-stats/--player-stats fetch AFL Tables pages from. 'direct' (default) hits "
+        "afltables.com itself. 'wayback' fetches the same real pages via the Wayback Machine instead — "
+        "use this if afltables.com is returning HTTP 302 to every request (see the module docstring).",
+    )
+    parser.add_argument(
         "--validate",
         action="store_true",
         help="Run data-validation checks against the current database and print a PASS/WARNING/FAIL report. "
@@ -202,8 +222,12 @@ def main(argv: list[str] | None = None) -> int:
                 failed_years = backfill_seasons(db, provider, args.seasons[0], args.seasons[1])
             if args.upcoming:
                 ingest_upcoming(db, provider)
+        transport: Transport | None = wayback_transport if args.source == "wayback" else None
+        if args.source == "wayback":
+            print("--source wayback: fetching AFL Tables pages via the Wayback Machine, not afltables.com directly.\n")
+
         if args.team_stats:
-            stats_provider = AFLTablesStatsProvider(request_delay_seconds=args.team_stats_request_delay)
+            stats_provider = AFLTablesStatsProvider(transport=transport, request_delay_seconds=args.team_stats_request_delay)
             failed_stat_years, unmatched_stats = backfill_team_stats(
                 db, stats_provider, args.team_stats[0], args.team_stats[1]
             )
@@ -214,7 +238,9 @@ def main(argv: list[str] | None = None) -> int:
                 if len(unmatched_stats) > 20:
                     print(f"  ... and {len(unmatched_stats) - 20} more")
         if args.player_stats:
-            player_stats_provider = AFLTablesPlayerStatsProvider(request_delay_seconds=args.player_stats_request_delay)
+            player_stats_provider = AFLTablesPlayerStatsProvider(
+                transport=transport, request_delay_seconds=args.player_stats_request_delay
+            )
             failed_player_team_seasons, unmatched_player_stats = backfill_player_stats(
                 db, player_stats_provider, args.player_stats[0], args.player_stats[1]
             )
