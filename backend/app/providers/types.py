@@ -70,14 +70,31 @@ class TeamStatLine:
 
 @dataclass(frozen=True)
 class PlayerStatLine:
-    """One player's stats for a single match, as reported by a stats source."""
+    """One player's stats for a single match, as reported by a stats source.
 
-    match_external_id: str
+    Resolved to a Match by (season_year, round_number, team_name) rather
+    than a shared match id or date — the AFL Tables page this is scraped
+    from (a team's season "game by game" grid) publishes round labels, not
+    match dates, per cell. See app/ingestion/player_stats.py for the
+    resolution against already-ingested Match/Round rows, and why round
+    number is actually a more robust key here than date (no timezone/date
+    off-by-one edge cases to worry about).
+    """
+
     sport_code: str
+    season_year: int
+    round_number: int
     team_name: str
-    player_name: str
+    player_name: str  # as published, e.g. "Acres, Blake"
+    # The source's stable per-player identifier (for AFL Tables, the player
+    # page's path, e.g. "players/B/Blake_Acres.html") — the real identity
+    # anchor; player_name alone is not unique or stable enough to key on.
+    player_source_id: str
     recorded_at: datetime
     stats: dict[str, float] = field(default_factory=dict)
+    jumper_number: int | None = None
+    subbed_on: bool = False
+    subbed_off: bool = False
 
 
 @dataclass(frozen=True)

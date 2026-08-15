@@ -558,3 +558,95 @@ class PoissonRevisionComparisonRead(BaseModel):
     promotion: PromotionDecisionRead
 
     model_config = {"from_attributes": True}
+
+
+# --- Player data foundation (Stage 3) ---
+
+_PLAYER_STAT_FIELD_NAMES = [
+    "kicks", "marks", "handballs", "disposals", "goals", "behinds", "hitouts", "tackles",
+    "rebound_50s", "inside_50s", "clearances", "clangers", "frees_for", "frees_against",
+    "brownlow_votes", "contested_possessions", "uncontested_possessions", "contested_marks",
+    "marks_inside_50", "one_percenters", "bounces", "goal_assists",
+]
+
+
+class PlayerSummaryRead(BaseModel):
+    id: int
+    display_name: str
+    current_team: TeamSummary | None
+    is_active: bool | None
+    source: str
+    source_player_id: str
+
+    model_config = {"from_attributes": True}
+
+
+class PlayerListRead(BaseModel):
+    players: list[PlayerSummaryRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class PlayerGameStatRead(BaseModel):
+    match_id: int
+    player_id: int
+    player_display_name: str
+    season_year: int
+    round_number: int
+    scheduled_start: datetime
+    team: TeamSummary
+    opponent_team: TeamSummary | None
+    jumper_number: int | None
+    subbed_on: bool
+    subbed_off: bool
+    kicks: int | None
+    marks: int | None
+    handballs: int | None
+    disposals: int | None
+    goals: int | None
+    behinds: int | None
+    hitouts: int | None
+    tackles: int | None
+    rebound_50s: int | None
+    inside_50s: int | None
+    clearances: int | None
+    clangers: int | None
+    frees_for: int | None
+    frees_against: int | None
+    brownlow_votes: int | None
+    contested_possessions: int | None
+    uncontested_possessions: int | None
+    contested_marks: int | None
+    marks_inside_50: int | None
+    one_percenters: int | None
+    bounces: int | None
+    goal_assists: int | None
+    time_on_ground_pct: int | None
+    fantasy_points: float | None
+
+
+class PlayerGamesRead(BaseModel):
+    player: PlayerSummaryRead
+    games: list[PlayerGameStatRead]
+    total: int
+    limit: int
+    offset: int
+
+
+class SeasonAverageRead(BaseModel):
+    season_year: int
+    games_played: int
+    averages: dict[str, float]
+
+
+class PlayerFormRead(BaseModel):
+    player: PlayerSummaryRead
+    recent_games: list[PlayerGameStatRead]
+    season_averages: list[SeasonAverageRead]
+
+
+class MatchPlayersRead(BaseModel):
+    match_id: int
+    home_team_players: list[PlayerGameStatRead]
+    away_team_players: list[PlayerGameStatRead]

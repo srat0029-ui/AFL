@@ -624,3 +624,139 @@ export async function fetchPoissonRevision(): Promise<PoissonRevisionComparison 
     throw err;
   }
 }
+
+// --- Player data foundation (Stage 3) ---
+
+export interface PlayerSummary {
+  id: number;
+  display_name: string;
+  current_team: Team | null;
+  is_active: boolean | null;
+  source: string;
+  source_player_id: string;
+}
+
+export interface PlayerList {
+  players: PlayerSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PlayerGameStat {
+  match_id: number;
+  player_id: number;
+  player_display_name: string;
+  season_year: number;
+  round_number: number;
+  scheduled_start: string;
+  team: Team;
+  opponent_team: Team | null;
+  jumper_number: number | null;
+  subbed_on: boolean;
+  subbed_off: boolean;
+  kicks: number | null;
+  marks: number | null;
+  handballs: number | null;
+  disposals: number | null;
+  goals: number | null;
+  behinds: number | null;
+  hitouts: number | null;
+  tackles: number | null;
+  rebound_50s: number | null;
+  inside_50s: number | null;
+  clearances: number | null;
+  clangers: number | null;
+  frees_for: number | null;
+  frees_against: number | null;
+  brownlow_votes: number | null;
+  contested_possessions: number | null;
+  uncontested_possessions: number | null;
+  contested_marks: number | null;
+  marks_inside_50: number | null;
+  one_percenters: number | null;
+  bounces: number | null;
+  goal_assists: number | null;
+  time_on_ground_pct: number | null;
+  fantasy_points: number | null;
+}
+
+export interface PlayerGames {
+  player: PlayerSummary;
+  games: PlayerGameStat[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface SeasonAverage {
+  season_year: number;
+  games_played: number;
+  averages: Record<string, number>;
+}
+
+export interface PlayerForm {
+  player: PlayerSummary;
+  recent_games: PlayerGameStat[];
+  season_averages: SeasonAverage[];
+}
+
+export interface MatchPlayers {
+  match_id: number;
+  home_team_players: PlayerGameStat[];
+  away_team_players: PlayerGameStat[];
+}
+
+export function fetchPlayers(params: {
+  teamId?: number;
+  season?: number;
+  isActive?: boolean;
+  name?: string;
+  limit?: number;
+  offset?: number;
+} = {}): Promise<PlayerList> {
+  const query = new URLSearchParams();
+  if (params.teamId !== undefined) query.set("team_id", String(params.teamId));
+  if (params.season !== undefined) query.set("season", String(params.season));
+  if (params.isActive !== undefined) query.set("is_active", String(params.isActive));
+  if (params.name) query.set("name", params.name);
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.offset !== undefined) query.set("offset", String(params.offset));
+  const qs = query.toString();
+  return request(`/api/afl/players${qs ? `?${qs}` : ""}`);
+}
+
+export async function fetchPlayer(playerId: number): Promise<PlayerSummary | null> {
+  try {
+    return await request(`/api/afl/players/${playerId}`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export function fetchPlayerGames(playerId: number, params: { season?: number; limit?: number; offset?: number } = {}): Promise<PlayerGames> {
+  const query = new URLSearchParams();
+  if (params.season !== undefined) query.set("season", String(params.season));
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  if (params.offset !== undefined) query.set("offset", String(params.offset));
+  const qs = query.toString();
+  return request(`/api/afl/players/${playerId}/games${qs ? `?${qs}` : ""}`);
+}
+
+export function fetchPlayerForm(playerId: number, recentGames = 10): Promise<PlayerForm> {
+  return request(`/api/afl/players/${playerId}/form?recent_games=${recentGames}`);
+}
+
+export async function fetchMatchPlayers(matchId: number): Promise<MatchPlayers | null> {
+  try {
+    return await request(`/api/afl/matches/${matchId}/players`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}

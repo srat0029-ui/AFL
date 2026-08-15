@@ -3,6 +3,7 @@ import "./App.css";
 import BacktestPage from "./pages/BacktestPage";
 import DashboardPage from "./pages/DashboardPage";
 import MatchDetailPage from "./pages/MatchDetailPage";
+import PlayerProfilePage from "./pages/PlayerProfilePage";
 import StatusPage from "./pages/StatusPage";
 
 function App() {
@@ -23,6 +24,7 @@ function App() {
       <Routes>
         <Route path="/" element={<DashboardPage />} />
         <Route path="/matches/:matchId" element={<MatchDetailPage />} />
+        <Route path="/players/:playerId" element={<PlayerProfilePage />} />
         <Route path="/backtest" element={<BacktestPage />} />
         <Route path="/status" element={<StatusPage />} />
       </Routes>

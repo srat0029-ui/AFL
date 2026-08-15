@@ -9,7 +9,7 @@ the DB and hands rows to these functions.
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from app.models import Match, MatchStatus, Season, Team, TeamMatchStat, Venue
+from app.models import Match, MatchStatus, Player, PlayerMatchStat, Season, Team, TeamMatchStat, Venue
 from app.validation.report import Level, ValidationReport
 
 # AFL has fielded 18 teams since the 2012 Gold Coast/GWS expansion. Bounded
@@ -262,6 +262,197 @@ def build_team_stats_coverage(
     for year in sorted(completed_match_ids_by_season):
         total = len(completed_match_ids_by_season[year])
         covered = len(stat_match_ids_by_season.get(year, set()) & completed_match_ids_by_season[year])
+        pct = (covered / total * 100) if total else 0.0
+        lines.append(f"{year}: {covered}/{total} matches ({pct:.0f}%)")
+    return lines
+
+
+# --- Player data foundation ---
+
+# Counting stats that must be non-negative — every field on PlayerMatchStat
+# that is a raw count rather than a percentage.
+_NON_NEGATIVE_STAT_FIELDS = [
+    "kicks", "marks", "handballs", "disposals", "goals", "behinds", "hitouts", "tackles",
+    "rebound_50s", "inside_50s", "clearances", "clangers", "frees_for", "frees_against",
+    "brownlow_votes", "contested_possessions", "uncontested_possessions", "contested_marks",
+    "marks_inside_50", "one_percenters", "bounces", "goal_assists",
+]
+
+# Every additive counting stat except behinds — team total = sum of that
+# team's player totals, exactly, since both are derived from the same
+# underlying scorer data (verified directly against a real match page: the
+# player-stats table's own <tfoot> "Totals" row IS the sum of its player
+# rows). A mismatch here is a real integrity signal (a parsing or match/team
+# resolution bug), not a source-convention quirk — unlike behinds, see
+# _BEHINDS_TOLERANCE above, this is the one field genuinely expected to
+# differ (rushed/unattributed defensive behinds have no player to credit).
+_EXACT_RECONCILE_FIELDS = [
+    "kicks", "marks", "handballs", "disposals", "goals", "hitouts", "tackles",
+    "rebound_50s", "inside_50s", "clearances", "clangers", "frees_for", "frees_against",
+    "brownlow_votes", "contested_possessions", "uncontested_possessions", "contested_marks",
+    "marks_inside_50", "one_percenters", "bounces", "goal_assists",
+]
+
+
+def check_players(players: list[Player], team_ids: set[int], report: ValidationReport) -> None:
+    if not players:
+        report.add(Level.WARNING, "players", "No players found in database")
+        return
+
+    missing_name = [p.id for p in players if not p.display_name or not p.display_name.strip()]
+    _report_ids(report, "players", missing_name, "Players missing a display name", "All players have a display name")
+
+    seen: dict[tuple[int, str, str], list[int]] = defaultdict(list)
+    for p in players:
+        seen[(p.sport_id, p.source, p.source_player_id)].append(p.id)
+    dupes = {k: v for k, v in seen.items() if len(v) > 1}
+    if dupes:
+        report.add(Level.FAIL, "players", f"Duplicate (sport, source, source_player_id) found: {dupes}")
+    else:
+        report.add(Level.PASS, "players", "No duplicate player source ids")
+
+    invalid_team = [p.id for p in players if p.current_team_id is not None and p.current_team_id not in team_ids]
+    _report_ids(
+        report, "players", invalid_team,
+        "Players with an invalid current_team_id", "All players' current_team_id references a valid team",
+    )
+
+
+def check_player_match_stats(
+    stats: list[PlayerMatchStat],
+    match_ids: set[int],
+    player_ids: set[int],
+    team_ids: set[int],
+    match_team_ids: dict[int, tuple[int, int]],  # match_id -> (home_team_id, away_team_id)
+    report: ValidationReport,
+) -> None:
+    if not stats:
+        report.add(Level.WARNING, "player_stats", "No player-match statistics found in database")
+        return
+
+    orphan_match = [s.id for s in stats if s.match_id not in match_ids]
+    _report_ids(report, "player_stats", orphan_match, "Player-match stats referencing a missing match", "Every player-match stat belongs to a valid match")
+
+    orphan_player = [s.id for s in stats if s.player_id not in player_ids]
+    _report_ids(report, "player_stats", orphan_player, "Player-match stats referencing a missing player", "Every player-match stat belongs to a valid player")
+
+    orphan_team = [s.id for s in stats if s.team_id not in team_ids]
+    _report_ids(report, "player_stats", orphan_team, "Player-match stats referencing a missing team", "Every player-match stat has a valid team reference")
+
+    team_did_not_play = [
+        s.id for s in stats
+        if (pair := match_team_ids.get(s.match_id)) is not None and s.team_id not in pair
+    ]
+    _report_ids(
+        report, "player_stats", team_did_not_play,
+        "Player-match stats where the recorded team did not actually play in that match",
+        "Every player-match stat's team actually participated in that match",
+    )
+
+    seen: dict[tuple[int, int, str], list[int]] = defaultdict(list)
+    for s in stats:
+        seen[(s.player_id, s.match_id, s.source)].append(s.id)
+    dupes = {k: v for k, v in seen.items() if len(v) > 1}
+    if dupes:
+        report.add(Level.FAIL, "player_stats", f"Duplicate player-match-stat rows found: {dupes}")
+    else:
+        report.add(Level.PASS, "player_stats", "No duplicate player-match-stat rows")
+
+    negative = [
+        s.id for s in stats
+        if any((v := getattr(s, f)) is not None and v < 0 for f in _NON_NEGATIVE_STAT_FIELDS)
+    ]
+    _report_ids(report, "player_stats", negative, "Player-match stats with a negative counting stat", "No player-match stat has a negative counting stat")
+
+    disposal_mismatches = [
+        s.id for s in stats
+        if s.kicks is not None and s.handballs is not None and s.disposals is not None and s.kicks + s.handballs != s.disposals
+    ]
+    _report_ids(
+        report, "player_stats", disposal_mismatches,
+        "Player-match stats where kicks + handballs != disposals",
+        "kicks + handballs == disposals for every player-match stat with both present",
+    )
+
+    bad_tog = [s.id for s in stats if s.time_on_ground_pct is not None and not (0 <= s.time_on_ground_pct <= 100)]
+    _report_ids(report, "player_stats", bad_tog, "Player-match stats with time_on_ground_pct outside 0-100", "All time_on_ground_pct values are within 0-100")
+
+
+def check_player_team_reconciliation(
+    player_stats: list[PlayerMatchStat],
+    team_stats_by_match_team: dict[tuple[int, int], TeamMatchStat],
+    report: ValidationReport,
+) -> None:
+    """Sums player-level stats per (match, team) and compares against the
+    independently-scraped team-level totals — a cross-check between two
+    different AFL Tables pages that should agree, since both are ultimately
+    derived from the same underlying per-player data. Nothing here modifies
+    either table; TeamMatchStat remains authoritative for team-level
+    reporting exactly as before."""
+    if not player_stats or not team_stats_by_match_team:
+        report.add(Level.WARNING, "player_team_reconciliation", "Insufficient data to reconcile player stats against team stats")
+        return
+
+    agg: dict[tuple[int, int], dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for s in player_stats:
+        key = (s.match_id, s.team_id)
+        for field_name in _EXACT_RECONCILE_FIELDS + ["behinds"]:
+            value = getattr(s, field_name)
+            if value is not None:
+                agg[key][field_name] += value
+
+    n_checked = 0
+    mismatches_by_field: dict[str, list] = defaultdict(list)
+    behind_mismatches = []
+    for key, sums in agg.items():
+        team_stat = team_stats_by_match_team.get(key)
+        if team_stat is None:
+            continue
+        n_checked += 1
+        for field_name in _EXACT_RECONCILE_FIELDS:
+            team_value = getattr(team_stat, field_name)
+            if team_value is not None and sums.get(field_name, 0) != team_value:
+                mismatches_by_field[field_name].append(key)
+        if team_stat.behinds is not None and abs(sums.get("behinds", 0) - team_stat.behinds) > _BEHINDS_TOLERANCE:
+            behind_mismatches.append(key)
+
+    if n_checked == 0:
+        report.add(Level.WARNING, "player_team_reconciliation", "No (match, team) pairs had both player-level and team-level stats to compare")
+        return
+
+    any_exact_mismatch = False
+    for field_name in _EXACT_RECONCILE_FIELDS:
+        mismatches = mismatches_by_field.get(field_name, [])
+        if mismatches:
+            any_exact_mismatch = True
+            report.add(
+                Level.FAIL, "player_team_reconciliation",
+                f"Sum of player {field_name} disagrees with team {field_name} for {len(mismatches)}/{n_checked} team-matches: {mismatches[:10]}",
+            )
+    if not any_exact_mismatch:
+        report.add(
+            Level.PASS, "player_team_reconciliation",
+            f"Sum of player stats matches team stats exactly across all {n_checked} team-matches checked, for every field except behinds",
+        )
+
+    if behind_mismatches:
+        report.add(
+            Level.WARNING, "player_team_reconciliation",
+            f"Sum of player behinds differs from team behinds by more than {_BEHINDS_TOLERANCE} for "
+            f"{len(behind_mismatches)}/{n_checked} team-matches (expected — rushed/unattributed defensive "
+            f"behinds have no player to credit): {behind_mismatches[:10]}",
+        )
+    else:
+        report.add(Level.PASS, "player_team_reconciliation", f"Sum of player behinds is within tolerance of team behinds for all {n_checked} team-matches checked")
+
+
+def build_player_stats_coverage(
+    completed_match_ids_by_season: dict[int, set[int]], player_stat_match_ids_by_season: dict[int, set[int]]
+) -> list[str]:
+    lines = []
+    for year in sorted(completed_match_ids_by_season):
+        total = len(completed_match_ids_by_season[year])
+        covered = len(player_stat_match_ids_by_season.get(year, set()) & completed_match_ids_by_season[year])
         pct = (covered / total * 100) if total else 0.0
         lines.append(f"{year}: {covered}/{total} matches ({pct:.0f}%)")
     return lines

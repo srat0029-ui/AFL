@@ -3,7 +3,19 @@ import { Link, useParams } from "react-router-dom";
 import "./MatchDetailPage.css";
 import Disclaimer from "../components/Disclaimer";
 import OddsPanel from "../components/OddsPanel";
-import { fetchMatch, fetchPredictions, type MatchPredictions, type MatchSummary } from "../api/client";
+import PlayerStatsTable, { type Column } from "../components/PlayerStatsTable";
+import { fetchMatch, fetchMatchPlayers, fetchPredictions, type MatchPlayers, type MatchPredictions, type MatchSummary } from "../api/client";
+
+// Round/opponent are redundant on a page already scoped to one match.
+const MATCH_PLAYER_COLUMNS: Column[] = [
+  { key: "disposals", label: "DI" },
+  { key: "kicks", label: "KI" },
+  { key: "handballs", label: "HB" },
+  { key: "marks", label: "MK" },
+  { key: "tackles", label: "TK" },
+  { key: "goals", label: "GL" },
+  { key: "behinds", label: "BH" },
+];
 
 function formatKickoff(iso: string): string {
   return new Date(iso).toLocaleString(undefined, {
@@ -21,16 +33,18 @@ function MatchDetailPage() {
 
   const [match, setMatch] = useState<MatchSummary | null>(null);
   const [predictions, setPredictions] = useState<MatchPredictions | null>(null);
+  const [players, setPlayers] = useState<MatchPlayers | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!Number.isFinite(id)) return;
     setLoading(true);
-    Promise.all([fetchMatch(id), fetchPredictions(id)])
-      .then(([matchData, predictionsData]) => {
+    Promise.all([fetchMatch(id), fetchPredictions(id), fetchMatchPlayers(id)])
+      .then(([matchData, predictionsData, playersData]) => {
         setMatch(matchData);
         setPredictions(predictionsData);
+        setPlayers(playersData);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load match"))
       .finally(() => setLoading(false));
@@ -132,6 +146,16 @@ function MatchDetailPage() {
       )}
 
       <OddsPanel matchId={match.id} homeTeamName={match.home_team.name} awayTeamName={match.away_team.name} />
+
+      {players && (players.home_team_players.length > 0 || players.away_team_players.length > 0) && (
+        <section className="backtest-panel">
+          <h2>Player statistics</h2>
+          <h3>{match.home_team.name}</h3>
+          <PlayerStatsTable games={players.home_team_players} showPlayerColumn columns={MATCH_PLAYER_COLUMNS} />
+          <h3>{match.away_team.name}</h3>
+          <PlayerStatsTable games={players.away_team_players} showPlayerColumn columns={MATCH_PLAYER_COLUMNS} />
+        </section>
+      )}
 
       <Disclaimer />
     </main>

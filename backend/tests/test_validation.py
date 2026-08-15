@@ -7,11 +7,15 @@ a database — see app/validation/checks.py's module docstring.
 
 from datetime import datetime, timezone
 
-from app.models import Match, MatchStatus, Round, Season, Sport, Team, TeamMatchStat, Venue
+from app.models import Match, MatchStatus, Player, PlayerMatchStat, Round, Season, Sport, Team, TeamMatchStat, Venue
 from app.validation.checks import (
+    build_player_stats_coverage,
     build_season_summary,
     build_team_stats_coverage,
     check_matches,
+    check_player_match_stats,
+    check_player_team_reconciliation,
+    check_players,
     check_seasons,
     check_team_match_stats,
     check_teams,
@@ -242,13 +246,194 @@ def test_run_validation_fails_cleanly_with_no_sport_row(db_session):
     assert report.has_failures
 
 
-def _team_stat(id_: int, match_id: int, team_id: int, goals: int | None = None, behinds: int | None = None) -> TeamMatchStat:
+def _team_stat(id_: int, match_id: int, team_id: int, goals: int | None = None, behinds: int | None = None, **extra) -> TeamMatchStat:
     s = TeamMatchStat(
         match_id=match_id, team_id=team_id, source="afltables",
-        recorded_at=datetime(2024, 1, 1, tzinfo=timezone.utc), goals=goals, behinds=behinds,
+        recorded_at=datetime(2024, 1, 1, tzinfo=timezone.utc), goals=goals, behinds=behinds, **extra,
     )
     s.id = id_
     return s
+
+
+def _player(id_: int, sport_id: int = 1, display_name: str = "Blake Acres", source_player_id: str = "players/B/Blake_Acres.html", current_team_id: int | None = None) -> Player:
+    p = Player(sport_id=sport_id, display_name=display_name, source="afltables", source_player_id=source_player_id, current_team_id=current_team_id)
+    p.id = id_
+    return p
+
+
+def _player_stat(
+    id_: int, player_id: int, match_id: int, team_id: int,
+    disposals: int | None = None, kicks: int | None = None, handballs: int | None = None,
+    goals: int | None = None, behinds: int | None = None, tackles: int | None = None, marks: int | None = None,
+    time_on_ground_pct: int | None = None,
+) -> PlayerMatchStat:
+    s = PlayerMatchStat(
+        player_id=player_id, match_id=match_id, team_id=team_id, source="afltables",
+        recorded_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+        disposals=disposals, kicks=kicks, handballs=handballs, goals=goals, behinds=behinds, tackles=tackles, marks=marks,
+        time_on_ground_pct=time_on_ground_pct,
+    )
+    s.id = id_
+    return s
+
+
+def test_check_players_no_data_warns():
+    report = ValidationReport()
+    check_players([], set(), report)
+    assert report.has_warnings
+    assert not report.has_failures
+
+
+def test_check_players_detects_missing_name():
+    report = ValidationReport()
+    check_players([_player(1, display_name="  ")], set(), report)
+    assert report.has_failures
+    assert any("missing a display name" in r.message for r in report.results)
+
+
+def test_check_players_detects_duplicate_source_id():
+    players = [
+        _player(1, source_player_id="players/B/Blake_Acres.html"),
+        _player(2, source_player_id="players/B/Blake_Acres.html"),
+    ]
+    report = ValidationReport()
+    check_players(players, set(), report)
+    assert report.has_failures
+    assert any("Duplicate" in r.message for r in report.results)
+
+
+def test_check_players_detects_invalid_current_team():
+    report = ValidationReport()
+    check_players([_player(1, current_team_id=999)], team_ids={1, 2}, report=report)
+    assert report.has_failures
+    assert any("invalid current_team_id" in r.message for r in report.results)
+
+
+def test_check_players_passes_for_valid_dataset():
+    report = ValidationReport()
+    check_players([_player(1, current_team_id=1)], team_ids={1}, report=report)
+    assert not report.has_failures
+    assert not report.has_warnings
+
+
+def test_check_player_match_stats_no_data_warns():
+    report = ValidationReport()
+    check_player_match_stats([], set(), set(), set(), {}, report)
+    assert report.has_warnings
+    assert not report.has_failures
+
+
+def test_check_player_match_stats_detects_orphan_references():
+    stat = _player_stat(1, player_id=99, match_id=99, team_id=99)
+    report = ValidationReport()
+    check_player_match_stats([stat], match_ids=set(), player_ids=set(), team_ids=set(), match_team_ids={}, report=report)
+    assert report.has_failures
+    messages = [r.message for r in report.results]
+    assert any("missing match" in m for m in messages)
+    assert any("missing player" in m for m in messages)
+    assert any("missing team" in m for m in messages)
+
+
+def test_check_player_match_stats_detects_team_that_did_not_play():
+    stat = _player_stat(1, player_id=1, match_id=1, team_id=3)  # team 3 wasn't in this match
+    report = ValidationReport()
+    check_player_match_stats(
+        [stat], match_ids={1}, player_ids={1}, team_ids={1, 2, 3},
+        match_team_ids={1: (1, 2)}, report=report,
+    )
+    assert report.has_failures
+    assert any("did not actually play" in r.message for r in report.results)
+
+
+def test_check_player_match_stats_detects_duplicates():
+    stats = [_player_stat(1, player_id=1, match_id=1, team_id=1), _player_stat(2, player_id=1, match_id=1, team_id=1)]
+    report = ValidationReport()
+    check_player_match_stats(stats, match_ids={1}, player_ids={1}, team_ids={1}, match_team_ids={1: (1, 2)}, report=report)
+    assert report.has_failures
+    assert any("Duplicate player-match-stat" in r.message for r in report.results)
+
+
+def test_check_player_match_stats_detects_negative_stat():
+    stat = _player_stat(1, player_id=1, match_id=1, team_id=1, disposals=-3)
+    report = ValidationReport()
+    check_player_match_stats([stat], match_ids={1}, player_ids={1}, team_ids={1}, match_team_ids={1: (1, 2)}, report=report)
+    assert report.has_failures
+    assert any("negative counting stat" in r.message for r in report.results)
+
+
+def test_check_player_match_stats_detects_disposal_mismatch():
+    stat = _player_stat(1, player_id=1, match_id=1, team_id=1, kicks=10, handballs=5, disposals=20)  # should be 15
+    report = ValidationReport()
+    check_player_match_stats([stat], match_ids={1}, player_ids={1}, team_ids={1}, match_team_ids={1: (1, 2)}, report=report)
+    assert report.has_failures
+    assert any("kicks + handballs" in r.message for r in report.results)
+
+
+def test_check_player_match_stats_detects_bad_time_on_ground():
+    stat = _player_stat(1, player_id=1, match_id=1, team_id=1, time_on_ground_pct=150)
+    report = ValidationReport()
+    check_player_match_stats([stat], match_ids={1}, player_ids={1}, team_ids={1}, match_team_ids={1: (1, 2)}, report=report)
+    assert report.has_failures
+    assert any("time_on_ground_pct" in r.message for r in report.results)
+
+
+def test_check_player_match_stats_passes_for_valid_dataset():
+    stat = _player_stat(1, player_id=1, match_id=1, team_id=1, kicks=10, handballs=5, disposals=15, time_on_ground_pct=84)
+    report = ValidationReport()
+    check_player_match_stats([stat], match_ids={1}, player_ids={1}, team_ids={1, 2}, match_team_ids={1: (1, 2)}, report=report)
+    assert not report.has_failures
+
+
+def test_check_player_team_reconciliation_no_data_warns():
+    report = ValidationReport()
+    check_player_team_reconciliation([], {}, report)
+    assert report.has_warnings
+    assert not report.has_failures
+
+
+def test_check_player_team_reconciliation_passes_on_exact_match():
+    player_stats = [
+        _player_stat(1, player_id=1, match_id=1, team_id=1, disposals=20, kicks=12, handballs=8, goals=2, tackles=3, marks=4),
+        _player_stat(2, player_id=2, match_id=1, team_id=1, disposals=15, kicks=9, handballs=6, goals=1, tackles=2, marks=3),
+    ]
+    team_stat = _team_stat(1, match_id=1, team_id=1, goals=3, behinds=0, disposals=35, kicks=21, handballs=14, tackles=5, marks=7)
+    report = ValidationReport()
+    check_player_team_reconciliation(player_stats, {(1, 1): team_stat}, report)
+    assert not report.has_failures
+
+
+def test_check_player_team_reconciliation_detects_goal_mismatch():
+    player_stats = [_player_stat(1, player_id=1, match_id=1, team_id=1, goals=2)]
+    team_stat = _team_stat(1, match_id=1, team_id=1, goals=5)  # team says 5, players sum to 2
+    report = ValidationReport()
+    check_player_team_reconciliation(player_stats, {(1, 1): team_stat}, report)
+    assert report.has_failures
+    assert any("goals disagrees" in r.message for r in report.results)
+
+
+def test_check_player_team_reconciliation_small_behinds_gap_is_expected():
+    # players sum to 6 behinds, team says 9 (3-point gap) - the documented
+    # "rushed behinds" case, within _BEHINDS_TOLERANCE (6) - passes clean
+    player_stats = [_player_stat(1, player_id=1, match_id=1, team_id=1, goals=2, behinds=6)]
+    team_stat = _team_stat(1, match_id=1, team_id=1, goals=2, behinds=9)
+    report = ValidationReport()
+    check_player_team_reconciliation(player_stats, {(1, 1): team_stat}, report)
+    assert not report.has_failures
+    assert not report.has_warnings
+
+
+def test_check_player_team_reconciliation_large_behinds_gap_warns():
+    player_stats = [_player_stat(1, player_id=1, match_id=1, team_id=1, goals=2, behinds=1)]
+    team_stat = _team_stat(1, match_id=1, team_id=1, goals=2, behinds=15)  # 14-point gap - implausible as "rushed"
+    report = ValidationReport()
+    check_player_team_reconciliation(player_stats, {(1, 1): team_stat}, report)
+    assert report.has_warnings
+    assert not report.has_failures
+
+
+def test_build_player_stats_coverage_reports_percentage():
+    lines = build_player_stats_coverage({2024: {1, 2, 3, 4}}, {2024: {1, 2}})
+    assert lines == ["2024: 2/4 matches (50%)"]
 
 
 def test_check_team_match_stats_no_data_warns():

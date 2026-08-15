@@ -6,6 +6,7 @@ Usage:
     python -m app.ingestion.cli --upcoming
     python -m app.ingestion.cli --seasons 2016 2025 --upcoming
     python -m app.ingestion.cli --team-stats 2016 2025
+    python -m app.ingestion.cli --player-stats 2016 2025
     python -m app.ingestion.cli --validate
 """
 
@@ -16,8 +17,10 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.ingestion.fixtures import ingest_fixtures
+from app.ingestion.player_stats import ingest_player_stats
 from app.ingestion.team_stats import ingest_team_stats
 from app.providers.afl.afltables import AFLTablesStatsProvider
+from app.providers.afl.afltables_players import AFLTablesPlayerStatsProvider
 from app.providers.afl.squiggle import SquiggleFixtureProvider
 from app.validation.report import format_report
 from app.validation.run import run_validation
@@ -84,6 +87,42 @@ def backfill_team_stats(
     return failed_years, all_unmatched
 
 
+def backfill_player_stats(
+    db: Session, provider: AFLTablesPlayerStatsProvider, start_year: int, end_year: int
+) -> tuple[list[str], list[str]]:
+    """Ingests per-player-per-match statistics for each season in
+    [start_year, end_year] — 18 AFL Tables requests per season (one per
+    team's own season "game by game" page — see
+    app/providers/afl/afltables_players.py for why that's ~11x fewer
+    requests than one per match). Returns (failed_team_seasons,
+    all_unmatched); a single team-season failing doesn't abort the rest."""
+    failed: list[str] = []
+    all_unmatched: list[str] = []
+    for year in range(start_year, end_year + 1):
+        year_rows_seen = year_created = year_updated = year_unchanged = year_players_created = 0
+        for team_name in provider.known_team_names():
+            try:
+                rows = provider.get_team_season_player_stats("AFL", year, team_name)
+            except Exception as exc:  # noqa: BLE001 — log and move to the next team-season
+                print(f"  {year} {team_name}: FAILED ({exc})")
+                failed.append(f"{year} {team_name}")
+                continue
+            result = ingest_player_stats(db, rows, season_year=year)
+            year_rows_seen += result.rows_seen
+            year_created += result.stats_created
+            year_updated += result.stats_updated
+            year_unchanged += result.stats_unchanged
+            year_players_created += result.players_created
+            if result.unmatched:
+                all_unmatched.extend(f"{year} {team_name}: {msg}" for msg in result.unmatched)
+        print(
+            f"AFL {year} player stats: {year_rows_seen} rows seen | "
+            f"players_created={year_players_created} stats created={year_created} "
+            f"updated={year_updated} unchanged={year_unchanged}"
+        )
+    return failed, all_unmatched
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Ingest AFL fixtures/results from Squiggle.")
     parser.add_argument(
@@ -117,6 +156,20 @@ def main(argv: list[str] | None = None) -> int:
         help="Seconds to wait between AFL Tables requests (default 1.0 — one request per season)",
     )
     parser.add_argument(
+        "--player-stats",
+        nargs=2,
+        type=int,
+        metavar=("START_YEAR", "END_YEAR"),
+        help="Backfill per-player-per-match statistics from AFL Tables, inclusive, e.g. --player-stats 2016 2025. "
+        "Requires fixture data for those seasons to already be ingested (--seasons first).",
+    )
+    parser.add_argument(
+        "--player-stats-request-delay",
+        type=float,
+        default=1.0,
+        help="Seconds to wait between AFL Tables requests (default 1.0 — one request per team-season)",
+    )
+    parser.add_argument(
         "--validate",
         action="store_true",
         help="Run data-validation checks against the current database and print a PASS/WARNING/FAIL report. "
@@ -124,7 +177,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    if not args.seasons and not args.upcoming and not args.team_stats and not args.validate:
+    if not args.seasons and not args.upcoming and not args.team_stats and not args.player_stats and not args.validate:
         parser.print_help()
         return 1
 
@@ -132,11 +185,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("START_YEAR must be <= END_YEAR")
     if args.team_stats and args.team_stats[0] > args.team_stats[1]:
         parser.error("START_YEAR must be <= END_YEAR")
+    if args.player_stats and args.player_stats[0] > args.player_stats[1]:
+        parser.error("START_YEAR must be <= END_YEAR")
 
     db = SessionLocal()
     failed_years: list[int] = []
     failed_stat_years: list[int] = []
     unmatched_stats: list[str] = []
+    failed_player_team_seasons: list[str] = []
+    unmatched_player_stats: list[str] = []
     report_has_failures = False
     try:
         if args.seasons or args.upcoming:
@@ -156,6 +213,17 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"  {msg}")
                 if len(unmatched_stats) > 20:
                     print(f"  ... and {len(unmatched_stats) - 20} more")
+        if args.player_stats:
+            player_stats_provider = AFLTablesPlayerStatsProvider(request_delay_seconds=args.player_stats_request_delay)
+            failed_player_team_seasons, unmatched_player_stats = backfill_player_stats(
+                db, player_stats_provider, args.player_stats[0], args.player_stats[1]
+            )
+            if unmatched_player_stats:
+                print(f"\n{len(unmatched_player_stats)} player-stat rows could not be matched to a match:")
+                for msg in unmatched_player_stats[:20]:
+                    print(f"  {msg}")
+                if len(unmatched_player_stats) > 20:
+                    print(f"  ... and {len(unmatched_player_stats) - 20} more")
         if args.validate:
             report = run_validation(db)
             print()
@@ -172,6 +240,10 @@ def main(argv: list[str] | None = None) -> int:
     if failed_stat_years:
         print(f"\nTeam-stats seasons that failed and can be retried: {failed_stat_years}")
         print(f"  e.g. python -m app.ingestion.cli --team-stats {min(failed_stat_years)} {max(failed_stat_years)}")
+        return 1
+
+    if failed_player_team_seasons:
+        print(f"\nPlayer-stats team-seasons that failed and can be retried: {failed_player_team_seasons}")
         return 1
 
     if report_has_failures:

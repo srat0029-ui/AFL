@@ -5,11 +5,15 @@ themselves are pure so they stay testable without a database."""
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Match, MatchStatus, Round, Season, Sport, Team, TeamMatchStat, Venue
+from app.models import Match, MatchStatus, Player, PlayerMatchStat, Round, Season, Sport, Team, TeamMatchStat, Venue
 from app.validation.checks import (
+    build_player_stats_coverage,
     build_season_summary,
     build_team_stats_coverage,
     check_matches,
+    check_player_match_stats,
+    check_player_team_reconciliation,
+    check_players,
     check_seasons,
     check_team_match_stats,
     check_teams,
@@ -33,6 +37,12 @@ def run_validation(db: Session, sport: str = "AFL") -> ValidationReport:
     matches = list(db.scalars(select(Match).where(Match.sport_id == sport_row.id)).all())
     team_stats = list(
         db.scalars(select(TeamMatchStat).join(Match, TeamMatchStat.match_id == Match.id).where(Match.sport_id == sport_row.id)).all()
+    )
+    players = list(db.scalars(select(Player).where(Player.sport_id == sport_row.id)).all())
+    player_stats = list(
+        db.scalars(
+            select(PlayerMatchStat).join(Match, PlayerMatchStat.match_id == Match.id).where(Match.sport_id == sport_row.id)
+        ).all()
     )
 
     check_teams(teams, report)
@@ -67,5 +77,28 @@ def run_validation(db: Session, sport: str = "AFL") -> ValidationReport:
 
     check_team_match_stats(team_stats, match_scores, report)
     report.team_stats_coverage = build_team_stats_coverage(completed_match_ids_by_season, stat_match_ids_by_season)
+
+    team_ids = {t.id for t in teams}
+    check_players(players, team_ids, report)
+
+    match_team_ids = {m.id: (m.home_team_id, m.away_team_id) for m in matches}
+    check_player_match_stats(
+        player_stats,
+        match_ids={m.id for m in matches},
+        player_ids={p.id for p in players},
+        team_ids=team_ids,
+        match_team_ids=match_team_ids,
+        report=report,
+    )
+
+    team_stats_by_match_team = {(s.match_id, s.team_id): s for s in team_stats}
+    check_player_team_reconciliation(player_stats, team_stats_by_match_team, report)
+
+    player_stat_match_ids_by_season: dict[int, set[int]] = {}
+    for s in player_stats:
+        year = match_id_to_year.get(s.match_id)
+        if year is not None:
+            player_stat_match_ids_by_season.setdefault(year, set()).add(s.match_id)
+    report.player_stats_coverage = build_player_stats_coverage(completed_match_ids_by_season, player_stat_match_ids_by_season)
 
     return report

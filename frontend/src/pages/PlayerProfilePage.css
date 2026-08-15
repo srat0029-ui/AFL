@@ -1,0 +1,56 @@
+.player-profile-page {
+  max-width: 900px;
+  margin: 2.5rem auto;
+  padding: 0 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.player-profile-page__error {
+  background: #1f1414;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: #fca5a5;
+}
+
+.player-header {
+  padding-bottom: 0.5rem;
+}
+
+.player-header h1 {
+  font-size: 1.5rem;
+  margin: 0;
+}
+
+.form-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  height: 120px;
+  padding: 0.5rem 0 0.25rem;
+}
+
+.form-chart__bar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  height: 100%;
+  flex: 1;
+  gap: 0.3rem;
+}
+
+.form-chart__bar {
+  width: 70%;
+  min-height: 2px;
+  background: #3b82f6;
+  border-radius: 3px 3px 0 0;
+}
+
+.form-chart__label {
+  font-size: 0.7rem;
+  color: #9aa4b2;
+  white-space: nowrap;
+}

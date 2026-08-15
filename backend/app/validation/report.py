@@ -29,6 +29,8 @@ class ValidationReport:
     season_summary: list[str] = field(default_factory=list)
     # "2016: 195/207 matches (94%)" — advanced team-stats coverage per season.
     team_stats_coverage: list[str] = field(default_factory=list)
+    # Same shape, for per-player-per-match stat coverage.
+    player_stats_coverage: list[str] = field(default_factory=list)
 
     def add(self, level: Level, category: str, message: str) -> None:
         self.results.append(CheckResult(level, category, message))
@@ -62,6 +64,11 @@ def format_report(report: ValidationReport) -> str:
     if report.team_stats_coverage:
         lines.append("\n[advanced team-stats coverage]")
         for line in report.team_stats_coverage:
+            lines.append(f"  {line}")
+
+    if report.player_stats_coverage:
+        lines.append("\n[player-stats coverage]")
+        for line in report.player_stats_coverage:
             lines.append(f"  {line}")
 
     lines.append(

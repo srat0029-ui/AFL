@@ -100,3 +100,17 @@
   color: #9aa4b2;
   font-size: 0.9rem;
 }
+
+.player-stats-table__sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.player-stats-table__sortable:hover {
+  color: #f3f4f6;
+}
+
+.player-stats-table__sub-flag {
+  color: #9aa4b2;
+  font-size: 0.8rem;
+}

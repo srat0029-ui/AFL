@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 
 from app.modelling.model_run_persistence import persist_model_run
-from app.models import ModelRun, ModelValidationMetric
+from app.models import ModelRun, ModelRunHistory, ModelValidationMetric
 
 
 @dataclass(frozen=True)
@@ -100,3 +100,54 @@ def test_persist_replacing_market_set_removes_stale_markets(db_session):
     metrics = db_session.scalars(select(ModelValidationMetric)).all()
     assert len(metrics) == 1
     assert metrics[0].market_type == "h2h"
+
+
+def test_overwriting_a_run_archives_the_previous_config_to_history(db_session):
+    persist_model_run(
+        db_session, "poisson", _FakeConfig(k_factor=15.0), 2022,
+        metrics=[{"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 100,
+                  "holdout_value": 0.21, "naive_baseline_value": 0.25, "has_edge_over_naive": True}],
+    )
+    persist_model_run(
+        db_session, "poisson", _FakeConfig(k_factor=99.0), 2023,
+        metrics=[{"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 200,
+                  "holdout_value": 0.19, "naive_baseline_value": 0.25, "has_edge_over_naive": True}],
+    )
+
+    history = db_session.scalars(select(ModelRunHistory)).all()
+    assert len(history) == 1
+    assert history[0].model_name == "poisson"
+    assert history[0].config_json["k_factor"] == 15.0  # the OLD config, not the new one
+    assert history[0].tune_end_year == 2022
+    assert history[0].metrics_json == [
+        {"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 100,
+         "holdout_value": 0.21, "naive_baseline_value": 0.25, "has_edge_over_naive": True}
+    ]
+    assert history[0].superseded_at is not None
+
+    # the live row reflects only the new config — archiving doesn't change upsert-in-place semantics
+    live = db_session.scalars(select(ModelRun)).all()
+    assert len(live) == 1
+    assert live[0].config_json["k_factor"] == 99.0
+
+
+def test_first_ever_run_does_not_create_history(db_session):
+    persist_model_run(
+        db_session, "elo", _FakeConfig(), 2022,
+        metrics=[{"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 1,
+                  "holdout_value": 0.2, "naive_baseline_value": 0.25, "has_edge_over_naive": True}],
+    )
+
+    assert db_session.scalars(select(ModelRunHistory)).all() == []
+
+
+def test_repeated_overwrites_accumulate_multiple_history_rows(db_session):
+    for k in (10.0, 20.0, 30.0):
+        persist_model_run(
+            db_session, "elo", _FakeConfig(k_factor=k), 2022,
+            metrics=[{"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 1,
+                      "holdout_value": 0.2, "naive_baseline_value": 0.25, "has_edge_over_naive": True}],
+        )
+
+    history = db_session.scalars(select(ModelRunHistory).order_by(ModelRunHistory.id)).all()
+    assert [h.config_json["k_factor"] for h in history] == [10.0, 20.0]  # the two superseded ones, not the current 30.0

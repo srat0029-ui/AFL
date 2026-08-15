@@ -65,10 +65,12 @@ def test_stat_line_dataclasses_hold_open_ended_stats():
     assert team_line.stats["disposals"] == 412
 
     player_line = PlayerStatLine(
-        match_external_id="1",
         sport_code="AFL",
+        season_year=2024,
+        round_number=1,
         team_name="Collingwood",
-        player_name="Nick Daicos",
+        player_name="Daicos, Nick",
+        player_source_id="players/N/Nick_Daicos.html",
         recorded_at=datetime.now(timezone.utc),
         stats={"disposals": 34},
     )
