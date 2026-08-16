@@ -1,0 +1,148 @@
+.lineup-panel {
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 1.5rem;
+  background: #161a22;
+}
+
+.lineup-panel h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+  color: #f3f4f6;
+}
+
+.lineup-panel h4 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: #cbd2db;
+}
+
+.lineup-panel__teams {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  margin: 1rem 0;
+}
+
+@media (max-width: 640px) {
+  .lineup-panel__teams {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lineup-panel__entry {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #1c212b;
+  flex-wrap: wrap;
+}
+
+.lineup-panel__entry-name {
+  flex: 1;
+  min-width: 100px;
+  font-size: 0.88rem;
+}
+
+.lineup-panel__entry select {
+  background: #0d0f14;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 0.25rem 0.4rem;
+  color: #f3f4f6;
+  font-size: 0.8rem;
+}
+
+.lineup-panel__tag {
+  font-size: 0.65rem;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+.lineup-panel__remove {
+  background: none;
+  border: 1px solid #3a2020;
+  color: #fca5a5;
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.lineup-panel__add-form {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  border-top: 1px solid #2a2f3a;
+  padding-top: 1rem;
+}
+
+.lineup-panel__add-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: #9aa4b2;
+  position: relative;
+}
+
+.lineup-panel__add-form input,
+.lineup-panel__add-form select {
+  background: #0d0f14;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  color: #f3f4f6;
+  font: inherit;
+}
+
+.lineup-panel__search {
+  position: relative;
+  min-width: 200px;
+}
+
+.lineup-panel__search-results {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  margin: 0.2rem 0 0;
+  padding: 0.2rem 0;
+  list-style: none;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.lineup-panel__search-results li {
+  padding: 0.4rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.lineup-panel__search-results li:hover {
+  background: #1c212b;
+}
+
+.lineup-panel__add-form button {
+  background: #3b82f6;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1rem;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.lineup-panel__error {
+  margin-top: 0.75rem;
+  color: #fca5a5;
+  font-size: 0.85rem;
+}

@@ -650,3 +650,373 @@ class MatchPlayersRead(BaseModel):
     match_id: int
     home_team_players: list[PlayerGameStatRead]
     away_team_players: list[PlayerGameStatRead]
+
+
+# --- Player-model (disposal projection) research API ---
+# Deliberately marked as historical model research, not live betting advice
+# — see app/player_modelling/disposal_cli.py's module docstring and the
+# disposal-prediction stage brief's Section 23. Distinct from the
+# team-level ModelRun/backtests schemas above, mirroring how
+# app/models/player_model_run.py keeps its own tables.
+
+
+class PlayerModelRunSummaryRead(BaseModel):
+    model_name: str
+    market: str
+    is_promoted: bool
+    distribution_method: str
+    feature_names: list[str]
+    tune_start_year: int
+    tune_end_year: int
+    evaluation_start_year: int
+    evaluation_end_year: int
+    run_at: datetime
+    overall_mae: float | None
+    overall_rmse: float | None
+    overall_bias: float | None
+    evaluation_n: int | None
+
+
+class PlayerModelRunListRead(BaseModel):
+    is_research_only: bool = True
+    runs: list[PlayerModelRunSummaryRead]
+
+
+class DisposalSeasonMetricRead(BaseModel):
+    season_year: int
+    n: int
+    mae: float
+    rmse: float
+    bias: float
+
+
+class DisposalBaselineComparisonRead(BaseModel):
+    model_name: str
+    mae: float
+    rmse: float
+    bias: float
+
+
+class DisposalBacktestSummaryRead(BaseModel):
+    is_research_only: bool = True
+    promoted_model: PlayerModelRunSummaryRead
+    baselines: list[DisposalBaselineComparisonRead]
+    candidates: list[DisposalBaselineComparisonRead]
+    season_breakdown: list[DisposalSeasonMetricRead]
+    within_2: float
+    within_5: float
+    within_10: float
+    median_ae: float
+
+
+class ReliabilityBucketRead(BaseModel):
+    bucket: str
+    n: int
+    avg_predicted: float | None
+    actual_rate: float | None
+
+
+class DisposalThresholdCalibrationRead(BaseModel):
+    threshold: float
+    n: int
+    brier: float
+    log_loss: float
+    ece: float | None
+    calibration: list[ReliabilityBucketRead]
+
+
+class DisposalIntervalCalibrationRead(BaseModel):
+    coverage_target: float
+    n: int
+    empirical_coverage: float
+    mean_width: float
+
+
+class DisposalCalibrationReportRead(BaseModel):
+    is_research_only: bool = True
+    model_name: str
+    distribution_method: str
+    thresholds: list[DisposalThresholdCalibrationRead]
+    intervals: list[DisposalIntervalCalibrationRead]
+
+
+class DisposalPlayerPredictionRead(BaseModel):
+    match_id: int
+    season_year: int
+    games_of_history: int
+    predicted_mean: float
+    actual_disposals: int
+    confidence_tier: str
+    interval_50: tuple[float, float]
+    interval_80: tuple[float, float]
+    prob_20_plus: float
+    prob_25_plus: float
+    prob_30_plus: float
+    prob_35_plus: float
+
+
+class DisposalPlayerHistoryRead(BaseModel):
+    is_research_only: bool = True
+    player: PlayerSummaryRead
+    model_name: str
+    predictions: list[DisposalPlayerPredictionRead]
+
+
+# --- Goal-model research API (mirrors the disposal schemas above) ---
+
+
+class GoalModelRunSummaryRead(BaseModel):
+    model_name: str
+    market: str
+    is_promoted: bool
+    distribution_kind: str
+    feature_names: list[str]
+    tune_start_year: int
+    tune_end_year: int
+    evaluation_start_year: int
+    evaluation_end_year: int
+    run_at: datetime
+    overall_mae: float | None
+    overall_rmse: float | None
+    overall_bias: float | None
+    evaluation_n: int | None
+
+
+class GoalSeasonMetricRead(BaseModel):
+    season_year: int
+    n: int
+    mae: float
+    bias: float
+
+
+class GoalBaselineComparisonRead(BaseModel):
+    model_name: str
+    mae: float | None
+    rmse: float | None
+    bias: float | None
+
+
+class ZeroGoalCalibrationRead(BaseModel):
+    brier: float
+    log_loss: float
+    ece: float | None
+    mean_predicted_p0: float
+    actual_p0: float
+
+
+class GoalBacktestSummaryRead(BaseModel):
+    is_research_only: bool = True
+    promoted_model: GoalModelRunSummaryRead
+    baselines: list[GoalBaselineComparisonRead]
+    candidates: list[GoalBaselineComparisonRead]
+    season_breakdown: list[GoalSeasonMetricRead]
+    zero_goal: ZeroGoalCalibrationRead
+
+
+class GoalThresholdCalibrationRead(BaseModel):
+    threshold: float
+    n: int
+    n_positive: int
+    brier: float
+    log_loss: float
+    ece: float | None
+
+
+class GoalCalibrationReportRead(BaseModel):
+    is_research_only: bool = True
+    model_name: str
+    distribution_kind: str
+    thresholds: list[GoalThresholdCalibrationRead]
+
+
+class GoalPlayerPredictionRead(BaseModel):
+    match_id: int
+    season_year: int
+    games_of_history: int
+    predicted_mean: float
+    actual_goals: int
+    confidence_tier: str
+    prob_1_plus: float
+    prob_2_plus: float
+    prob_3_plus: float
+    prob_4_plus: float
+    prob_5_plus: float
+
+
+class GoalPlayerHistoryRead(BaseModel):
+    is_research_only: bool = True
+    player: PlayerSummaryRead
+    model_name: str
+    predictions: list[GoalPlayerPredictionRead]
+
+
+# --- Live player projections (live-projection stage) ---
+
+
+class ExpectedLineupStatusEnum(str, Enum):
+    EXPECTED_IN = "expected_in"
+    EXPECTED_OUT = "expected_out"
+    UNCERTAIN = "uncertain"
+
+
+class ExpectedLineupCreate(BaseModel):
+    player_id: int
+    team_id: int
+    status: ExpectedLineupStatusEnum
+    note: str | None = Field(default=None, max_length=500)
+    substitute_risk: bool = False
+    returning_from_injury: bool = False
+    role_note: str | None = Field(default=None, max_length=200)
+    expected_tog_adjustment: float | None = None
+
+
+class ExpectedLineupRead(BaseModel):
+    id: int
+    match_id: int
+    player_id: int
+    player_name: str
+    team_id: int
+    status: str
+    recorded_at: datetime
+    source: str
+    note: str | None
+    substitute_risk: bool
+    returning_from_injury: bool
+    role_note: str | None
+    expected_tog_adjustment: float | None
+
+
+class ThresholdProbabilityRead(BaseModel):
+    probability: float
+    warning: str | None
+
+
+class DisposalProjectionRead(BaseModel):
+    is_research_only: bool = False
+    match_id: int
+    player_id: int
+    player_name: str
+    team_id: int
+    team_name: str
+    round_number: int
+    season_year: int
+    scheduled_start: datetime
+    model_name: str
+    model_version: str
+    generated_at: datetime
+    data_cutoff: datetime
+    lineup_status: str
+    games_of_history: int
+    expected: float
+    median: float
+    interval_50: tuple[float, float]
+    interval_80: tuple[float, float]
+    interval_90: tuple[float, float]
+    thresholds: dict[str, ThresholdProbabilityRead]
+    confidence_tier: str
+    warnings: list[str]
+    is_stale: bool
+    stale_reasons: list[str]
+    input_features: dict[str, float | None]
+
+
+class GoalProjectionRead(BaseModel):
+    is_research_only: bool = False
+    match_id: int
+    player_id: int
+    player_name: str
+    team_id: int
+    team_name: str
+    round_number: int
+    season_year: int
+    scheduled_start: datetime
+    model_name: str
+    model_version: str
+    generated_at: datetime
+    data_cutoff: datetime
+    lineup_status: str
+    games_of_history: int
+    expected: float
+    thresholds: dict[str, ThresholdProbabilityRead]
+    scoring_archetype: str
+    confidence_tier: str
+    warnings: list[str]
+    is_stale: bool
+    stale_reasons: list[str]
+    input_features: dict[str, float | None]
+
+
+class MatchProjectionsRead(BaseModel):
+    match_id: int
+    disposals: list[DisposalProjectionRead]
+    goals: list[GoalProjectionRead]
+
+
+class PlayerProjectionRead(BaseModel):
+    disposals: DisposalProjectionRead | None
+    goals: GoalProjectionRead | None
+
+
+class PlayerPropMarketCreate(BaseModel):
+    bookmaker_name: str = Field(..., min_length=1, max_length=64)
+    player_id: int
+    market_type: str = Field(..., description="'player_disposals' | 'player_goals'")
+    line_type: str = Field(..., description="'over_under' | 'multi_plus'")
+    threshold: float
+    price_decimal: float = Field(..., gt=1.0, le=1000.0)
+    recorded_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def _validate_shape(self) -> "PlayerPropMarketCreate":
+        if self.market_type not in ("player_disposals", "player_goals"):
+            raise ValueError(f"market_type must be 'player_disposals' or 'player_goals', got {self.market_type!r}")
+        if self.line_type not in ("over_under", "multi_plus"):
+            raise ValueError(f"line_type must be 'over_under' or 'multi_plus', got {self.line_type!r}")
+        return self
+
+
+class PlayerPropMarketRead(BaseModel):
+    id: int
+    match_id: int
+    player_id: int
+    player_name: str
+    bookmaker_name: str
+    market_type: str
+    line_type: str
+    threshold: float
+    price_decimal: float
+    recorded_at: datetime
+    source: str
+
+
+class PropInsightRead(BaseModel):
+    id: int
+    player_id: int
+    player_name: str
+    match_id: int
+    round_number: int
+    season_year: int
+    bookmaker_name: str
+    market_type: str
+    line_type: str
+    threshold: float
+    recorded_at: datetime
+    model_probability: float
+    model_fair_odds: float
+    offered_odds: float
+    raw_implied_probability: float
+    devigged_probability: float | None
+    overround_removed: bool
+    difference_pp: float
+    expected_value: float
+    edge_category: str
+    confidence_tier: str
+    warnings: list[str]
+
+
+class GoalTeamDiagnosticRead(BaseModel):
+    match_id: int
+    team_id: int
+    sum_predicted_goals: float
+    team_expected_goals: float
+    gap: float

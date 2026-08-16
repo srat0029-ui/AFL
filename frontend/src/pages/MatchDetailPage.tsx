@@ -2,9 +2,21 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import "./MatchDetailPage.css";
 import Disclaimer from "../components/Disclaimer";
+import ExpectedLineupPanel from "../components/ExpectedLineupPanel";
 import OddsPanel from "../components/OddsPanel";
+import PlayerPropPanel from "../components/PlayerPropPanel";
 import PlayerStatsTable, { type Column } from "../components/PlayerStatsTable";
-import { fetchMatch, fetchMatchPlayers, fetchPredictions, type MatchPlayers, type MatchPredictions, type MatchSummary } from "../api/client";
+import { DisposalProjectionTable, GoalProjectionTable } from "../components/ProjectionTable";
+import {
+  fetchMatch,
+  fetchMatchPlayers,
+  fetchMatchProjections,
+  fetchPredictions,
+  type MatchPlayers,
+  type MatchPredictions,
+  type MatchProjections,
+  type MatchSummary,
+} from "../api/client";
 
 // Round/opponent are redundant on a page already scoped to one match.
 const MATCH_PLAYER_COLUMNS: Column[] = [
@@ -34,17 +46,25 @@ function MatchDetailPage() {
   const [match, setMatch] = useState<MatchSummary | null>(null);
   const [predictions, setPredictions] = useState<MatchPredictions | null>(null);
   const [players, setPlayers] = useState<MatchPlayers | null>(null);
+  const [projections, setProjections] = useState<MatchProjections | null>(null);
+  const [projectionsTab, setProjectionsTab] = useState<"disposals" | "goals">("disposals");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  function loadProjections() {
+    if (!Number.isFinite(id)) return;
+    fetchMatchProjections(id).then(setProjections).catch(() => setProjections(null));
+  }
 
   useEffect(() => {
     if (!Number.isFinite(id)) return;
     setLoading(true);
-    Promise.all([fetchMatch(id), fetchPredictions(id), fetchMatchPlayers(id)])
-      .then(([matchData, predictionsData, playersData]) => {
+    Promise.all([fetchMatch(id), fetchPredictions(id), fetchMatchPlayers(id), fetchMatchProjections(id)])
+      .then(([matchData, predictionsData, playersData, projectionsData]) => {
         setMatch(matchData);
         setPredictions(predictionsData);
         setPlayers(playersData);
+        setProjections(projectionsData);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load match"))
       .finally(() => setLoading(false));
@@ -146,6 +166,53 @@ function MatchDetailPage() {
       )}
 
       <OddsPanel matchId={match.id} homeTeamName={match.home_team.name} awayTeamName={match.away_team.name} />
+
+      {match.status === "scheduled" && (
+        <>
+          <ExpectedLineupPanel
+            matchId={match.id}
+            homeTeamId={match.home_team.id}
+            awayTeamId={match.away_team.id}
+            homeTeamName={match.home_team.name}
+            awayTeamName={match.away_team.name}
+            onChanged={loadProjections}
+          />
+
+          <section className="backtest-panel">
+            <h2>Player Projections</h2>
+            <p className="hint">
+              Projected disposals and goals for players marked expected-in or uncertain above, from the promoted
+              disposal/goal models. Not live betting advice.
+            </p>
+            <div className="projection-tabs">
+              <button
+                type="button"
+                className={projectionsTab === "disposals" ? "projection-tabs__btn projection-tabs__btn--active" : "projection-tabs__btn"}
+                onClick={() => setProjectionsTab("disposals")}
+              >
+                Disposals
+              </button>
+              <button
+                type="button"
+                className={projectionsTab === "goals" ? "projection-tabs__btn projection-tabs__btn--active" : "projection-tabs__btn"}
+                onClick={() => setProjectionsTab("goals")}
+              >
+                Goals
+              </button>
+            </div>
+            {projections === null && (
+              <p className="hint">
+                No projections generated yet — run <code>python -m app.player_modelling.cli project-upcoming</code>{" "}
+                after setting expected lineups.
+              </p>
+            )}
+            {projections && projectionsTab === "disposals" && <DisposalProjectionTable rows={projections.disposals} />}
+            {projections && projectionsTab === "goals" && <GoalProjectionTable rows={projections.goals} />}
+          </section>
+
+          <PlayerPropPanel matchId={match.id} />
+        </>
+      )}
 
       {players && (players.home_team_players.length > 0 || players.away_team_players.length > 0) && (
         <section className="backtest-panel">

@@ -3,6 +3,8 @@ import "./BacktestPage.css";
 import AdvancedModelComparison from "../components/AdvancedModelComparison";
 import CalibrationChart from "../components/CalibrationChart";
 import Disclaimer from "../components/Disclaimer";
+import DisposalProjections from "../components/DisposalProjections";
+import GoalProjections from "../components/GoalProjections";
 import GradientBoostingComparison from "../components/GradientBoostingComparison";
 import PoissonRevisionComparison from "../components/PoissonRevisionComparison";
 import {
@@ -10,16 +12,28 @@ import {
   fetchBacktestDetail,
   fetchBacktests,
   fetchBoostingComparison,
+  fetchDisposalBacktestSummary,
+  fetchDisposalCalibration,
+  fetchGoalBacktestSummary,
+  fetchGoalCalibration,
+  fetchGoalUpcomingTeamDiagnostic,
   fetchLogisticComparison,
   fetchModelComparison,
+  fetchPlayerModelRuns,
   fetchPoissonRevision,
   type BacktestDetail,
   type BacktestOverview,
   type BacktestSegment,
   type BacktestSummary,
   type BoostingComparisonOverview,
+  type DisposalBacktestSummary,
+  type DisposalCalibrationReport,
+  type GoalBacktestSummary,
+  type GoalCalibrationReport,
+  type GoalTeamDiagnostic,
   type LogisticComparisonOverview,
   type ModelComparison,
+  type PlayerModelRunList,
   type PoissonRevisionComparison as PoissonRevisionComparisonData,
   type WinProbReport,
 } from "../api/client";
@@ -328,6 +342,12 @@ function BacktestPage() {
   const [logisticOverview, setLogisticOverview] = useState<LogisticComparisonOverview | null>(null);
   const [boostingOverview, setBoostingOverview] = useState<BoostingComparisonOverview | null>(null);
   const [poissonRevision, setPoissonRevision] = useState<PoissonRevisionComparisonData | null>(null);
+  const [playerModelRuns, setPlayerModelRuns] = useState<PlayerModelRunList | null>(null);
+  const [disposalSummary, setDisposalSummary] = useState<DisposalBacktestSummary | null>(null);
+  const [disposalCalibration, setDisposalCalibration] = useState<DisposalCalibrationReport | null>(null);
+  const [goalSummary, setGoalSummary] = useState<GoalBacktestSummary | null>(null);
+  const [goalCalibration, setGoalCalibration] = useState<GoalCalibrationReport | null>(null);
+  const [goalTeamDiagnostic, setGoalTeamDiagnostic] = useState<GoalTeamDiagnostic[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -341,17 +361,46 @@ function BacktestPage() {
       fetchLogisticComparison(),
       fetchBoostingComparison(),
       fetchPoissonRevision(),
+      fetchPlayerModelRuns(),
+      fetchDisposalBacktestSummary(),
+      fetchDisposalCalibration(),
+      fetchGoalBacktestSummary(),
+      fetchGoalCalibration(),
+      fetchGoalUpcomingTeamDiagnostic().catch(() => []),
     ])
-      .then(([summaryList, elo, poisson, cmp, legacyOverview, logisticCmp, boostingCmp, poissonRev]) => {
-        setSummaries(summaryList);
-        setEloDetail(elo);
-        setPoissonDetail(poisson);
-        setComparison(cmp);
-        setOverview(legacyOverview);
-        setLogisticOverview(logisticCmp);
-        setBoostingOverview(boostingCmp);
-        setPoissonRevision(poissonRev);
-      })
+      .then(
+        ([
+          summaryList,
+          elo,
+          poisson,
+          cmp,
+          legacyOverview,
+          logisticCmp,
+          boostingCmp,
+          poissonRev,
+          playerRuns,
+          disposalSum,
+          disposalCal,
+          goalSum,
+          goalCal,
+          goalTeamDiag,
+        ]) => {
+          setSummaries(summaryList);
+          setEloDetail(elo);
+          setPoissonDetail(poisson);
+          setComparison(cmp);
+          setOverview(legacyOverview);
+          setLogisticOverview(logisticCmp);
+          setBoostingOverview(boostingCmp);
+          setPoissonRevision(poissonRev);
+          setPlayerModelRuns(playerRuns);
+          setDisposalSummary(disposalSum);
+          setDisposalCalibration(disposalCal);
+          setGoalSummary(goalSum);
+          setGoalCalibration(goalCal);
+          setGoalTeamDiagnostic(goalTeamDiag);
+        }
+      )
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load backtest"))
       .finally(() => setLoading(false));
   }, []);
@@ -450,6 +499,28 @@ function BacktestPage() {
               <h2>Poisson Season-Transition Revision</h2>
               <p className="hint">
                 Not available yet — run <code>python -m app.modelling.poisson_cli</code> first (see the README).
+              </p>
+            </section>
+          )}
+
+          {playerModelRuns && disposalSummary ? (
+            <DisposalProjections runList={playerModelRuns} summary={disposalSummary} calibration={disposalCalibration} />
+          ) : (
+            <section className="backtest-panel">
+              <h2>Player Models — Disposal Projections</h2>
+              <p className="hint">
+                Not available yet — run <code>python -m app.player_modelling.disposal_cli</code> first (see the README).
+              </p>
+            </section>
+          )}
+
+          {goalSummary ? (
+            <GoalProjections summary={goalSummary} calibration={goalCalibration} teamDiagnostic={goalTeamDiagnostic} />
+          ) : (
+            <section className="backtest-panel">
+              <h2>Player Models — Goal Projections</h2>
+              <p className="hint">
+                Not available yet — run <code>python -m app.player_modelling.goal_cli</code> first (see the README).
               </p>
             </section>
           )}

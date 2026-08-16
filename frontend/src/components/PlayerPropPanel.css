@@ -1,0 +1,112 @@
+.prop-panel {
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 1.5rem;
+  background: #161a22;
+}
+
+.prop-panel h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+  color: #f3f4f6;
+}
+
+.prop-panel h4 {
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  font-size: 0.95rem;
+  color: #cbd2db;
+}
+
+.prop-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.prop-form__row {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.prop-form__row label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: #9aa4b2;
+  flex: 1;
+  min-width: 140px;
+}
+
+.prop-form__player {
+  min-width: 240px;
+}
+
+.prop-form input,
+.prop-form select {
+  background: #0d0f14;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  color: #f3f4f6;
+  font: inherit;
+}
+
+.prop-form button[type="submit"] {
+  align-self: flex-start;
+  background: #3b82f6;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1.1rem;
+  color: white;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.prop-form button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.prop-panel__error {
+  color: #fca5a5;
+  font-size: 0.85rem;
+}
+
+.prop-table-scroll {
+  overflow-x: auto;
+}
+
+.prop-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.prop-table th {
+  text-align: left;
+  color: #9aa4b2;
+  font-weight: 500;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #2a2f3a;
+  white-space: nowrap;
+}
+
+.prop-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid #1c212b;
+  white-space: nowrap;
+}
+
+.prop-table__delete {
+  background: none;
+  border: 1px solid #3a2020;
+  color: #fca5a5;
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}

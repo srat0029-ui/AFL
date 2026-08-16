@@ -707,6 +707,10 @@ export interface MatchPlayers {
   away_team_players: PlayerGameStat[];
 }
 
+export function fetchTeams(): Promise<Team[]> {
+  return request("/api/afl/teams");
+}
+
 export function fetchPlayers(params: {
   teamId?: number;
   season?: number;
@@ -759,4 +763,499 @@ export async function fetchMatchPlayers(matchId: number): Promise<MatchPlayers |
     }
     throw err;
   }
+}
+
+// --- Player prop models (disposal-prediction stage) ---
+// Historical model research only — never live betting advice. See
+// app/player_modelling/disposal_cli.py and app/api/routes/player_models.py.
+
+export interface PlayerModelRunSummary {
+  model_name: string;
+  market: string;
+  is_promoted: boolean;
+  distribution_method: string;
+  feature_names: string[];
+  tune_start_year: number;
+  tune_end_year: number;
+  evaluation_start_year: number;
+  evaluation_end_year: number;
+  run_at: string;
+  overall_mae: number | null;
+  overall_rmse: number | null;
+  overall_bias: number | null;
+  evaluation_n: number | null;
+}
+
+export interface PlayerModelRunList {
+  is_research_only: boolean;
+  runs: PlayerModelRunSummary[];
+}
+
+export interface DisposalSeasonMetric {
+  season_year: number;
+  n: number;
+  mae: number;
+  rmse: number;
+  bias: number;
+}
+
+export interface DisposalBaselineComparison {
+  model_name: string;
+  mae: number;
+  rmse: number;
+  bias: number;
+}
+
+export interface DisposalBacktestSummary {
+  is_research_only: boolean;
+  promoted_model: PlayerModelRunSummary;
+  baselines: DisposalBaselineComparison[];
+  candidates: DisposalBaselineComparison[];
+  season_breakdown: DisposalSeasonMetric[];
+  within_2: number;
+  within_5: number;
+  within_10: number;
+  median_ae: number;
+}
+
+export interface DisposalThresholdCalibration {
+  threshold: number;
+  n: number;
+  brier: number;
+  log_loss: number;
+  ece: number | null;
+  calibration: { bucket: string; n: number; avg_predicted: number | null; actual_rate: number | null }[];
+}
+
+export interface DisposalIntervalCalibration {
+  coverage_target: number;
+  n: number;
+  empirical_coverage: number;
+  mean_width: number;
+}
+
+export interface DisposalCalibrationReport {
+  is_research_only: boolean;
+  model_name: string;
+  distribution_method: string;
+  thresholds: DisposalThresholdCalibration[];
+  intervals: DisposalIntervalCalibration[];
+}
+
+export interface DisposalPlayerPrediction {
+  match_id: number;
+  season_year: number;
+  games_of_history: number;
+  predicted_mean: number;
+  actual_disposals: number;
+  confidence_tier: string;
+  interval_50: [number, number];
+  interval_80: [number, number];
+  prob_20_plus: number;
+  prob_25_plus: number;
+  prob_30_plus: number;
+  prob_35_plus: number;
+}
+
+export interface DisposalPlayerHistory {
+  is_research_only: boolean;
+  player: PlayerSummary;
+  model_name: string;
+  predictions: DisposalPlayerPrediction[];
+}
+
+export async function fetchPlayerModelRuns(): Promise<PlayerModelRunList | null> {
+  try {
+    return await request("/api/player-models");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function fetchDisposalBacktestSummary(): Promise<DisposalBacktestSummary | null> {
+  try {
+    return await request("/api/player-models/disposals/backtest");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function fetchDisposalCalibration(modelName?: string): Promise<DisposalCalibrationReport | null> {
+  try {
+    const qs = modelName ? `?model_name=${encodeURIComponent(modelName)}` : "";
+    return await request(`/api/player-models/disposals/calibration${qs}`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function fetchDisposalPlayerHistory(playerId: number, modelName?: string): Promise<DisposalPlayerHistory | null> {
+  try {
+    const qs = modelName ? `?model_name=${encodeURIComponent(modelName)}` : "";
+    return await request(`/api/player-models/disposals/players/${playerId}${qs}`);
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 503 || err.status === 404)) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+// --- Goal model (goal-prediction stage) ---
+
+export interface GoalModelRunSummary {
+  model_name: string;
+  market: string;
+  is_promoted: boolean;
+  distribution_kind: string;
+  feature_names: string[];
+  tune_start_year: number;
+  tune_end_year: number;
+  evaluation_start_year: number;
+  evaluation_end_year: number;
+  run_at: string;
+  overall_mae: number | null;
+  overall_rmse: number | null;
+  overall_bias: number | null;
+  evaluation_n: number | null;
+}
+
+export interface GoalSeasonMetric {
+  season_year: number;
+  n: number;
+  mae: number;
+  bias: number;
+}
+
+export interface GoalBaselineComparison {
+  model_name: string;
+  mae: number | null;
+  rmse: number | null;
+  bias: number | null;
+}
+
+export interface ZeroGoalCalibration {
+  brier: number;
+  log_loss: number;
+  ece: number | null;
+  mean_predicted_p0: number;
+  actual_p0: number;
+}
+
+export interface GoalBacktestSummary {
+  is_research_only: boolean;
+  promoted_model: GoalModelRunSummary;
+  baselines: GoalBaselineComparison[];
+  candidates: GoalBaselineComparison[];
+  season_breakdown: GoalSeasonMetric[];
+  zero_goal: ZeroGoalCalibration;
+}
+
+export interface GoalThresholdCalibration {
+  threshold: number;
+  n: number;
+  n_positive: number;
+  brier: number;
+  log_loss: number;
+  ece: number | null;
+}
+
+export interface GoalCalibrationReport {
+  is_research_only: boolean;
+  model_name: string;
+  distribution_kind: string;
+  thresholds: GoalThresholdCalibration[];
+}
+
+export async function fetchGoalBacktestSummary(): Promise<GoalBacktestSummary | null> {
+  try {
+    return await request("/api/player-models/goals/backtest");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export async function fetchGoalCalibration(modelName?: string): Promise<GoalCalibrationReport | null> {
+  try {
+    const qs = modelName ? `?model_name=${encodeURIComponent(modelName)}` : "";
+    return await request(`/api/player-models/goals/calibration${qs}`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export interface GoalTeamDiagnostic {
+  match_id: number;
+  team_id: number;
+  sum_predicted_goals: number;
+  team_expected_goals: number;
+  gap: number;
+}
+
+export async function fetchGoalUpcomingTeamDiagnostic(): Promise<GoalTeamDiagnostic[]> {
+  try {
+    return await request("/api/player-models/goals/upcoming-team-diagnostic");
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 503) {
+      return [];
+    }
+    throw err;
+  }
+}
+
+// --- Live player projections (live-projection stage) ---
+// Real, current pre-match projections for upcoming AFL matches. Distinct
+// from the "Player Models" research pages above, which only ever describe
+// HISTORICAL backtested performance.
+
+export type ExpectedLineupStatus = "expected_in" | "expected_out" | "uncertain";
+export type ConfidenceTierLive = "insufficient_history" | "lower_confidence" | "moderate_confidence" | "higher_confidence";
+
+export interface ExpectedLineup {
+  id: number;
+  match_id: number;
+  player_id: number;
+  player_name: string;
+  team_id: number;
+  status: ExpectedLineupStatus;
+  recorded_at: string;
+  source: string;
+  note: string | null;
+  substitute_risk: boolean;
+  returning_from_injury: boolean;
+  role_note: string | null;
+  expected_tog_adjustment: number | null;
+}
+
+export interface ExpectedLineupInput {
+  player_id: number;
+  team_id: number;
+  status: ExpectedLineupStatus;
+  note?: string | null;
+  substitute_risk?: boolean;
+  returning_from_injury?: boolean;
+  role_note?: string | null;
+  expected_tog_adjustment?: number | null;
+}
+
+export function fetchMatchLineup(matchId: number): Promise<ExpectedLineup[]> {
+  return request(`/api/afl/matches/${matchId}/lineup`);
+}
+
+export function setMatchLineup(matchId: number, playerId: number, input: ExpectedLineupInput): Promise<ExpectedLineup> {
+  return request(`/api/afl/matches/${matchId}/lineup/${playerId}`, { method: "PUT", body: JSON.stringify(input) });
+}
+
+export function deleteMatchLineup(matchId: number, playerId: number): Promise<void> {
+  return request(`/api/afl/matches/${matchId}/lineup/${playerId}`, { method: "DELETE" });
+}
+
+export interface ThresholdProbability {
+  probability: number;
+  warning: string | null;
+}
+
+export interface DisposalProjection {
+  is_research_only: boolean;
+  match_id: number;
+  player_id: number;
+  player_name: string;
+  team_id: number;
+  team_name: string;
+  round_number: number;
+  season_year: number;
+  scheduled_start: string;
+  model_name: string;
+  model_version: string;
+  generated_at: string;
+  data_cutoff: string;
+  lineup_status: ExpectedLineupStatus;
+  games_of_history: number;
+  expected: number;
+  median: number;
+  interval_50: [number, number];
+  interval_80: [number, number];
+  interval_90: [number, number];
+  thresholds: Record<string, ThresholdProbability>;
+  confidence_tier: ConfidenceTierLive;
+  warnings: string[];
+  is_stale: boolean;
+  stale_reasons: string[];
+  input_features: Record<string, number | null>;
+}
+
+export interface GoalProjection {
+  is_research_only: boolean;
+  match_id: number;
+  player_id: number;
+  player_name: string;
+  team_id: number;
+  team_name: string;
+  round_number: number;
+  season_year: number;
+  scheduled_start: string;
+  model_name: string;
+  model_version: string;
+  generated_at: string;
+  data_cutoff: string;
+  lineup_status: ExpectedLineupStatus;
+  games_of_history: number;
+  expected: number;
+  thresholds: Record<string, ThresholdProbability>;
+  scoring_archetype: string;
+  confidence_tier: ConfidenceTierLive;
+  warnings: string[];
+  is_stale: boolean;
+  stale_reasons: string[];
+  input_features: Record<string, number | null>;
+}
+
+export interface MatchProjections {
+  match_id: number;
+  disposals: DisposalProjection[];
+  goals: GoalProjection[];
+}
+
+export async function fetchMatchProjections(matchId: number): Promise<MatchProjections | null> {
+  try {
+    return await request(`/api/afl/matches/${matchId}/player-projections`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export interface PlayerProjection {
+  disposals: DisposalProjection | null;
+  goals: GoalProjection | null;
+}
+
+export async function fetchPlayerProjection(playerId: number): Promise<PlayerProjection | null> {
+  try {
+    return await request(`/api/afl/players/${playerId}/projection`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      return null;
+    }
+    throw err;
+  }
+}
+
+export interface UpcomingProjectionFilters {
+  market?: "player_disposals" | "player_goals";
+  round?: number;
+  season?: number;
+  teamId?: number;
+  matchId?: number;
+  confidence?: ConfidenceTierLive;
+  minProbability?: number;
+  threshold?: number;
+}
+
+export async function fetchUpcomingProjections(
+  filters: UpcomingProjectionFilters = {}
+): Promise<{ disposals?: DisposalProjection[]; goals?: GoalProjection[] }> {
+  const query = new URLSearchParams();
+  if (filters.market) query.set("market", filters.market);
+  if (filters.round !== undefined) query.set("round", String(filters.round));
+  if (filters.season !== undefined) query.set("season", String(filters.season));
+  if (filters.teamId !== undefined) query.set("team_id", String(filters.teamId));
+  if (filters.matchId !== undefined) query.set("match_id", String(filters.matchId));
+  if (filters.confidence) query.set("confidence", filters.confidence);
+  if (filters.minProbability !== undefined) query.set("min_probability", String(filters.minProbability));
+  if (filters.threshold !== undefined) query.set("threshold", String(filters.threshold));
+  const qs = query.toString();
+  return request(`/api/afl/player-projections/upcoming${qs ? `?${qs}` : ""}`);
+}
+
+// --- Manual player-prop entry + Prop Insights ---
+
+export type PlayerPropMarketType = "player_disposals" | "player_goals";
+export type PlayerPropLineType = "over_under" | "multi_plus";
+
+export interface PlayerPropMarketQuote {
+  id: number;
+  match_id: number;
+  player_id: number;
+  player_name: string;
+  bookmaker_name: string;
+  market_type: PlayerPropMarketType;
+  line_type: PlayerPropLineType;
+  threshold: number;
+  price_decimal: number;
+  recorded_at: string;
+  source: string;
+}
+
+export interface PlayerPropMarketInput {
+  bookmaker_name: string;
+  player_id: number;
+  market_type: PlayerPropMarketType;
+  line_type: PlayerPropLineType;
+  threshold: number;
+  price_decimal: number;
+}
+
+export function fetchMatchPlayerProps(matchId: number): Promise<PlayerPropMarketQuote[]> {
+  return request(`/api/afl/matches/${matchId}/player-props`);
+}
+
+export function createPlayerProp(matchId: number, input: PlayerPropMarketInput): Promise<PlayerPropMarketQuote> {
+  return request(`/api/afl/matches/${matchId}/player-props`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deletePlayerProp(propId: number): Promise<void> {
+  return request(`/api/afl/player-props/${propId}`, { method: "DELETE" });
+}
+
+export type EdgeCategory = "no_meaningful_difference" | "small_difference" | "moderate_difference" | "larger_difference";
+
+export interface PropInsight {
+  id: number;
+  player_id: number;
+  player_name: string;
+  match_id: number;
+  round_number: number;
+  season_year: number;
+  bookmaker_name: string;
+  market_type: PlayerPropMarketType;
+  line_type: PlayerPropLineType;
+  threshold: number;
+  recorded_at: string;
+  model_probability: number;
+  model_fair_odds: number;
+  offered_odds: number;
+  raw_implied_probability: number;
+  devigged_probability: number | null;
+  overround_removed: boolean;
+  difference_pp: number;
+  expected_value: number;
+  edge_category: EdgeCategory;
+  confidence_tier: ConfidenceTierLive;
+  warnings: string[];
+}
+
+export function fetchPropInsights(params: { market?: PlayerPropMarketType; confidence?: ConfidenceTierLive } = {}): Promise<PropInsight[]> {
+  const query = new URLSearchParams();
+  if (params.market) query.set("market", params.market);
+  if (params.confidence) query.set("confidence", params.confidence);
+  const qs = query.toString();
+  return request(`/api/afl/prop-insights${qs ? `?${qs}` : ""}`);
 }

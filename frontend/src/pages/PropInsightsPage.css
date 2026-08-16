@@ -1,0 +1,134 @@
+.prop-insights-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.prop-insights-page__header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.6rem;
+  color: #f3f4f6;
+}
+
+.prop-insights-page__filters {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.prop-insights-page__filters label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #9aa4b2;
+  min-width: 160px;
+}
+
+.prop-insights-page__filters select {
+  background: #0d0f14;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  color: #f3f4f6;
+  font: inherit;
+}
+
+.prop-insights-page__error {
+  background: #1f1414;
+  border: 1px solid #7f1d1d;
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: #fca5a5;
+}
+
+.prop-insights-table-scroll {
+  overflow-x: auto;
+}
+
+.prop-insights-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.87rem;
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+}
+
+.prop-insights-table th {
+  text-align: left;
+  color: #9aa4b2;
+  font-weight: 500;
+  padding: 0.5rem 0.7rem;
+  border-bottom: 1px solid #2a2f3a;
+  white-space: nowrap;
+}
+
+.prop-insights-table td {
+  padding: 0.55rem 0.7rem;
+  border-bottom: 1px solid #1c212b;
+  white-space: nowrap;
+}
+
+.prop-insights-table__diff-pos {
+  color: #86efac;
+}
+
+.prop-insights-table__diff-neg {
+  color: #fca5a5;
+}
+
+.prop-insights-table__raw-flag {
+  margin-left: 0.35rem;
+  font-size: 0.65rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: #3f2e1c;
+  color: #fdba74;
+}
+
+.prop-insights-table__notes {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.prop-insights-table__warning-icon {
+  color: #fdba74;
+  cursor: help;
+}
+
+.edge-category-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  border-radius: 4px;
+  padding: 0.15rem 0.45rem;
+  white-space: nowrap;
+}
+
+.edge-category-badge--no_meaningful_difference {
+  background: #1c212b;
+  color: #9aa4b2;
+}
+
+.edge-category-badge--small_difference {
+  background: #3f3a1c;
+  color: #fde68a;
+}
+
+.edge-category-badge--moderate_difference {
+  background: #1e3a2f;
+  color: #6ee7b7;
+}
+
+.edge-category-badge--larger_difference {
+  background: #14532d;
+  color: #86efac;
+}

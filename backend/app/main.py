@@ -1,7 +1,20 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import afl, backtest, backtests, dashboard, edges, health, matches, odds, predictions
+from app.api.routes import (
+    afl,
+    backtest,
+    backtests,
+    dashboard,
+    edges,
+    goal_models,
+    health,
+    matches,
+    odds,
+    player_models,
+    player_projections,
+    predictions,
+)
 from app.config import get_settings
 
 settings = get_settings()
@@ -44,3 +57,6 @@ app.include_router(predictions.router)
 app.include_router(dashboard.router)
 app.include_router(backtest.router)
 app.include_router(backtests.router)
+app.include_router(player_models.router)
+app.include_router(goal_models.router)
+app.include_router(player_projections.router)

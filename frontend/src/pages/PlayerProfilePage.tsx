@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import "./PlayerProfilePage.css";
 import PlayerStatsTable from "../components/PlayerStatsTable";
-import { fetchPlayerForm, type PlayerForm } from "../api/client";
+import { DisposalProjectionTable, GoalProjectionTable } from "../components/ProjectionTable";
+import { fetchPlayerForm, fetchPlayerProjection, type PlayerForm, type PlayerProjection } from "../api/client";
 
 function num(value: number | undefined, digits = 1): string {
   return value === undefined ? "—" : value.toFixed(digits);
@@ -31,14 +32,18 @@ function PlayerProfilePage() {
   const id = Number(playerId);
 
   const [form, setForm] = useState<PlayerForm | null>(null);
+  const [projection, setProjection] = useState<PlayerProjection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!Number.isFinite(id)) return;
     setLoading(true);
-    fetchPlayerForm(id, 10)
-      .then(setForm)
+    Promise.all([fetchPlayerForm(id, 10), fetchPlayerProjection(id)])
+      .then(([formData, projectionData]) => {
+        setForm(formData);
+        setProjection(projectionData);
+      })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load player"))
       .finally(() => setLoading(false));
   }, [id]);
@@ -78,6 +83,28 @@ function PlayerProfilePage() {
           {player.is_active === false && " · Inactive"}
         </p>
       </header>
+
+      {projection && (projection.disposals || projection.goals) && (
+        <section className="backtest-panel">
+          <h2>Upcoming projection</h2>
+          <p className="hint">
+            Projected outcome for this player's next upcoming match, from the promoted disposal/goal models — not a
+            guarantee, and distinct from the recent-form averages below.
+          </p>
+          {projection.disposals && (
+            <>
+              <h3>Disposals</h3>
+              <DisposalProjectionTable rows={[projection.disposals]} />
+            </>
+          )}
+          {projection.goals && (
+            <>
+              <h3>Goals</h3>
+              <GoalProjectionTable rows={[projection.goals]} />
+            </>
+          )}
+        </section>
+      )}
 
       {latestSeason && (
         <section className="backtest-panel">

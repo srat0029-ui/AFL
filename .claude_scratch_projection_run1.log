@@ -1,0 +1,26 @@
+C:\Users\resol\AFL\backend\.venv\Lib\site-packages\statsmodels\base\model.py:595: HessianInversionWarning: Inverting hessian failed, no bse or cov_params available
+  warnings.warn('Inverting hessian failed, no bse or cov_params '
+C:\Users\resol\AFL\backend\.venv\Lib\site-packages\statsmodels\base\model.py:607: ConvergenceWarning: Maximum Likelihood optimization failed to converge. Check mle_retvals
+  warnings.warn("Maximum Likelihood optimization failed to "
+Identifying the next upcoming AFL round...
+Upcoming matches (9): match_ids=[2053, 2054, 2055, 2056, 2057, 2058, 2059, 2060, 2061]
+  match 2053: round 23, 2026, kickoff 2026-08-14T10:10:00
+  match 2054: round 23, 2026, kickoff 2026-08-15T02:35:00
+  match 2055: round 23, 2026, kickoff 2026-08-15T05:45:00
+  match 2056: round 23, 2026, kickoff 2026-08-15T06:15:00
+  match 2057: round 23, 2026, kickoff 2026-08-15T09:40:00
+  match 2058: round 23, 2026, kickoff 2026-08-15T10:10:00
+  match 2059: round 23, 2026, kickoff 2026-08-16T03:40:00
+  match 2060: round 23, 2026, kickoff 2026-08-16T05:15:00
+  match 2061: round 23, 2026, kickoff 2026-08-16T06:40:00
+
+Expected players (status in expected_in/uncertain): 419
+
+Generating projections (model version disposals='disposals_ridge@2026-08-16T04:26:05.563784', goals='goals_hurdle@2026-08-16T04:52:52.559756')...
+Persisted 419 disposal projections and 419 goal projections.
+
+Disposal projection range: 6.6 - 28.6 (median 14.3)
+Goal projection range: 0.07 - 2.68 (median 0.48)
+
+Disposal confidence distribution: {'higher_confidence': 284, 'lower_confidence': 77, 'moderate_confidence': 47, 'insufficient_history': 11}
+Goal confidence distribution: {'higher_confidence': 233, 'lower_confidence': 140, 'moderate_confidence': 35, 'insufficient_history': 11}

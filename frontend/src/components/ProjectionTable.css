@@ -1,0 +1,145 @@
+.projection-table-scroll {
+  overflow-x: auto;
+}
+
+.projection-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.projection-table th,
+.projection-table td {
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid #1c212b;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.projection-table__th {
+  color: #9aa4b2;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+}
+
+.projection-table__th--active {
+  color: #f3f4f6;
+}
+
+.projection-table__sort-arrow {
+  color: #3b82f6;
+}
+
+.projection-table__row {
+  cursor: pointer;
+}
+
+.projection-table__row:hover {
+  background: #161a22;
+}
+
+.projection-table__row td a {
+  color: #93c5fd;
+  text-decoration: none;
+}
+
+.projection-table__row td a:hover {
+  text-decoration: underline;
+}
+
+.projection-table__stale-badge {
+  margin-left: 0.5rem;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #3f2e1c;
+  color: #fdba74;
+  cursor: help;
+}
+
+.projection-table__rare-flag {
+  color: #fdba74;
+  margin-left: 0.15rem;
+  cursor: help;
+}
+
+.projection-table__footnote {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+}
+
+.lineup-badge {
+  display: inline-block;
+  font-size: 0.75rem;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+.lineup-badge--expected_in {
+  background: #14532d;
+  color: #86efac;
+}
+
+.lineup-badge--uncertain {
+  background: #3f3a1c;
+  color: #fde68a;
+}
+
+.lineup-badge--expected_out {
+  background: #1f1414;
+  color: #fca5a5;
+}
+
+.projection-table__drawer td {
+  background: #0d0f14;
+  white-space: normal;
+  cursor: default;
+}
+
+.projection-drawer {
+  padding: 0.75rem 0.5rem;
+}
+
+.projection-drawer__title {
+  margin: 0.5rem 0;
+  font-size: 0.8rem;
+  color: #9aa4b2;
+}
+
+.projection-drawer__warnings {
+  margin-bottom: 0.5rem;
+}
+
+.projection-drawer__warning {
+  margin: 0.2rem 0;
+  font-size: 0.82rem;
+  color: #fdba74;
+}
+
+.projection-drawer__warning--stale {
+  color: #fca5a5;
+}
+
+.projection-drawer__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.5rem 1rem;
+}
+
+.projection-drawer__feature {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.projection-drawer__feature-label {
+  font-size: 0.72rem;
+  color: #9aa4b2;
+}
+
+.projection-drawer__feature-value {
+  font-size: 0.95rem;
+  color: #f3f4f6;
+}
