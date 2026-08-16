@@ -7,6 +7,7 @@ docstring in app/providers/afl/afltables_players.py.
 """
 
 from app.providers.afl.afltables_players import AFLTablesPlayerStatsProvider
+from app.providers.afl.round_labels import RoundKind
 
 # Two players, three rounds (R2/R3/R4):
 #   Alpha, Amy    - played full R2, subbed off R3, did not feature R4
@@ -152,7 +153,7 @@ def test_narrow_column_width_from_a_long_finals_run_still_parses():
 
 
 def _by_player_round(lines):
-    return {(l.player_name, l.round_number): l for l in lines}
+    return {(l.player_name, l.round_label.round_number): l for l in lines}
 
 
 def test_only_rounds_a_player_actually_featured_in_are_returned():
@@ -270,7 +271,7 @@ def test_parsing_is_deterministic_across_reruns():
     second = _make_provider().get_team_season_player_stats("AFL", 2024, "Adelaide")
 
     def _key(line):
-        return (line.player_source_id, line.round_number)
+        return (line.player_source_id, line.round_label.raw)
 
     first_sorted = sorted(first, key=_key)
     second_sorted = sorted(second, key=_key)
@@ -278,7 +279,63 @@ def test_parsing_is_deterministic_across_reruns():
     for a, b in zip(first_sorted, second_sorted):
         assert a.player_name == b.player_name
         assert a.player_source_id == b.player_source_id
-        assert a.round_number == b.round_number
+        assert a.round_label == b.round_label
         assert a.subbed_on == b.subbed_on
         assert a.subbed_off == b.subbed_off
         assert a.stats == b.stats
+
+
+# Regression fixture for finals support — verified against a real fetched
+# 2024 Brisbane Lions page (a Grand Finalist that season): finals columns
+# are bare 2-letter codes (EF/SF/PF/GF here; QF is structurally identical,
+# just a different code), in the SAME header row as the numbered
+# home-and-away columns, no "R" prefix.
+SAMPLE_GBG_HTML_WITH_FINALS = """
+<html><body>
+<table class="sortable" border="2" width="100%"><thead><tr><th colspan="29">Disposals</th></tr>
+<tr><th align="left">Player</th><th width="2%">R24</th><th width="2%">EF</th><th width="2%">SF</th><th width="2%">PF</th><th width="2%">GF</th><th>Tot</th></tr></thead>
+<tbody>
+<tr><td><a href="players/A/Amy_Alpha.html">Alpha, Amy</a></td><td align="center">18</td><td align="center">22</td><td align="center">19</td><td align="center">25</td><td align="center">35</td><td align="center">119</td></tr>
+</tbody></table>
+
+<table class="sortable" border="2" width="100%"><thead><tr><th colspan="29">Subs</th></tr>
+<tr><th align="left">Player</th><th width="2%">R24</th><th width="2%">EF</th><th width="2%">SF</th><th width="2%">PF</th><th width="2%">GF</th><th>Tot</th></tr></thead>
+<tbody>
+<tr><td><a href="players/A/Amy_Alpha.html">Alpha, Amy</a></td><td align="center">-</td><td align="center">-</td><td align="center">-</td><td align="center">-</td><td align="center">-</td><td align="center">0/0</td></tr>
+</tbody></table>
+</body></html>
+"""
+
+
+def test_finals_columns_are_parsed_with_correct_round_kinds():
+    provider = AFLTablesPlayerStatsProvider(
+        transport=lambda url: (200, "text/html", SAMPLE_GBG_HTML_WITH_FINALS), request_delay_seconds=0
+    )
+    lines = provider.get_team_season_player_stats("AFL", 2024, "Adelaide")
+    by_raw = {l.round_label.raw: l for l in lines}
+
+    assert by_raw["R24"].round_label.kind is RoundKind.HOME_AND_AWAY
+    assert by_raw["EF"].round_label.kind is RoundKind.FINALS_WEEK_1
+    assert by_raw["SF"].round_label.kind is RoundKind.SEMI_FINALS
+    assert by_raw["PF"].round_label.kind is RoundKind.PRELIMINARY_FINAL
+    assert by_raw["GF"].round_label.kind is RoundKind.GRAND_FINAL
+
+
+def test_finals_columns_carry_the_right_stats():
+    provider = AFLTablesPlayerStatsProvider(
+        transport=lambda url: (200, "text/html", SAMPLE_GBG_HTML_WITH_FINALS), request_delay_seconds=0
+    )
+    lines = provider.get_team_season_player_stats("AFL", 2024, "Adelaide")
+    by_raw = {l.round_label.raw: l for l in lines}
+
+    assert by_raw["GF"].stats["disposals"] == 35
+    assert by_raw["EF"].stats["disposals"] == 22
+
+
+def test_qf_is_parsed_as_the_same_kind_as_ef():
+    html = SAMPLE_GBG_HTML_WITH_FINALS.replace(">EF<", ">QF<")
+    provider = AFLTablesPlayerStatsProvider(transport=lambda url: (200, "text/html", html), request_delay_seconds=0)
+    lines = provider.get_team_season_player_stats("AFL", 2024, "Adelaide")
+    by_raw = {l.round_label.raw: l for l in lines}
+
+    assert by_raw["QF"].round_label.kind is RoundKind.FINALS_WEEK_1

@@ -12,8 +12,22 @@ rather than a hardcoded AFL type) so a second sport is a new provider
 implementation, not a change to these shapes.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import date, datetime
+from typing import TYPE_CHECKING
+
+# PlayerStatLine.round_label is AFL-specific (round numbers + finals codes
+# like "EF"/"GF") — a deliberate, pragmatic exception to this module's
+# otherwise sport-agnostic fields, made because this project is AFL-only;
+# revisit if a second sport is ever added (see module docstring). Deferred
+# to a type-checking-only import (the `from __future__ import annotations`
+# above makes all annotations lazy strings) since importing it eagerly
+# pulls in the app.providers.afl package __init__, which circles back to
+# this exact module for OddsQuote/Fixture.
+if TYPE_CHECKING:
+    from app.providers.afl.round_labels import RoundLabel
 
 
 @dataclass(frozen=True)
@@ -72,18 +86,19 @@ class TeamStatLine:
 class PlayerStatLine:
     """One player's stats for a single match, as reported by a stats source.
 
-    Resolved to a Match by (season_year, round_number, team_name) rather
-    than a shared match id or date — the AFL Tables page this is scraped
-    from (a team's season "game by game" grid) publishes round labels, not
-    match dates, per cell. See app/ingestion/player_stats.py for the
-    resolution against already-ingested Match/Round rows, and why round
-    number is actually a more robust key here than date (no timezone/date
-    off-by-one edge cases to worry about).
+    Resolved to a Match primarily by (season_year, round_label, team_name)
+    rather than a shared match id or date — the AFL Tables page this is
+    scraped from (a team's season "game by game" grid) publishes round
+    labels (numbered rounds AND finals codes like "EF"/"GF" — see
+    app/providers/afl/round_labels.py), not match dates, per cell. A safe
+    fallback resolver in app/ingestion/player_stats.py handles the residual
+    cases where the source's round label doesn't line up with this
+    project's own round numbering (see that module's docstring).
     """
 
     sport_code: str
     season_year: int
-    round_number: int
+    round_label: RoundLabel
     team_name: str
     player_name: str  # as published, e.g. "Acres, Blake"
     # The source's stable per-player identifier (for AFL Tables, the player

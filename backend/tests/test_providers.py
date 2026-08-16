@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.providers import Fixture, FixtureProvider, OddsProvider, OddsQuote, StatsProvider
+from app.providers.afl.round_labels import RoundKind, RoundLabel
 from app.providers.types import PlayerStatLine, TeamStatLine
 
 
@@ -67,7 +68,7 @@ def test_stat_line_dataclasses_hold_open_ended_stats():
     player_line = PlayerStatLine(
         sport_code="AFL",
         season_year=2024,
-        round_number=1,
+        round_label=RoundLabel(raw="1", kind=RoundKind.HOME_AND_AWAY, round_number=1),
         team_name="Collingwood",
         player_name="Daicos, Nick",
         player_source_id="players/N/Nick_Daicos.html",

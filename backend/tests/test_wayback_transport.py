@@ -9,21 +9,21 @@ warrant direct coverage here, unlike the simpler curl_transport.
 
 from unittest.mock import patch
 
-from app.providers.afl.wayback_transport import _target_wayback_year, wayback_transport
+from app.providers.afl.wayback_transport import _FAR_FUTURE_ANCHOR_YEAR, _target_wayback_year, wayback_transport
 
 
-def test_target_wayback_year_uses_year_after_season_in_gbg_url():
-    assert _target_wayback_year("https://afltables.com/afl/stats/teams/adelaide/2024_gbg.html") == 2025
-
-
-def test_target_wayback_year_uses_year_after_season_in_team_stats_url():
-    assert _target_wayback_year("https://afltables.com/afl/stats/2016t.html") == 2017
-
-
-def test_target_wayback_year_falls_back_to_current_year_when_no_year_present():
-    import datetime
-
-    assert _target_wayback_year("https://afltables.com/afl/index.html") == datetime.date.today().year
+def test_target_wayback_year_is_a_fixed_far_future_anchor_regardless_of_url():
+    """Regression test for a real coverage gap found on the 2016-2025
+    rerun: anchoring on season_year + 1 (the old behaviour) let Wayback's
+    "closest snapshot" resolve BACKWARD to an incomplete mid-season capture
+    for some team-season URLs (e.g. Carlton's 2017 page: closest-to-2018
+    capture on file was from July 2017, missing rounds 19-25 and every
+    final - even though complete, full-season captures of that exact page
+    exist from 2023/2025/2026). A fixed far-future anchor always resolves
+    to the LATEST available capture instead, for every URL."""
+    assert _target_wayback_year("https://afltables.com/afl/stats/teams/adelaide/2024_gbg.html") == _FAR_FUTURE_ANCHOR_YEAR
+    assert _target_wayback_year("https://afltables.com/afl/stats/2016t.html") == _FAR_FUTURE_ANCHOR_YEAR
+    assert _target_wayback_year("https://afltables.com/afl/index.html") == _FAR_FUTURE_ANCHOR_YEAR
 
 
 def _mock_run(resolve_stdout, resolve_returncode, fetch_stdout, fetch_returncode):

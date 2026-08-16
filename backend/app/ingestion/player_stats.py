@@ -18,20 +18,52 @@ Two resolution problems, both handled explicitly rather than guessed:
 
 2. Match resolution. No shared id scheme between AFL Tables and Squiggle
    (this project's fixture source) — same situation team_stats.py already
-   handles, just keyed by (season, round_number, team) here instead of
-   (season, team pair, date), since this source's page publishes round
-   labels, not match dates, per cell (see afltables_players.py). A team
-   plays at most one match per round in a normal season; if that's ever not
-   true for the data seen, or the round/team can't be found at all, the row
-   is reported as unmatched rather than guessed.
+   handles, just keyed by round rather than date, since this source's page
+   publishes round labels, not match dates, per cell (see
+   afltables_players.py). Three strategies, tried in order, each only ever
+   resolving a row when EXACTLY ONE candidate match exists:
+
+   a. Primary (home-and-away): (season, round_number, team). Fast, exact,
+      covers the large majority of rows.
+
+   b. Finals: AFL Tables labels finals EF/QF/SF/PF/GF (see
+      app/providers/afl/round_labels.py) — Squiggle groups EF and QF under
+      one round ("Finals Week 1"), so resolution here is by (season, team,
+      Round.name) rather than any numeric round conversion, which the
+      brief this implements explicitly calls unsafe. A team appears at
+      most once in any finals round, so this is still exact.
+
+   c. Fallback (only for rows strategy (a)/(b) couldn't place, always
+      home-and-away rows — a genuine round-numbering discrepancy between
+      the two sources, e.g. a bye Squiggle records at a different round
+      number than AFL Tables' grid implies; see PART C of the stage brief
+      this implements for the real example that motivated this). AFL
+      Tables' player-stats page provides no match date or opponent per
+      cell — only a round label — so a literal "date ±1 day" match isn't
+      directly available from this source for these specific rows.
+      Instead: for a team+season, after (a) and (b) have claimed every
+      match they can, this resolves the REMAINING unclaimed AFL-Tables
+      round labels against the REMAINING unclaimed Squiggle matches for
+      that team — but ONLY when both leftover sets are exactly the same
+      size, pairing them in the one order-preserving way (source round
+      label ascending <-> Match.scheduled_start ascending), since both
+      sequences are independently known to be chronological. If the sizes
+      differ (or there's more than one plausible pairing), nothing is
+      resolved — the rows are reported as unmatched, not guessed. This is
+      the safe fallback the brief asks for, adapted to what this specific
+      source page actually exposes (round labels, not dates); see
+      app/ingestion/team_stats.py for the analogous date-based fallback
+      used where the source DOES publish dates.
 """
 
+from collections import defaultdict
 from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Match, Player, PlayerMatchStat, Round, Season, Sport, Team
+from app.providers.afl.round_labels import ROUND_NAME_BY_FINALS_KIND
 from app.providers.types import PlayerStatLine
 
 SOURCE_NAME = "afltables"
@@ -54,6 +86,10 @@ class PlayerStatsIngestionResult:
     stats_updated: int = 0
     stats_unchanged: int = 0
     unmatched: list[str] = field(default_factory=list)
+    # Rows resolved only via the fallback (leftover-elimination) strategy —
+    # tracked separately from `matched` so a coverage report can show how
+    # much the fallback is actually contributing versus the fast primary path.
+    fallback_resolved: int = 0
 
     @property
     def matched(self) -> int:
@@ -91,14 +127,18 @@ def ingest_player_stats(
     rounds_by_number = {
         r.round_number: r for r in db.scalars(select(Round).where(Round.season_id == season.id)).all()
     }
+    rounds_by_name: dict[str, Round] = {r.name: r for r in rounds_by_number.values() if r.name}
 
-    season_matches = db.scalars(
-        select(Match).where(Match.season_id == season.id)
-    ).all()
+    season_matches = db.scalars(select(Match).where(Match.season_id == season.id)).all()
     matches_by_round_team: dict[tuple[int, int], list[Match]] = {}
+    matches_by_team: dict[int, list[Match]] = defaultdict(list)
     for m in season_matches:
         matches_by_round_team.setdefault((m.round.round_number, m.home_team_id), []).append(m)
         matches_by_round_team.setdefault((m.round.round_number, m.away_team_id), []).append(m)
+        matches_by_team[m.home_team_id].append(m)
+        matches_by_team[m.away_team_id].append(m)
+    for team_matches in matches_by_team.values():
+        team_matches.sort(key=lambda m: (m.scheduled_start, m.id))
 
     players_by_source_id = {
         p.source_player_id: p
@@ -107,37 +147,95 @@ def ingest_player_stats(
         ).all()
     }
 
-    # Chronological order so, for a player appearing in multiple rounds
-    # within this batch, current_team_id ends up reflecting the most recent
-    # one seen — matters for mid-batch trades within the same backfill run.
-    for row in sorted(rows, key=lambda r: r.round_number):
-        result.rows_seen += 1
+    # --- pass 1: primary (round-number) and finals (round-name) resolution ---
+    # Chronological-ish order (numbered rounds first by number, finals rows
+    # after) so, for a player appearing in multiple rounds within this
+    # batch, current_team_id ends up reflecting the most recent one seen —
+    # matters for mid-batch trades within the same backfill run.
+    rows_sorted = sorted(rows, key=lambda r: (r.round_label.is_final, r.round_label.round_number or 0))
+    claimed_match_ids: set[int] = set()
+    resolved: list[tuple[PlayerStatLine, Match]] = []
+    unresolved_home_and_away: list[PlayerStatLine] = []
 
+    for row in rows_sorted:
+        result.rows_seen += 1
         team = teams_by_name.get(row.team_name)
         if team is None:
-            result.unmatched.append(f"unknown team {row.team_name!r} (player {row.player_name!r}, round {row.round_number})")
+            result.unmatched.append(f"unknown team {row.team_name!r} (player {row.player_name!r}, round {row.round_label.raw})")
             continue
 
-        round_ = rounds_by_number.get(row.round_number)
-        if round_ is None:
-            result.unmatched.append(
-                f"no round {row.round_number} in season {season_year} (player {row.player_name!r}, team {row.team_name!r})"
-            )
-            continue
+        if row.round_label.is_final:
+            round_name = ROUND_NAME_BY_FINALS_KIND[row.round_label.kind]
+            round_ = rounds_by_name.get(round_name)
+            if round_ is None:
+                result.unmatched.append(
+                    f"no {round_name!r} round in season {season_year} (player {row.player_name!r}, team {row.team_name!r})"
+                )
+                continue
+            candidates = [
+                m for m in season_matches
+                if m.round_id == round_.id and (m.home_team_id == team.id or m.away_team_id == team.id)
+            ]
+        else:
+            round_ = rounds_by_number.get(row.round_label.round_number)
+            if round_ is None:
+                result.unmatched.append(
+                    f"no round {row.round_label.round_number} in season {season_year} (player {row.player_name!r}, team {row.team_name!r})"
+                )
+                continue
+            candidates = matches_by_round_team.get((row.round_label.round_number, team.id), [])
 
-        candidates = matches_by_round_team.get((row.round_number, team.id), [])
         if len(candidates) == 0:
-            result.unmatched.append(
-                f"no match found: {row.team_name!r} in round {row.round_number}, {season_year} (player {row.player_name!r})"
-            )
+            unresolved_home_and_away.append(row)
             continue
         if len(candidates) > 1:
             result.unmatched.append(
-                f"ambiguous match: {row.team_name!r} in round {row.round_number}, {season_year} "
+                f"ambiguous match: {row.team_name!r} in round {row.round_label.raw}, {season_year} "
                 f"has {len(candidates)} candidate matches (player {row.player_name!r}) — refusing to guess"
             )
             continue
+
         match = candidates[0]
+        resolved.append((row, match))
+        claimed_match_ids.add(match.id)
+
+    # --- pass 2: fallback for leftover home-and-away rows (see module docstring) ---
+    # Grouped by (team, round_number) rather than per-row: a single
+    # mismatched round produces one row per player on that team's list
+    # (~20+ rows), but represents exactly ONE leftover round needing ONE
+    # leftover match — comparing raw row counts to match counts would
+    # almost never align even in the simple, genuinely-resolvable case.
+    unresolved_by_team: dict[str, dict[int, list[PlayerStatLine]]] = defaultdict(lambda: defaultdict(list))
+    for row in unresolved_home_and_away:
+        unresolved_by_team[row.team_name][row.round_label.round_number].append(row)
+
+    for team_name, rounds_map in unresolved_by_team.items():
+        team = teams_by_name.get(team_name)
+        if team is None:
+            continue  # already reported as unknown-team in pass 1's row, if applicable
+        unclaimed = [m for m in matches_by_team.get(team.id, []) if m.id not in claimed_match_ids]
+        unresolved_round_numbers = sorted(rounds_map.keys())
+
+        if len(unresolved_round_numbers) != len(unclaimed):
+            for round_number in unresolved_round_numbers:
+                for row in rounds_map[round_number]:
+                    result.unmatched.append(
+                        f"no match found: {row.team_name!r} in round {row.round_label.raw}, {season_year} "
+                        f"(player {row.player_name!r}) — {len(unresolved_round_numbers)} unresolved source round(s) "
+                        f"{unresolved_round_numbers} vs {len(unclaimed)} unclaimed match(es) for this team, "
+                        f"refusing to guess a pairing"
+                    )
+            continue
+
+        for round_number, match in zip(unresolved_round_numbers, unclaimed):
+            for row in rounds_map[round_number]:
+                resolved.append((row, match))
+                result.fallback_resolved += 1
+            claimed_match_ids.add(match.id)
+
+    # --- upsert every resolved (row, match) pair ---
+    for row, match in resolved:
+        team = teams_by_name[row.team_name]
         opponent = match.away_team if match.home_team_id == team.id else match.home_team
 
         player = players_by_source_id.get(row.player_source_id)

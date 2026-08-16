@@ -25,9 +25,10 @@ transform (e.g. "Brisbane Lions" -> "brisbanel", "Western Bulldogs" ->
 "North Melbourne" -> "kangaroos") — verified against real fetched pages for
 all 18 current-era clubs, see _TEAM_SLUGS below.
 
-Round labels (e.g. "R6") are the grid's own column headers, not match dates
-or ids — resolved against already-ingested Match/Round rows by
-(season_year, round_number, team) in app/ingestion/player_stats.py, the
+Round labels (e.g. "R6", "EF", "GF") are the grid's own column headers, not
+match dates or ids — normalised via app/providers/afl/round_labels.py, then
+resolved against already-ingested Match/Round rows by
+(season_year, round_label, team) in app/ingestion/player_stats.py, the
 same "no shared id scheme" situation team stats already handles (see
 TeamStatLine), just keyed by round instead of date.
 """
@@ -39,6 +40,7 @@ from datetime import datetime, timezone
 
 from app.config import get_settings
 from app.providers.afl.afltables import Transport, curl_transport
+from app.providers.afl.round_labels import RoundLabel, parse_round_label
 from app.providers.types import PlayerStatLine
 
 AFLTABLES_BASE_URL = "https://afltables.com/afl/stats/teams/"
@@ -100,7 +102,12 @@ _STAT_TABLE_FIELDS: dict[str, str] = {
 
 _TABLE_TITLE_RE = re.compile(r'<th colspan="\d+">([^<]+)</th>')
 _TABLE_BLOCK_RE = re.compile(r'<table class="sortable".*?</table>', re.DOTALL)
-_ROUND_HEADER_RE = re.compile(r'<th width="\d+%">R(\d+)</th>')
+# Matches both numbered home-and-away columns ("R6") and bare finals codes
+# ("EF"/"QF"/"SF"/"PF"/"GF") — real header cells for both look identical
+# apart from the text (`<th width="N%">...</th>`); the trailing "Tot"
+# column has no width attribute, so it's naturally excluded. See
+# round_labels.py for interpreting the captured text.
+_ROUND_HEADER_RE = re.compile(r'<th width="\d+%">([A-Z0-9]+)</th>')
 _PLAYER_ROW_RE = re.compile(
     r'<tr><td><a href="([^"]*players/[^"]+\.html)">([^<]+)</a></td>(.*?)</tr>', re.DOTALL
 )
@@ -123,12 +130,19 @@ def _parse_int_cell(text: str) -> int | None:
         return None
 
 
-def _parse_table(table_html: str) -> tuple[list[int], dict[str, tuple[str, list[str]]]]:
-    """Returns (round_numbers, {player_source_id: (player_name, cell_values)}).
-    cell_values is aligned index-for-index with round_numbers; the trailing
-    "Tot" column is deliberately excluded (round-level cells only)."""
-    round_numbers = [int(n) for n in _ROUND_HEADER_RE.findall(table_html)]
-    n_rounds = len(round_numbers)
+def _parse_table(table_html: str) -> tuple[list[RoundLabel], dict[str, tuple[str, list[str]]]] | None:
+    """Returns (round_labels, {player_source_id: (player_name, cell_values)}).
+    cell_values is aligned index-for-index with round_labels; the trailing
+    "Tot" column is deliberately excluded (round-level cells only).
+
+    Returns None if any column header fails to parse as a recognised round
+    label — refusing to guess an alignment for the rest of the table rather
+    than risk silently shifting every subsequent column."""
+    raw_labels = _ROUND_HEADER_RE.findall(table_html)
+    round_labels = [parse_round_label(raw) for raw in raw_labels]
+    if any(label is None for label in round_labels):
+        return None
+    n_rounds = len(round_labels)
 
     players: dict[str, tuple[str, list[str]]] = {}
     for href, name, rest in _PLAYER_ROW_RE.findall(table_html):
@@ -139,7 +153,7 @@ def _parse_table(table_html: str) -> tuple[list[int], dict[str, tuple[str, list[
         if len(cells) < n_rounds:
             continue  # malformed row for this table - skip rather than misalign
         players[source_id] = (name.strip(), cells[:n_rounds])
-    return round_numbers, players
+    return round_labels, players
 
 
 def _parse_subs_cell(text: str) -> tuple[bool, bool]:
@@ -207,13 +221,16 @@ class AFLTablesPlayerStatsProvider:
         tables_by_title = dict(zip(titles, blocks))
 
         # Parse every known stat table; a table this page doesn't have (e.g.
-        # an older/newer season with a slightly different field set) is
-        # simply absent from parsed_stats - its field stays unpopulated
-        # rather than guessed.
-        parsed_stats: dict[str, tuple[list[int], dict[str, tuple[str, list[str]]]]] = {}
+        # an older/newer season with a slightly different field set), or
+        # whose column headers didn't parse cleanly (_parse_table returning
+        # None), is simply absent from parsed_stats - its field stays
+        # unpopulated rather than guessed.
+        parsed_stats: dict[str, tuple[list[RoundLabel], dict[str, tuple[str, list[str]]]]] = {}
         for title, field_name in _STAT_TABLE_FIELDS.items():
             if title in tables_by_title:
-                parsed_stats[field_name] = _parse_table(tables_by_title[title])
+                parsed = _parse_table(tables_by_title[title])
+                if parsed is not None:
+                    parsed_stats[field_name] = parsed
         if not parsed_stats:
             raise RuntimeError(
                 f"AFL Tables game-by-game page for {team_name} {season_year}: no recognised stat tables found."
@@ -226,14 +243,16 @@ class AFLTablesPlayerStatsProvider:
         reference_field = "disposals" if "disposals" in parsed_stats else next(iter(parsed_stats))
         reference_rounds, reference_players = parsed_stats[reference_field]
 
-        subs_rounds: list[int] | None = None
+        subs_rounds: list[RoundLabel] | None = None
         subs_players: dict[str, tuple[str, list[str]]] = {}
         if "Subs" in tables_by_title:
-            subs_rounds, subs_players = _parse_table(tables_by_title["Subs"])
+            subs_parsed = _parse_table(tables_by_title["Subs"])
+            if subs_parsed is not None:
+                subs_rounds, subs_players = subs_parsed
 
         results: list[PlayerStatLine] = []
         for source_id, (player_name, reference_cells) in reference_players.items():
-            for i, round_number in enumerate(reference_rounds):
+            for i, round_label in enumerate(reference_rounds):
                 reference_cell = reference_cells[i].strip()
                 if not reference_cell or reference_cell == "&nbsp;":
                     continue  # player did not feature this round - no row, not a guessed zero
@@ -245,8 +264,8 @@ class AFLTablesPlayerStatsProvider:
                         subbed_on, subbed_off = _parse_subs_cell(subs_entry[1][i])
 
                 stats: dict[str, float] = {}
-                for field_name, (round_numbers, players) in parsed_stats.items():
-                    if round_numbers != reference_rounds:
+                for field_name, (round_labels, players) in parsed_stats.items():
+                    if round_labels != reference_rounds:
                         continue  # this table's columns don't line up with the reference table - skip this field, don't misalign
                     entry = players.get(source_id)
                     if entry is None:
@@ -263,7 +282,7 @@ class AFLTablesPlayerStatsProvider:
                     PlayerStatLine(
                         sport_code=sport_code,
                         season_year=season_year,
-                        round_number=round_number,
+                        round_label=round_label,
                         team_name=team_name,
                         player_name=player_name,
                         player_source_id=source_id,

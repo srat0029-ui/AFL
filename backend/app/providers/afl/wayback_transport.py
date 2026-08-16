@@ -17,27 +17,30 @@ when direct access is failing.
 """
 
 import os
-import re
 import subprocess
 from datetime import date
 
-_YEAR_RE = re.compile(r"(20\d{2})")
+# Wayback's "closest snapshot" shorthand (web.archive.org/web/{year}/{url})
+# resolves to whichever real capture is closest in time to this anchor - not
+# necessarily the latest one. A real bug found via the 2016-2025 rerun: for a
+# team-season URL anchored on season_year + 1, archive.org sometimes has no
+# capture near that date at all, and "closest" resolves BACKWARD to a
+# mid-season capture from years earlier (e.g. Carlton's 2017 page: the
+# closest-to-2018 capture on file was from July 2017, mid-season, missing
+# rounds 19-25 and every final - even though complete, full-season captures
+# of that exact page exist from 2023, Dec 2025 and Jan 2026, per
+# http://web.archive.org/cdx/search/cdx?url=...&output=json). A fixed
+# far-future anchor sidesteps this entirely: since "closest" is symmetric
+# but every real capture is necessarily in the past, anchoring beyond any
+# capture that will ever exist guarantees the LATEST available capture wins
+# for every URL, every time - which is also correct for a current,
+# still-in-progress season (latest-available is the most complete option
+# there too).
+_FAR_FUTURE_ANCHOR_YEAR = 2099
 
 
 def _target_wayback_year(url: str) -> int:
-    """Picks a year to anchor the Wayback "closest snapshot" lookup: the
-    year after whatever season year appears in the URL, so a full,
-    completed season is captured rather than a mid-season snapshot missing
-    later rounds. Wayback's own shorthand resolves to the closest actual
-    snapshot regardless (it will happily return a snapshot from well before
-    this target if that's all that exists, e.g. for the current
-    in-progress season), so this is a starting point, not a hard
-    requirement. Falls back to today's year if no year-like sequence is
-    found in the URL at all."""
-    match = _YEAR_RE.search(url)
-    if match:
-        return int(match.group(1)) + 1
-    return date.today().year
+    return _FAR_FUTURE_ANCHOR_YEAR
 
 
 def _run_curl(args: list[str], timeout: float):

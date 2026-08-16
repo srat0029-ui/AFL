@@ -111,7 +111,7 @@ def backfill_player_stats(
     failed: list[str] = []
     all_unmatched: list[str] = []
     for year in range(start_year, end_year + 1):
-        year_rows_seen = year_created = year_updated = year_unchanged = year_players_created = 0
+        year_rows_seen = year_created = year_updated = year_unchanged = year_players_created = year_fallback = 0
         for team_name in provider.known_team_names():
             try:
                 rows = provider.get_team_season_player_stats("AFL", year, team_name)
@@ -125,12 +125,13 @@ def backfill_player_stats(
             year_updated += result.stats_updated
             year_unchanged += result.stats_unchanged
             year_players_created += result.players_created
+            year_fallback += result.fallback_resolved
             if result.unmatched:
                 all_unmatched.extend(f"{year} {team_name}: {msg}" for msg in result.unmatched)
         print(
             f"AFL {year} player stats: {year_rows_seen} rows seen | "
             f"players_created={year_players_created} stats created={year_created} "
-            f"updated={year_updated} unchanged={year_unchanged}"
+            f"updated={year_updated} unchanged={year_unchanged} fallback_resolved={year_fallback}"
         )
     return failed, all_unmatched
 
