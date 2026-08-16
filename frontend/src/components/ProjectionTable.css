@@ -77,17 +77,31 @@
   white-space: nowrap;
 }
 
-.lineup-badge--expected_in {
+.lineup-badge--expected_in,
+.lineup-badge--confirmed_selected {
   background: #14532d;
   color: #86efac;
 }
 
-.lineup-badge--uncertain {
+.lineup-badge--substitute {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+.lineup-badge--named_in_squad,
+.lineup-badge--emergency {
+  background: #1e3a2f;
+  color: #6ee7b7;
+}
+
+.lineup-badge--uncertain,
+.lineup-badge--placeholder {
   background: #3f3a1c;
   color: #fde68a;
 }
 
-.lineup-badge--expected_out {
+.lineup-badge--expected_out,
+.lineup-badge--confirmed_out {
   background: #1f1414;
   color: #fca5a5;
 }

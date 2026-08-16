@@ -1025,6 +1025,16 @@ export async function fetchGoalUpcomingTeamDiagnostic(): Promise<GoalTeamDiagnos
 
 export type ExpectedLineupStatus = "expected_in" | "expected_out" | "uncertain";
 export type ConfidenceTierLive = "insufficient_history" | "lower_confidence" | "moderate_confidence" | "higher_confidence";
+export type SelectionStatus =
+  | "placeholder"
+  | "named_in_squad"
+  | "confirmed_selected"
+  | "emergency"
+  | "substitute"
+  | "confirmed_out"
+  | "uncertain";
+export type AnnouncementState = "teams_not_announced" | "squad_announced" | "final_team_confirmed";
+export type LineupFilter = "confirmed_only" | "confirmed_plus_expected" | "include_uncertain";
 
 export interface ExpectedLineup {
   id: number;
@@ -1033,8 +1043,13 @@ export interface ExpectedLineup {
   player_name: string;
   team_id: number;
   status: ExpectedLineupStatus;
+  selection_status: SelectionStatus;
+  is_confirmed: boolean;
   recorded_at: string;
   source: string;
+  source_timestamp: string | null;
+  source_reference: string | null;
+  is_manual_override: boolean;
   note: string | null;
   substitute_risk: boolean;
   returning_from_injury: boolean;
@@ -1046,6 +1061,7 @@ export interface ExpectedLineupInput {
   player_id: number;
   team_id: number;
   status: ExpectedLineupStatus;
+  selection_status?: SelectionStatus;
   note?: string | null;
   substitute_risk?: boolean;
   returning_from_injury?: boolean;
@@ -1063,6 +1079,62 @@ export function setMatchLineup(matchId: number, playerId: number, input: Expecte
 
 export function deleteMatchLineup(matchId: number, playerId: number): Promise<void> {
   return request(`/api/afl/matches/${matchId}/lineup/${playerId}`, { method: "DELETE" });
+}
+
+export interface LineupSummary {
+  match_id: number;
+  announcement_state: AnnouncementState;
+  n_confirmed_selected: number;
+  n_named_in_squad: number;
+  n_emergency: number;
+  n_substitute: number;
+  n_confirmed_out: number;
+  n_uncertain: number;
+  n_placeholder: number;
+  n_manual_overrides: number;
+  last_updated: string | null;
+}
+
+export function fetchLineupSummary(matchId: number): Promise<LineupSummary> {
+  return request(`/api/afl/matches/${matchId}/lineup/summary`);
+}
+
+export interface RosterSuggestion {
+  player_id: number;
+  display_name: string;
+  last_match_id: number;
+  last_played_at: string;
+}
+
+export function fetchSuggestedRoster(matchId: number, teamId: number): Promise<RosterSuggestion[]> {
+  return request(`/api/afl/matches/${matchId}/lineup/suggested-roster?team_id=${teamId}`);
+}
+
+export interface BulkApplyEntry {
+  player_id: number;
+  team_id: number;
+  selection_status: SelectionStatus;
+  note?: string | null;
+}
+
+export interface BulkApplyResult {
+  created: number[];
+  updated: number[];
+  status_changed: [number, string, string][];
+  skipped_manual_override: number[];
+  unresolved: string[];
+  ambiguous: string[];
+}
+
+export function bulkApplyLineup(
+  matchId: number,
+  entries: BulkApplyEntry[],
+  options: { source?: string; allowOverrideManual?: boolean } = {}
+): Promise<BulkApplyResult> {
+  return request(`/api/afl/matches/${matchId}/lineup/bulk-apply`, {
+    method: "POST",
+    body: JSON.stringify({ entries, source: options.source ?? "manual_bulk", allow_override_manual: options.allowOverrideManual ?? false }),
+  });
 }
 
 export interface ThresholdProbability {
@@ -1085,6 +1157,8 @@ export interface DisposalProjection {
   generated_at: string;
   data_cutoff: string;
   lineup_status: ExpectedLineupStatus;
+  selection_status: SelectionStatus;
+  is_confirmed: boolean;
   games_of_history: number;
   expected: number;
   median: number;
@@ -1114,6 +1188,8 @@ export interface GoalProjection {
   generated_at: string;
   data_cutoff: string;
   lineup_status: ExpectedLineupStatus;
+  selection_status: SelectionStatus;
+  is_confirmed: boolean;
   games_of_history: number;
   expected: number;
   thresholds: Record<string, ThresholdProbability>;
@@ -1167,6 +1243,7 @@ export interface UpcomingProjectionFilters {
   confidence?: ConfidenceTierLive;
   minProbability?: number;
   threshold?: number;
+  lineupFilter?: LineupFilter;
 }
 
 export async function fetchUpcomingProjections(
@@ -1181,6 +1258,7 @@ export async function fetchUpcomingProjections(
   if (filters.confidence) query.set("confidence", filters.confidence);
   if (filters.minProbability !== undefined) query.set("min_probability", String(filters.minProbability));
   if (filters.threshold !== undefined) query.set("threshold", String(filters.threshold));
+  if (filters.lineupFilter) query.set("lineup_filter", filters.lineupFilter);
   const qs = query.toString();
   return request(`/api/afl/player-projections/upcoming${qs ? `?${qs}` : ""}`);
 }
@@ -1239,6 +1317,7 @@ export interface PropInsight {
   line_type: PlayerPropLineType;
   threshold: number;
   recorded_at: string;
+  source: string;
   model_probability: number;
   model_fair_odds: number;
   offered_odds: number;
@@ -1249,13 +1328,99 @@ export interface PropInsight {
   expected_value: number;
   edge_category: EdgeCategory;
   confidence_tier: ConfidenceTierLive;
+  selection_status: SelectionStatus;
+  is_confirmed: boolean;
   warnings: string[];
 }
 
-export function fetchPropInsights(params: { market?: PlayerPropMarketType; confidence?: ConfidenceTierLive } = {}): Promise<PropInsight[]> {
+export function fetchPropInsights(
+  params: { market?: PlayerPropMarketType; confidence?: ConfidenceTierLive; includeUncertain?: boolean } = {}
+): Promise<PropInsight[]> {
   const query = new URLSearchParams();
   if (params.market) query.set("market", params.market);
   if (params.confidence) query.set("confidence", params.confidence);
+  if (params.includeUncertain !== undefined) query.set("include_uncertain", String(params.includeUncertain));
   const qs = query.toString();
   return request(`/api/afl/prop-insights${qs ? `?${qs}` : ""}`);
+}
+
+// --- Normalized (best-price, multi-bookmaker) Prop Insights ---
+
+export type OddsFreshness = "fresh" | "aging" | "stale";
+
+export interface BookmakerQuote {
+  bookmaker_name: string;
+  price_decimal: number;
+  recorded_at: string;
+  freshness: OddsFreshness;
+  source: string;
+}
+
+export interface PriceMovement {
+  first_price: number;
+  current_price: number;
+  highest_price: number;
+  lowest_price: number;
+  last_movement_at: string;
+}
+
+export interface OpportunityComponents {
+  difference: number;
+  expected_value: number;
+  confidence: number;
+  freshness: number;
+  lineup: number;
+  calibration: number;
+  penalty_multiplier: number;
+  penalty_reasons: string[];
+}
+
+export interface NormalizedPropInsight {
+  match_id: number;
+  round_number: number;
+  season_year: number;
+  player_id: number;
+  player_name: string;
+  market_type: PlayerPropMarketType;
+  line_type: PlayerPropLineType;
+  threshold: number;
+  model_probability: number;
+  model_fair_odds: number;
+  best_price: number;
+  best_bookmaker: string;
+  raw_implied_probability: number;
+  devigged_probability: number | null;
+  overround_removed: boolean;
+  difference_pp: number;
+  expected_value: number;
+  edge_category: EdgeCategory;
+  confidence_tier: ConfidenceTierLive;
+  selection_status: SelectionStatus;
+  is_confirmed: boolean;
+  warnings: string[];
+  n_bookmakers: number;
+  bookmakers: BookmakerQuote[];
+  odds_freshness: OddsFreshness;
+  price_movement: PriceMovement;
+  opportunity_score: number;
+  opportunity_components: OpportunityComponents;
+}
+
+export function fetchNormalizedPropInsights(
+  params: {
+    market?: PlayerPropMarketType;
+    confidence?: ConfidenceTierLive;
+    includeUncertain?: boolean;
+    opportunitiesOnly?: boolean;
+    matchId?: number;
+  } = {}
+): Promise<NormalizedPropInsight[]> {
+  const query = new URLSearchParams();
+  if (params.market) query.set("market", params.market);
+  if (params.confidence) query.set("confidence", params.confidence);
+  if (params.includeUncertain !== undefined) query.set("include_uncertain", String(params.includeUncertain));
+  if (params.opportunitiesOnly !== undefined) query.set("opportunities_only", String(params.opportunitiesOnly));
+  if (params.matchId !== undefined) query.set("match_id", String(params.matchId));
+  const qs = query.toString();
+  return request(`/api/afl/prop-insights/normalized${qs ? `?${qs}` : ""}`);
 }

@@ -104,10 +104,19 @@ _TABLE_TITLE_RE = re.compile(r'<th colspan="\d+">([^<]+)</th>')
 _TABLE_BLOCK_RE = re.compile(r'<table class="sortable".*?</table>', re.DOTALL)
 # Matches both numbered home-and-away columns ("R6") and bare finals codes
 # ("EF"/"QF"/"SF"/"PF"/"GF") — real header cells for both look identical
-# apart from the text (`<th width="N%">...</th>`); the trailing "Tot"
-# column has no width attribute, so it's naturally excluded. See
-# round_labels.py for interpreting the captured text.
-_ROUND_HEADER_RE = re.compile(r'<th width="\d+%">([A-Z0-9]+)</th>')
+# apart from the text (`<th width="N%">...</th>` or, on the live site as of
+# 2026-08 - unlike the Wayback-archived pages this was first verified
+# against - `<th width=N%>...</th>` with no quotes at all: afltables.com
+# changed its markup at some point after those archived snapshots were
+# taken. A real bug found live: the quoted-only version of this regex
+# doesn't error on the unquoted form, it just matches nothing, so a whole
+# team-season silently comes back with zero rows instead of failing
+# loudly - caught while investigating why the current, in-progress 2026
+# season had no player-stats coverage at all. The width attribute's quotes
+# are optional here for exactly that reason.); the trailing "Tot" column
+# has no width attribute, so it's naturally excluded. See round_labels.py
+# for interpreting the captured text.
+_ROUND_HEADER_RE = re.compile(r'<th width="?\d+%"?>([A-Z0-9]+)</th>')
 _PLAYER_ROW_RE = re.compile(
     r'<tr><td><a href="([^"]*players/[^"]+\.html)">([^<]+)</a></td>(.*?)</tr>', re.DOTALL
 )

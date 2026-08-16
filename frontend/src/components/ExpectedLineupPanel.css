@@ -146,3 +146,131 @@
   color: #fca5a5;
   font-size: 0.85rem;
 }
+
+.lineup-panel__announcement {
+  margin: 0.75rem 0 1rem;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  border: 1px solid #2a2f3a;
+  background: #1c212b;
+  color: #cbd2db;
+}
+
+.lineup-panel__announcement--teams_not_announced {
+  border-color: #3a3020;
+  background: #1f1a10;
+  color: #fde68a;
+}
+
+.lineup-panel__announcement--squad_announced {
+  border-color: #1e3a5f;
+  background: #14202f;
+  color: #93c5fd;
+}
+
+.lineup-panel__announcement--final_team_confirmed {
+  border-color: #14532d;
+  background: #10201a;
+  color: #86efac;
+}
+
+.lineup-panel__entry--confirmed_out {
+  opacity: 0.6;
+}
+
+.lineup-panel__override-badge {
+  margin-left: 0.4rem;
+  font-size: 0.62rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: #3a2f1c;
+  color: #fdba74;
+  cursor: help;
+}
+
+.lineup-panel__bulk {
+  border-top: 1px solid #2a2f3a;
+  padding-top: 1rem;
+  margin-top: 1rem;
+}
+
+.lineup-panel__bulk-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.lineup-panel__bulk-controls label,
+.lineup-panel__bulk-apply label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+  color: #9aa4b2;
+}
+
+.lineup-panel__bulk-controls select,
+.lineup-panel__bulk-apply select {
+  background: #0d0f14;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 0.5rem 0.6rem;
+  color: #f3f4f6;
+  font: inherit;
+}
+
+.lineup-panel__bulk-controls button,
+.lineup-panel__bulk-list-header button,
+.lineup-panel__bulk-apply button {
+  background: #1c212b;
+  border: 1px solid #2a2f3a;
+  border-radius: 6px;
+  padding: 0.5rem 0.9rem;
+  color: #cbd2db;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.lineup-panel__bulk-apply button {
+  background: #3b82f6;
+  border: none;
+  color: white;
+  font-weight: 500;
+}
+
+.lineup-panel__bulk-apply button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.lineup-panel__bulk-list {
+  border: 1px solid #2a2f3a;
+  border-radius: 8px;
+  padding: 0.6rem 0.8rem;
+  max-height: 220px;
+  overflow-y: auto;
+  margin-bottom: 0.75rem;
+}
+
+.lineup-panel__bulk-list-header {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.lineup-panel__bulk-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  font-size: 0.85rem;
+}
+
+.lineup-panel__bulk-apply {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-end;
+}

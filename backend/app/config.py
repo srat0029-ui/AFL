@@ -18,6 +18,13 @@ class Settings(BaseSettings):
     # client and a contact email. See https://api.squiggle.com.au/
     squiggle_user_agent: str = "AFL Analytics Prototype (personal project) - samvrathore@gmail.com"
 
+    # The Odds API (https://the-odds-api.com) key for automated player-prop
+    # odds ingestion. Empty string, not None, so `if not settings.the_odds_api_key`
+    # is the one check every caller needs - no separate "is it configured"
+    # branch. Absence must never crash the app: automated refresh reports the
+    # provider as unavailable and manual prop entry keeps working unaffected.
+    the_odds_api_key: str = ""
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

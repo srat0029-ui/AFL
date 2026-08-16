@@ -51,6 +51,7 @@ def persist_projection_run(db: Session, run: LiveProjectionRun) -> tuple[int, in
         existing.model_version = run.disposal_model_version
         existing.generated_at = run.generated_at
         existing.data_cutoff = run.data_cutoff
+        existing.team_model_version = run.team_model_version
         existing.lineup_status_at_generation = p.lineup_status
         existing.games_of_history = p.games_of_history
         existing.predicted_mean = p.predicted_mean
@@ -72,6 +73,7 @@ def persist_projection_run(db: Session, run: LiveProjectionRun) -> tuple[int, in
         existing.model_version = run.goal_model_version
         existing.generated_at = run.generated_at
         existing.data_cutoff = run.data_cutoff
+        existing.team_model_version = run.team_model_version
         existing.lineup_status_at_generation = p.lineup_status
         existing.games_of_history = p.games_of_history
         existing.predicted_mean = p.predicted_mean

@@ -4,7 +4,13 @@ autogenerate and for create_all() in tests.
 
 from app.models.bookmaker import Bookmaker
 from app.models.elo_rating import EloRating
-from app.models.expected_lineup import ExpectedLineup, ExpectedLineupStatus
+from app.models.expected_lineup import (
+    CONFIRMED_SELECTION_STATUSES,
+    ExpectedLineup,
+    ExpectedLineupStatus,
+    SelectionStatus,
+    derive_coarse_status,
+)
 from app.models.goal_model_run import GoalModelRun, GoalModelValidationMetric, PlayerGoalPrediction
 from app.models.match import Match, MatchStatus
 from app.models.model_run import ModelRun, ModelRunHistory, ModelValidationMetric
@@ -48,6 +54,9 @@ __all__ = [
     "PlayerGoalPrediction",
     "ExpectedLineup",
     "ExpectedLineupStatus",
+    "SelectionStatus",
+    "CONFIRMED_SELECTION_STATUSES",
+    "derive_coarse_status",
     "PlayerDisposalProjection",
     "PlayerGoalProjection",
     "PlayerPropMarket",

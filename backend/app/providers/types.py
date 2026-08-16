@@ -126,3 +126,57 @@ class OddsQuote:
     line_value: float | None = None  # e.g. the handicap or total line, when applicable
     is_closing_line: bool = False
     source: str = "manual"
+
+
+@dataclass(frozen=True)
+class ProviderEvent:
+    """One upcoming/live event as listed by a player-prop odds provider —
+    deliberately separate from Fixture (our fixture source, Squiggle) since
+    this is a DIFFERENT external source with its own id scheme; ingestion
+    resolves this to an already-ingested Match by (home_team, away_team,
+    commence_time), never creates a Match from it. See
+    app/providers/player_prop_odds.py."""
+
+    provider: str  # e.g. "the_odds_api"
+    event_id: str  # the provider's own event id - opaque, cached on Match.external_ids once resolved
+    sport_key: str  # the provider's own sport key, e.g. "aussierules_afl"
+    home_team: str  # as published by the provider - not assumed to match our Team.name exactly
+    away_team: str
+    commence_time: datetime
+
+
+@dataclass(frozen=True)
+class PlayerPropQuote:
+    """One bookmaker's price for one player-prop market outcome, as reported
+    by an odds provider — the player-prop analogue of OddsQuote.
+
+    Deliberately raw/unmapped: `market_key` and `selection` are the
+    PROVIDER'S own vocabulary (e.g. market_key="player_disposals_over",
+    selection="Over"), not yet translated into this project's PlayerMarket/
+    LineType. That translation is ingestion's job (see
+    app/player_modelling/prop_market_mapping.py) so a provider
+    implementation never needs to know this project's internal market
+    representation, and a market this project doesn't (yet) model can still
+    be reported rather than silently dropped by the provider layer itself.
+
+    player_name is the provider's own text and is NOT assumed to resolve
+    cleanly to a Player row — that's a separate, careful resolution step
+    (see app/player_modelling/prop_player_resolution.py) precisely because
+    silently trusting an external name would risk attaching a real
+    person's odds to the wrong player.
+    """
+
+    provider: str  # e.g. "the_odds_api"
+    event_id: str  # the provider's event id this quote belongs to
+    sport_code: str
+    bookmaker_key: str  # the provider's own bookmaker key, e.g. "sportsbet"
+    bookmaker_title: str  # display name, e.g. "Sportsbet"
+    bookmaker_region: str  # e.g. "au"
+    market_key: str  # the provider's raw market key, e.g. "player_disposals_over"
+    player_name: str  # as published by the provider
+    selection: str  # the provider's raw outcome name, e.g. "Over", "Under", "Yes"
+    price_decimal: float
+    bookmaker_last_update: datetime  # the bookmaker's own last-updated timestamp for this market
+    fetched_at: datetime  # when WE retrieved this quote - distinct from the bookmaker's own timestamp
+    threshold: float | None = None  # the provider's "point" value; None for markets with no line (e.g. anytime goalscorer)
+    raw_outcome: dict | None = None  # the raw outcome object, for traceability/debugging - not re-derived from

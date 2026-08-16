@@ -21,13 +21,16 @@ from app.models import (
     PlayerModelRun,
     PlayerModelValidationMetric,
     PlayerPropMarket,
+    SelectionStatus,
 )
 from app.player_modelling.disposal_distribution import NegativeBinomialDistribution
 from app.player_modelling.goal_distribution import HurdleDistribution, NegativeBinomialGoalDistribution
 from app.player_modelling.live_confidence import rare_event_warning
+from app.player_modelling.live_engine import compute_team_model_version
 from app.player_modelling.live_staleness import check_staleness
 from app.player_modelling.market import PlayerMarket
 from app.player_modelling.prop_math import categorize_edge, compare_model_to_market
+from app.player_modelling.team_selection_ingestion import derive_announcement_state
 from app.player_modelling.upcoming_team_context import build_upcoming_team_context
 from app.player_modelling.upcoming_features import load_next_upcoming_round
 
@@ -56,35 +59,39 @@ def price_line(dist, threshold: float, line_type: str) -> float:
     return dist.prob_over(threshold)
 
 
-def _current_disposal_model_version(db: Session) -> str | None:
+def current_disposal_model_version(db: Session) -> str | None:
     run = db.scalar(select(PlayerModelRun).where(PlayerModelRun.is_promoted.is_(True)))
     return f"{run.model_name}@{run.run_at.isoformat()}" if run else None
 
 
-def _current_goal_model_version(db: Session) -> str | None:
+def current_goal_model_version(db: Session) -> str | None:
     run = db.scalar(select(GoalModelRun).where(GoalModelRun.is_promoted.is_(True)))
     return f"{run.model_name}@{run.run_at.isoformat()}" if run else None
 
 
-def _current_lineup_status(db: Session, player_id: int, match_id: int) -> str | None:
-    lineup = db.scalar(select(ExpectedLineup).where(ExpectedLineup.player_id == player_id, ExpectedLineup.match_id == match_id))
-    return lineup.status if lineup else None
+def current_lineup_for(db: Session, player_id: int, match_id: int) -> ExpectedLineup | None:
+    return db.scalar(select(ExpectedLineup).where(ExpectedLineup.player_id == player_id, ExpectedLineup.match_id == match_id))
 
 
-def _disposal_view(db: Session, row: PlayerDisposalProjection, current_model_version: str | None) -> dict:
+def _disposal_view(
+    db: Session, row: PlayerDisposalProjection, current_model_version: str | None, current_team_model_version: str | None = None
+) -> dict:
     dist = disposal_distribution_for(row)
     thresholds = {}
     for t in DISPOSAL_THRESHOLDS:
         prob = dist.prob_at_least(t)
         thresholds[str(t)] = {"probability": prob, "warning": rare_event_warning(PlayerMarket.DISPOSALS.value, float(t), prob)}
 
+    current_lineup = current_lineup_for(db, row.player_id, row.match_id)
     staleness = check_staleness(
         projection_model_version=row.model_version,
         projection_data_cutoff=row.data_cutoff,
         projection_lineup_status=row.lineup_status_at_generation,
         current_model_version=current_model_version,
         current_data_cutoff=None,
-        current_lineup_status=_current_lineup_status(db, row.player_id, row.match_id),
+        current_lineup_status=current_lineup.status if current_lineup else None,
+        projection_team_model_version=row.team_model_version,
+        current_team_model_version=current_team_model_version,
     )
 
     match = row.match
@@ -102,6 +109,8 @@ def _disposal_view(db: Session, row: PlayerDisposalProjection, current_model_ver
         "generated_at": row.generated_at,
         "data_cutoff": row.data_cutoff,
         "lineup_status": row.lineup_status_at_generation,
+        "selection_status": current_lineup.selection_status if current_lineup else "uncertain",
+        "is_confirmed": current_lineup.is_confirmed if current_lineup else False,
         "games_of_history": row.games_of_history,
         "expected": dist.mean(),
         "median": dist.median(),
@@ -117,20 +126,25 @@ def _disposal_view(db: Session, row: PlayerDisposalProjection, current_model_ver
     }
 
 
-def _goal_view(db: Session, row: PlayerGoalProjection, current_model_version: str | None) -> dict:
+def _goal_view(
+    db: Session, row: PlayerGoalProjection, current_model_version: str | None, current_team_model_version: str | None = None
+) -> dict:
     dist = goal_distribution_for(row)
     thresholds = {}
     for t in GOAL_THRESHOLDS:
         prob = dist.prob_at_least(t)
         thresholds[str(t)] = {"probability": prob, "warning": rare_event_warning(PlayerMarket.GOALS.value, float(t), prob)}
 
+    current_lineup = current_lineup_for(db, row.player_id, row.match_id)
     staleness = check_staleness(
         projection_model_version=row.model_version,
         projection_data_cutoff=row.data_cutoff,
         projection_lineup_status=row.lineup_status_at_generation,
         current_model_version=current_model_version,
         current_data_cutoff=None,
-        current_lineup_status=_current_lineup_status(db, row.player_id, row.match_id),
+        current_lineup_status=current_lineup.status if current_lineup else None,
+        projection_team_model_version=row.team_model_version,
+        current_team_model_version=current_team_model_version,
     )
 
     match = row.match
@@ -148,6 +162,8 @@ def _goal_view(db: Session, row: PlayerGoalProjection, current_model_version: st
         "generated_at": row.generated_at,
         "data_cutoff": row.data_cutoff,
         "lineup_status": row.lineup_status_at_generation,
+        "selection_status": current_lineup.selection_status if current_lineup else "uncertain",
+        "is_confirmed": current_lineup.is_confirmed if current_lineup else False,
         "games_of_history": row.games_of_history,
         "expected": dist.mean(),
         "thresholds": thresholds,
@@ -165,13 +181,25 @@ def load_match_projections(db: Session, match_id: int) -> dict:
         select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id == match_id)
     ).all()
     goal_rows = db.scalars(select(PlayerGoalProjection).where(PlayerGoalProjection.match_id == match_id)).all()
-    current_disposal_version = _current_disposal_model_version(db)
-    current_goal_version = _current_goal_model_version(db)
+    current_disposal_version = current_disposal_model_version(db)
+    current_goal_version = current_goal_model_version(db)
+    current_team_version = compute_team_model_version(db)
     return {
         "match_id": match_id,
-        "disposals": [_disposal_view(db, r, current_disposal_version) for r in disposal_rows],
-        "goals": [_goal_view(db, r, current_goal_version) for r in goal_rows],
+        "disposals": [_disposal_view(db, r, current_disposal_version, current_team_version) for r in disposal_rows],
+        "goals": [_goal_view(db, r, current_goal_version, current_team_version) for r in goal_rows],
     }
+
+
+#: Section 9's three lineup-certainty tiers for Player Insights, strictest
+#: first. "confirmed_out" players are EXCLUDED unconditionally at every
+#: tier, not just the strict ones (Section 10) - a confirmed-out player is
+#: never a useful "insight" to show in a consumer-facing view.
+LINEUP_FILTER_CONFIRMED_ONLY = "confirmed_only"
+LINEUP_FILTER_CONFIRMED_PLUS_EXPECTED = "confirmed_plus_expected"
+LINEUP_FILTER_INCLUDE_UNCERTAIN = "include_uncertain"
+
+EXPECTED_IN_SELECTION_STATUSES = {"confirmed_selected", "substitute"}
 
 
 @dataclass(frozen=True)
@@ -183,6 +211,7 @@ class ProjectionFilters:
     confidence: str | None = None
     min_probability: float | None = None
     probability_threshold: float | None = None  # which threshold min_probability is measured against
+    lineup_filter: str | None = None  # LINEUP_FILTER_* - None behaves like LINEUP_FILTER_INCLUDE_UNCERTAIN
 
 
 def _apply_common_filters(views: list[dict], filters: ProjectionFilters) -> list[dict]:
@@ -197,13 +226,25 @@ def _apply_common_filters(views: list[dict], filters: ProjectionFilters) -> list
         result = [v for v in result if v["match_id"] == filters.match_id]
     if filters.confidence is not None:
         result = [v for v in result if v["confidence_tier"] == filters.confidence]
+
+    # Section 10: a confirmed-out player is never shown in an active
+    # consumer view, regardless of which lineup_filter tier was requested.
+    result = [v for v in result if v.get("selection_status") != "confirmed_out"]
+
+    if filters.lineup_filter == LINEUP_FILTER_CONFIRMED_ONLY:
+        result = [v for v in result if v.get("is_confirmed")]
+    elif filters.lineup_filter == LINEUP_FILTER_CONFIRMED_PLUS_EXPECTED:
+        result = [v for v in result if v.get("is_confirmed") or v.get("selection_status") in EXPECTED_IN_SELECTION_STATUSES]
+    # LINEUP_FILTER_INCLUDE_UNCERTAIN / None: no further filtering beyond the confirmed-out exclusion above.
+
     return result
 
 
 def load_upcoming_disposal_projections(db: Session, filters: ProjectionFilters) -> list[dict]:
     rows = db.scalars(select(PlayerDisposalProjection)).all()
-    current_version = _current_disposal_model_version(db)
-    views = [_disposal_view(db, r, current_version) for r in rows]
+    current_version = current_disposal_model_version(db)
+    current_team_version = compute_team_model_version(db)
+    views = [_disposal_view(db, r, current_version, current_team_version) for r in rows]
     views = _apply_common_filters(views, filters)
     if filters.min_probability is not None:
         threshold = filters.probability_threshold or 20.0
@@ -215,8 +256,9 @@ def load_upcoming_disposal_projections(db: Session, filters: ProjectionFilters) 
 
 def load_upcoming_goal_projections(db: Session, filters: ProjectionFilters) -> list[dict]:
     rows = db.scalars(select(PlayerGoalProjection)).all()
-    current_version = _current_goal_model_version(db)
-    views = [_goal_view(db, r, current_version) for r in rows]
+    current_version = current_goal_model_version(db)
+    current_team_version = compute_team_model_version(db)
+    views = [_goal_view(db, r, current_version, current_team_version) for r in rows]
     views = _apply_common_filters(views, filters)
     if filters.min_probability is not None:
         threshold = filters.probability_threshold or 2.0
@@ -231,9 +273,33 @@ def load_player_projection(db: Session, player_id: int) -> dict | None:
     goal_row = db.scalar(select(PlayerGoalProjection).where(PlayerGoalProjection.player_id == player_id))
     if disposal_row is None and goal_row is None:
         return None
+    current_team_version = compute_team_model_version(db)
     return {
-        "disposals": _disposal_view(db, disposal_row, _current_disposal_model_version(db)) if disposal_row else None,
-        "goals": _goal_view(db, goal_row, _current_goal_model_version(db)) if goal_row else None,
+        "disposals": _disposal_view(db, disposal_row, current_disposal_model_version(db), current_team_version) if disposal_row else None,
+        "goals": _goal_view(db, goal_row, current_goal_model_version(db), current_team_version) if goal_row else None,
+    }
+
+
+# --- Lineup summary (Sections 7-8) ------------------------------------------
+
+
+def load_lineup_summary(db: Session, match_id: int) -> dict:
+    rows = db.scalars(select(ExpectedLineup).where(ExpectedLineup.match_id == match_id)).all()
+    counts = {s.value: 0 for s in SelectionStatus}
+    for r in rows:
+        counts[r.selection_status] = counts.get(r.selection_status, 0) + 1
+    return {
+        "match_id": match_id,
+        "announcement_state": derive_announcement_state([r.selection_status for r in rows]),
+        "n_confirmed_selected": counts.get(SelectionStatus.CONFIRMED_SELECTED.value, 0),
+        "n_named_in_squad": counts.get(SelectionStatus.NAMED_IN_SQUAD.value, 0),
+        "n_emergency": counts.get(SelectionStatus.EMERGENCY.value, 0),
+        "n_substitute": counts.get(SelectionStatus.SUBSTITUTE.value, 0),
+        "n_confirmed_out": counts.get(SelectionStatus.CONFIRMED_OUT.value, 0),
+        "n_uncertain": counts.get(SelectionStatus.UNCERTAIN.value, 0),
+        "n_placeholder": counts.get(SelectionStatus.PLACEHOLDER.value, 0),
+        "n_manual_overrides": sum(1 for r in rows if r.is_manual_override),
+        "last_updated": max((r.recorded_at for r in rows), default=None),
     }
 
 
@@ -254,7 +320,7 @@ _GOAL_CALIBRATION_THRESHOLDS = (1, 2, 3, 4, 5)
 MIN_CALIBRATION_SAMPLE = 1000
 
 
-def _historical_calibration_note(db: Session, market_type: str, threshold: float) -> str | None:
+def historical_calibration_note(db: Session, market_type: str, threshold: float) -> str | None:
     if market_type == PlayerMarket.DISPOSALS.value:
         run = db.scalar(select(PlayerModelRun).where(PlayerModelRun.is_promoted.is_(True)))
         candidates = _DISPOSAL_CALIBRATION_THRESHOLDS
@@ -281,10 +347,19 @@ def _historical_calibration_note(db: Session, market_type: str, threshold: float
     )
 
 
-# --- Prop insights (Sections 13-15) ----------------------------------------
+# --- Prop insights (Sections 13-15, gating per Section 10) -----------------
+
+_TIER_ORDER = ["insufficient_history", "lower_confidence", "moderate_confidence", "higher_confidence"]
 
 
-def load_prop_insights(db: Session, *, market: str | None = None, min_confidence: str | None = None) -> list[dict]:
+def downgrade_confidence(tier: str) -> str:
+    idx = _TIER_ORDER.index(tier) if tier in _TIER_ORDER else 0
+    return _TIER_ORDER[max(idx - 1, 0)]
+
+
+def load_prop_insights(
+    db: Session, *, market: str | None = None, min_confidence: str | None = None, include_uncertain: bool = True
+) -> list[dict]:
     quotes = db.scalars(select(PlayerPropMarket).order_by(PlayerPropMarket.recorded_at.desc())).all()
     if market is not None:
         quotes = [q for q in quotes if q.market_type == market]
@@ -300,7 +375,7 @@ def load_prop_insights(db: Session, *, market: str | None = None, min_confidence
             if proj is None:
                 continue
             dist = disposal_distribution_for(proj)
-            confidence_tier = proj.confidence_tier
+            base_confidence_tier = proj.confidence_tier
             base_warnings = list(proj.warnings)
         elif q.market_type == PlayerMarket.GOALS.value:
             proj = db.scalar(
@@ -311,10 +386,24 @@ def load_prop_insights(db: Session, *, market: str | None = None, min_confidence
             if proj is None:
                 continue
             dist = goal_distribution_for(proj)
-            confidence_tier = proj.confidence_tier
+            base_confidence_tier = proj.confidence_tier
             base_warnings = list(proj.warnings)
         else:
             continue
+
+        # Section 10: a confirmed-out player's prop is never shown in an
+        # active consumer view at all - not just downgraded.
+        current_lineup = current_lineup_for(db, q.player_id, q.match_id)
+        selection_status = current_lineup.selection_status if current_lineup else "uncertain"
+        is_confirmed = current_lineup.is_confirmed if current_lineup else False
+        if selection_status == "confirmed_out":
+            continue
+
+        is_uncertain_participation = not is_confirmed and selection_status not in EXPECTED_IN_SELECTION_STATUSES
+        if is_uncertain_participation and not include_uncertain:
+            continue
+
+        confidence_tier = downgrade_confidence(base_confidence_tier) if is_uncertain_participation else base_confidence_tier
 
         if min_confidence is not None and CONFIDENCE_RANK.get(confidence_tier, 0) < CONFIDENCE_RANK.get(min_confidence, 0):
             continue
@@ -326,7 +415,9 @@ def load_prop_insights(db: Session, *, market: str | None = None, min_confidence
         warnings = base_warnings + ([warning] if warning else [])
         if not comparison.overround_removed:
             warnings.append("Only one side of this market was quoted — the raw implied probability likely still includes bookmaker margin.")
-        calibration_note = _historical_calibration_note(db, q.market_type, q.threshold)
+        if is_uncertain_participation:
+            warnings.append("This player's participation is not confirmed — confidence has been downgraded for this insight.")
+        calibration_note = historical_calibration_note(db, q.market_type, q.threshold)
         if calibration_note:
             warnings.append(calibration_note)
 
@@ -344,6 +435,7 @@ def load_prop_insights(db: Session, *, market: str | None = None, min_confidence
                 "line_type": q.line_type,
                 "threshold": q.threshold,
                 "recorded_at": q.recorded_at,
+                "source": q.source,
                 "model_probability": comparison.model_probability,
                 "model_fair_odds": comparison.model_fair_odds,
                 "offered_odds": comparison.offered_odds,
@@ -354,6 +446,8 @@ def load_prop_insights(db: Session, *, market: str | None = None, min_confidence
                 "expected_value": comparison.expected_value,
                 "edge_category": category,
                 "confidence_tier": confidence_tier,
+                "selection_status": selection_status,
+                "is_confirmed": is_confirmed,
                 "warnings": warnings,
             }
         )

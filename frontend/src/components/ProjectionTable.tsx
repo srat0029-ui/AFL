@@ -1,7 +1,7 @@
 import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import "./ProjectionTable.css";
-import type { ConfidenceTierLive, DisposalProjection, ExpectedLineupStatus, GoalProjection } from "../api/client";
+import type { ConfidenceTierLive, DisposalProjection, GoalProjection, SelectionStatus } from "../api/client";
 
 const CONFIDENCE_LABELS: Record<ConfidenceTierLive, string> = {
   higher_confidence: "Higher",
@@ -10,9 +10,13 @@ const CONFIDENCE_LABELS: Record<ConfidenceTierLive, string> = {
   insufficient_history: "Insufficient history",
 };
 
-const LINEUP_LABELS: Record<ExpectedLineupStatus, string> = {
-  expected_in: "Expected in",
-  expected_out: "Expected out",
+const SELECTION_LABELS: Record<SelectionStatus, string> = {
+  placeholder: "Placeholder",
+  named_in_squad: "Named in squad",
+  confirmed_selected: "Confirmed",
+  emergency: "Emergency",
+  substitute: "Substitute",
+  confirmed_out: "Confirmed out",
   uncertain: "Uncertain",
 };
 
@@ -192,7 +196,9 @@ export function DisposalProjectionTable({ rows, thresholds = ["20", "25", "30", 
                   </span>
                 </td>
                 <td>
-                  <span className={`lineup-badge lineup-badge--${row.lineup_status}`}>{LINEUP_LABELS[row.lineup_status]}</span>
+                  <span className={`lineup-badge lineup-badge--${row.selection_status}`} title={row.is_stale ? "Lineup/model state has changed since this projection was generated" : undefined}>
+                    {SELECTION_LABELS[row.selection_status]}
+                  </span>
                 </td>
               </tr>
               {expanded === row.player_id && <TransparencyDrawer key={`${row.player_id}-drawer`} row={row} labels={DISPOSAL_INPUT_LABELS} />}
@@ -266,7 +272,9 @@ export function GoalProjectionTable({ rows, thresholds = ["1", "2", "3", "4"], s
                   </span>
                 </td>
                 <td>
-                  <span className={`lineup-badge lineup-badge--${row.lineup_status}`}>{LINEUP_LABELS[row.lineup_status]}</span>
+                  <span className={`lineup-badge lineup-badge--${row.selection_status}`} title={row.is_stale ? "Lineup/model state has changed since this projection was generated" : undefined}>
+                    {SELECTION_LABELS[row.selection_status]}
+                  </span>
                 </td>
               </tr>
               {expanded === row.player_id && <TransparencyDrawer key={`${row.player_id}-drawer`} row={row} labels={GOAL_INPUT_LABELS} />}

@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import GoalModelRun, PlayerModelRun
+from app.models import GoalModelRun, ModelRun, PlayerModelRun
 from app.player_modelling.disposal_backtest import build_dataset as build_disposal_dataset
 from app.player_modelling.goal_backtest import build_goal_dataset
 from app.player_modelling.live_confidence import live_disposal_confidence, live_goal_confidence
@@ -36,6 +36,7 @@ __all__ = [
     "GoalProjectionResult",
     "LiveProjectionRun",
     "generate_live_projections",
+    "compute_team_model_version",
 ]
 
 
@@ -86,6 +87,7 @@ class LiveProjectionRun:
     goal_run: GoalModelRun | None
     disposal_model_version: str | None
     goal_model_version: str | None
+    team_model_version: str | None
     data_cutoff: datetime | None
     generated_at: datetime
     disposal_projections: list[DisposalProjectionResult]
@@ -105,19 +107,40 @@ def _load_promoted_runs(db: Session) -> tuple[PlayerModelRun, GoalModelRun]:
     return disposal_run, goal_run
 
 
-def generate_live_projections(db: Session) -> LiveProjectionRun:
+def compute_team_model_version(db: Session) -> str | None:
+    """A version string that changes whenever Elo or Poisson's PROMOTED
+    CONFIG changes (re-tuned + re-run via elo_cli.py/poisson_cli.py) — see
+    live_staleness.py's 4th freshness axis. None if either isn't
+    persisted yet (build_upcoming_team_context will raise
+    ModelsUnavailableError in that case anyway)."""
+    elo_run = db.scalar(select(ModelRun).where(ModelRun.model_name == "elo"))
+    poisson_run = db.scalar(select(ModelRun).where(ModelRun.model_name == "poisson"))
+    if elo_run is None or poisson_run is None:
+        return None
+    return f"elo@{elo_run.run_at.isoformat()}+poisson@{poisson_run.run_at.isoformat()}"
+
+
+def generate_live_projections(db: Session, target_match_ids: set[int] | None = None) -> LiveProjectionRun:
+    """target_match_ids: when given, scopes processing to just these
+    upcoming matches (Section 5's "regenerate only affected matches") —
+    they must already be a subset of the next upcoming round; a match_id
+    outside that round is silently ignored, same as if it weren't upcoming
+    at all. None (the default) processes the whole next round, as before."""
     now = datetime.now(timezone.utc)
     upcoming_matches = load_next_upcoming_round(db)
+    if target_match_ids is not None:
+        upcoming_matches = [m for m in upcoming_matches if m.match_id in target_match_ids]
     if not upcoming_matches:
         return LiveProjectionRun(
             upcoming_matches=[], expected_players=[], disposal_run=None, goal_run=None,
-            disposal_model_version=None, goal_model_version=None, data_cutoff=None,
+            disposal_model_version=None, goal_model_version=None, team_model_version=None, data_cutoff=None,
             generated_at=now, disposal_projections=[], goal_projections=[],
         )
 
     match_ids = [m.match_id for m in upcoming_matches]
     expected_players = load_expected_players(db, match_ids)
     disposal_run, goal_run = _load_promoted_runs(db)
+    team_model_version = compute_team_model_version(db)
 
     # Raises ModelsUnavailableError if elo_cli/poisson_cli haven't been run
     # yet — deliberately left to propagate to the caller (see cli.py),
@@ -191,6 +214,6 @@ def generate_live_projections(db: Session) -> LiveProjectionRun:
 
     return LiveProjectionRun(
         upcoming_matches=upcoming_matches, expected_players=expected_players, disposal_run=disposal_run, goal_run=goal_run,
-        disposal_model_version=disposal_model_version, goal_model_version=goal_model_version, data_cutoff=data_cutoff,
-        generated_at=now, disposal_projections=disposal_projections, goal_projections=goal_projections,
+        disposal_model_version=disposal_model_version, goal_model_version=goal_model_version, team_model_version=team_model_version,
+        data_cutoff=data_cutoff, generated_at=now, disposal_projections=disposal_projections, goal_projections=goal_projections,
     )

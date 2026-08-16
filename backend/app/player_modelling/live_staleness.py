@@ -22,6 +22,8 @@ def check_staleness(
     current_model_version: str | None,
     current_data_cutoff: datetime | None,
     current_lineup_status: str | None,
+    projection_team_model_version: str | None = None,
+    current_team_model_version: str | None = None,
 ) -> StalenessCheck:
     reasons: list[str] = []
 
@@ -30,6 +32,18 @@ def check_staleness(
 
     if current_data_cutoff is not None and projection_data_cutoff < current_data_cutoff:
         reasons.append("More recent match results are available than this projection used.")
+
+    # A 4th, independent axis (team-selection stage, Section 6): the Elo/
+    # Poisson team-context CONFIG changed (e.g. re-tuned and re-promoted)
+    # without necessarily any new completed match being added — distinct
+    # from current_data_cutoff moving forward, which is a NEW-RESULTS
+    # change, not a config change.
+    if (
+        current_team_model_version is not None
+        and projection_team_model_version is not None
+        and projection_team_model_version != current_team_model_version
+    ):
+        reasons.append("The team Elo/Poisson context has been re-tuned since this projection was generated.")
 
     if current_lineup_status is None:
         reasons.append("This player's expected-lineup record has been removed since this projection was generated.")

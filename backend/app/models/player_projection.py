@@ -22,7 +22,12 @@ player's features, so it moves forward every time new results are ingested
 even if the model itself hasn't changed; `lineup_status_at_generation`
 freezes what the expected-lineup status was AT GENERATION TIME, so a later
 change to ExpectedLineup can be detected as staleness without needing a
-second read (see live_staleness.py).
+second read (see live_staleness.py). `team_model_version` is a 4th,
+independent freshness axis (team-selection stage, Section 6): the Elo/
+Poisson team-context CONFIG version used to build this player's team
+features — distinct from `data_cutoff` (new completed results), since
+re-tuning/re-promoting Elo or Poisson with the SAME set of completed
+matches changes team context without moving data_cutoff at all.
 """
 
 from datetime import datetime
@@ -47,6 +52,7 @@ class PlayerDisposalProjection(TimestampMixin, Base):
     model_version: Mapped[str] = mapped_column(String(128), nullable=False)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     data_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    team_model_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
     lineup_status_at_generation: Mapped[str] = mapped_column(String(16), nullable=False)
 
     games_of_history: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -82,6 +88,7 @@ class PlayerGoalProjection(TimestampMixin, Base):
     model_version: Mapped[str] = mapped_column(String(128), nullable=False)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     data_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    team_model_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
     lineup_status_at_generation: Mapped[str] = mapped_column(String(16), nullable=False)
 
     games_of_history: Mapped[int] = mapped_column(Integer, nullable=False)

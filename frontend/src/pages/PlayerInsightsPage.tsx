@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import "./PlayerInsightsPage.css";
 import Disclaimer from "../components/Disclaimer";
 import { DisposalProjectionTable, GoalProjectionTable } from "../components/ProjectionTable";
@@ -8,6 +8,7 @@ import {
   type ConfidenceTierLive,
   type DisposalProjection,
   type GoalProjection,
+  type LineupFilter,
   type Team,
 } from "../api/client";
 
@@ -19,6 +20,12 @@ const CONFIDENCE_OPTIONS: { value: ConfidenceTierLive | ""; label: string }[] = 
   { value: "insufficient_history", label: "Insufficient history" },
 ];
 
+const LINEUP_FILTER_OPTIONS: { value: LineupFilter; label: string }[] = [
+  { value: "include_uncertain", label: "Include uncertain (default)" },
+  { value: "confirmed_plus_expected", label: "Confirmed + expected" },
+  { value: "confirmed_only", label: "Confirmed only" },
+];
+
 function PlayerInsightsPage() {
   const [market, setMarket] = useState<"player_disposals" | "player_goals">("player_disposals");
   const [teams, setTeams] = useState<Team[]>([]);
@@ -26,6 +33,8 @@ function PlayerInsightsPage() {
   const [confidence, setConfidence] = useState<ConfidenceTierLive | "">("");
   const [minProbability, setMinProbability] = useState("");
   const [threshold, setThreshold] = useState<string>("20");
+  const [lineupFilter, setLineupFilter] = useState<LineupFilter>("include_uncertain");
+  const userChangedLineupFilter = useRef(false);
 
   const [disposals, setDisposals] = useState<DisposalProjection[]>([]);
   const [goals, setGoals] = useState<GoalProjection[]>([]);
@@ -46,14 +55,26 @@ function PlayerInsightsPage() {
       confidence: confidence === "" ? undefined : confidence,
       minProbability: minProb,
       threshold: minProb !== undefined ? Number(threshold) : undefined,
+      lineupFilter,
     })
       .then((result) => {
-        setDisposals(result.disposals ?? []);
-        setGoals(result.goals ?? []);
+        const disposalRows = result.disposals ?? [];
+        const goalRows = result.goals ?? [];
+        setDisposals(disposalRows);
+        setGoals(goalRows);
+        // Section 9: default to the safest useful setting once official
+        // teams start appearing, but never override a choice the user
+        // already made themselves.
+        if (!userChangedLineupFilter.current && lineupFilter === "include_uncertain") {
+          const rows = market === "player_disposals" ? disposalRows : goalRows;
+          if (rows.some((r) => r.is_confirmed)) {
+            setLineupFilter("confirmed_plus_expected");
+          }
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load projections"))
       .finally(() => setLoading(false));
-  }, [market, teamId, confidence, minProbability, threshold]);
+  }, [market, teamId, confidence, minProbability, threshold, lineupFilter]);
 
   const thresholdOptions = market === "player_disposals" ? ["15", "20", "25", "30", "35", "40"] : ["1", "2", "3", "4", "5"];
 
@@ -122,6 +143,22 @@ function PlayerInsightsPage() {
             onChange={(e) => setMinProbability(e.target.value)}
             placeholder="e.g. 50"
           />
+        </label>
+        <label>
+          Lineup status
+          <select
+            value={lineupFilter}
+            onChange={(e) => {
+              userChangedLineupFilter.current = true;
+              setLineupFilter(e.target.value as LineupFilter);
+            }}
+          >
+            {LINEUP_FILTER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
         </label>
       </section>
 

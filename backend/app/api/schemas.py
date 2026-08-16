@@ -859,10 +859,21 @@ class ExpectedLineupStatusEnum(str, Enum):
     UNCERTAIN = "uncertain"
 
 
+class SelectionStatusEnum(str, Enum):
+    PLACEHOLDER = "placeholder"
+    NAMED_IN_SQUAD = "named_in_squad"
+    CONFIRMED_SELECTED = "confirmed_selected"
+    EMERGENCY = "emergency"
+    SUBSTITUTE = "substitute"
+    CONFIRMED_OUT = "confirmed_out"
+    UNCERTAIN = "uncertain"
+
+
 class ExpectedLineupCreate(BaseModel):
     player_id: int
     team_id: int
     status: ExpectedLineupStatusEnum
+    selection_status: SelectionStatusEnum | None = None
     note: str | None = Field(default=None, max_length=500)
     substitute_risk: bool = False
     returning_from_injury: bool = False
@@ -877,13 +888,61 @@ class ExpectedLineupRead(BaseModel):
     player_name: str
     team_id: int
     status: str
+    selection_status: str
+    is_confirmed: bool
     recorded_at: datetime
     source: str
+    source_timestamp: datetime | None
+    source_reference: str | None
+    is_manual_override: bool
     note: str | None
     substitute_risk: bool
     returning_from_injury: bool
     role_note: str | None
     expected_tog_adjustment: float | None
+
+
+class RosterSuggestionRead(BaseModel):
+    player_id: int
+    display_name: str
+    last_match_id: int
+    last_played_at: datetime
+
+
+class BulkApplyEntry(BaseModel):
+    player_id: int
+    team_id: int
+    selection_status: SelectionStatusEnum
+    note: str | None = None
+
+
+class BulkApplyRequest(BaseModel):
+    entries: list[BulkApplyEntry]
+    source: str = Field(default="manual_bulk", max_length=32)
+    allow_override_manual: bool = False
+
+
+class BulkApplyResult(BaseModel):
+    created: list[int]
+    updated: list[int]
+    status_changed: list[tuple[int, str, str]]
+    skipped_manual_override: list[int]
+    unresolved: list[str]
+    ambiguous: list[str]
+
+
+class LineupSummaryRead(BaseModel):
+    match_id: int
+    announcement_state: str
+    n_confirmed_selected: int
+    n_named_in_squad: int
+    n_emergency: int
+    n_substitute: int
+    n_confirmed_out: int
+    n_uncertain: int
+    n_placeholder: int
+    n_manual_overrides: int
+    last_updated: datetime | None
 
 
 class ThresholdProbabilityRead(BaseModel):
@@ -906,6 +965,8 @@ class DisposalProjectionRead(BaseModel):
     generated_at: datetime
     data_cutoff: datetime
     lineup_status: str
+    selection_status: str
+    is_confirmed: bool
     games_of_history: int
     expected: float
     median: float
@@ -935,6 +996,8 @@ class GoalProjectionRead(BaseModel):
     generated_at: datetime
     data_cutoff: datetime
     lineup_status: str
+    selection_status: str
+    is_confirmed: bool
     games_of_history: int
     expected: float
     thresholds: dict[str, ThresholdProbabilityRead]
@@ -1001,6 +1064,7 @@ class PropInsightRead(BaseModel):
     line_type: str
     threshold: float
     recorded_at: datetime
+    source: str
     model_probability: float
     model_fair_odds: float
     offered_odds: float
@@ -1011,7 +1075,72 @@ class PropInsightRead(BaseModel):
     expected_value: float
     edge_category: str
     confidence_tier: str
+    selection_status: str
+    is_confirmed: bool
     warnings: list[str]
+
+
+class BookmakerQuoteRead(BaseModel):
+    bookmaker_name: str
+    price_decimal: float
+    recorded_at: datetime
+    freshness: str  # "fresh" | "aging" | "stale"
+    source: str
+
+
+class PriceMovementRead(BaseModel):
+    first_price: float
+    current_price: float
+    highest_price: float
+    lowest_price: float
+    last_movement_at: datetime
+
+
+class OpportunityComponentsRead(BaseModel):
+    difference: float
+    expected_value: float
+    confidence: float
+    freshness: float
+    lineup: float
+    calibration: float
+    penalty_multiplier: float
+    penalty_reasons: list[str]
+
+
+class NormalizedPropInsightRead(BaseModel):
+    """Best-price, multi-bookmaker view of one normalized player-prop market
+    (Sections 12-23 of the automated-odds stage) — distinct from
+    PropInsightRead, which is the per-quote (single bookmaker/snapshot)
+    view manual entry has always used."""
+
+    match_id: int
+    round_number: int
+    season_year: int
+    player_id: int
+    player_name: str
+    market_type: str
+    line_type: str
+    threshold: float
+    model_probability: float
+    model_fair_odds: float
+    best_price: float
+    best_bookmaker: str
+    raw_implied_probability: float
+    devigged_probability: float | None
+    overround_removed: bool
+    difference_pp: float
+    expected_value: float
+    edge_category: str
+    confidence_tier: str
+    selection_status: str
+    is_confirmed: bool
+    warnings: list[str]
+    n_bookmakers: int
+    bookmakers: list[BookmakerQuoteRead]
+    odds_freshness: str
+    price_movement: PriceMovementRead
+    opportunity_score: float
+    opportunity_components: OpportunityComponentsRead
 
 
 class GoalTeamDiagnosticRead(BaseModel):

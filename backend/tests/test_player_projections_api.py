@@ -84,6 +84,16 @@ def _seed_projection(db, match, player, team, mean=20.0, alpha=3.0):
             confidence_tier="higher_confidence", warnings=[], input_features={"goals_career_avg": 0.5},
         )
     )
+    # A projection is never persisted in reality without a corresponding
+    # ExpectedLineup row (see live_engine.py) - seed one here as
+    # confirmed_selected so tests using this fixture get the "fully
+    # confirmed, no gating downgrade" baseline case by default.
+    db.add(
+        ExpectedLineup(
+            match_id=match.id, player_id=player.id, team_id=team.id, status="expected_in",
+            selection_status="confirmed_selected", is_confirmed=True, recorded_at=now, source="manual",
+        )
+    )
     db.commit()
 
 

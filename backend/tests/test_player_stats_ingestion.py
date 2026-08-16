@@ -399,10 +399,16 @@ def test_fallback_resolves_unique_leftover_pairing(db_session):
     assert stats_by_match[seed["match3"].id].disposals == 24  # resolved via fallback
 
 
-def test_fallback_reports_ambiguous_when_leftover_counts_differ(db_session):
-    """Two unresolved source rounds but only one unclaimed match - the
-    brief's explicit "if multiple candidates remain, leave unmatched"
-    case. Nothing should be guessed."""
+def test_fallback_reports_nothing_resolved_when_team_totals_differ(db_session):
+    """Three source rounds but only two Squiggle matches for this team -
+    the round-number sets disagree (so nothing here can be trusted as a
+    label) and the sequence lengths disagree too, so there's no safe
+    position-pairing either. Nothing should be guessed - not even round 1,
+    even though it happens to look like a direct match: the whole point of
+    this module's redesign (see its docstring) is that a round number
+    "coincidentally" resolving is exactly what silently produced wrong
+    data in production before, so once a team's numbering is shown to be
+    untrustworthy, none of its rows get partial credit."""
     seed = _seed_bye_scenario(db_session)
     rows = [
         _row("Carlton", round_number=1, disposals=18),
@@ -411,9 +417,9 @@ def test_fallback_reports_ambiguous_when_leftover_counts_differ(db_session):
     ]
     result = ingest_player_stats(db_session, rows, season_year=2024)
 
-    assert result.stats_created == 1  # only round 1 (direct match) resolves
+    assert result.stats_created == 0
     assert result.fallback_resolved == 0
-    assert len(result.unmatched) == 2  # rounds 2 and 5 both left unresolved
+    assert len(result.unmatched) == 3  # rounds 1, 2 and 5 all left unresolved
     assert any("refusing to guess" in m for m in result.unmatched)
 
 
@@ -472,6 +478,80 @@ def test_fallback_pairs_multiple_leftovers_in_chronological_order(db_session):
     assert stats_by_match[match1.id].disposals == 18
     assert stats_by_match[match4.id].disposals == 24
     assert stats_by_match[match7.id].disposals == 29
+
+
+def test_coincidental_round_number_match_does_not_silently_misattach(db_session):
+    """Reproduces the real production bug (reported by a user, verified
+    against real live AFL Tables pages): North Melbourne's 2025 page omits
+    an "R1" column entirely, so every later round on their page is one
+    higher than Squiggle's number for the same real game - AFL Tables'
+    "R24" cell is Squiggle's round 23 (North Melbourne v Richmond; Harry
+    Sheezel's 54-disposal game), not Squiggle's round 24 (v Adelaide).
+
+    This fixture reproduces the shape that made the OLD (round_number,
+    team) keyed lookup dangerous: source round 3 and Squiggle round 3 BOTH
+    exist for this team, so a naive lookup finds exactly one candidate and
+    "succeeds" - but it's the wrong match, because the team's numbering is
+    shifted by one starting from round 2. Only comparing the two sources'
+    round-number SETS first (and finding them unequal) catches this."""
+    sport = Sport(code="AFL", name="Australian Football League")
+    db_session.add(sport)
+    db_session.flush()
+    season = Season(sport_id=sport.id, year=2025)
+    db_session.add(season)
+    db_session.flush()
+    # Squiggle: this team plays rounds 1, 2, 3 (no bye). Round 4 exists in
+    # the season (other teams play it) but this team has no match there.
+    round1 = Round(season_id=season.id, round_number=1)
+    round2 = Round(season_id=season.id, round_number=2)
+    round3 = Round(season_id=season.id, round_number=3)
+    round4 = Round(season_id=season.id, round_number=4)
+    nm = Team(sport_id=sport.id, name="North Melbourne", short_name="NOR")
+    ric = Team(sport_id=sport.id, name="Richmond", short_name="RIC")
+    ade = Team(sport_id=sport.id, name="Adelaide", short_name="ADE")
+    gws = Team(sport_id=sport.id, name="Greater Western Sydney", short_name="GWS")
+    db_session.add_all([round1, round2, round3, round4, nm, ric, ade, gws])
+    db_session.flush()
+    match1 = Match(  # Squiggle round 1: NM v GWS
+        sport_id=sport.id, season_id=season.id, round_id=round1.id,
+        home_team_id=nm.id, away_team_id=gws.id,
+        scheduled_start=datetime(2025, 3, 15, tzinfo=timezone.utc),
+        status=MatchStatus.COMPLETED, home_score=79, away_score=133,
+    )
+    match2 = Match(  # Squiggle round 2: NM v Richmond - the real 54-disposal game
+        sport_id=sport.id, season_id=season.id, round_id=round2.id,
+        home_team_id=nm.id, away_team_id=ric.id,
+        scheduled_start=datetime(2025, 3, 22, tzinfo=timezone.utc),
+        status=MatchStatus.COMPLETED, home_score=135, away_score=87,
+    )
+    match3 = Match(  # Squiggle round 3: NM v Adelaide
+        sport_id=sport.id, season_id=season.id, round_id=round3.id,
+        home_team_id=nm.id, away_team_id=ade.id,
+        scheduled_start=datetime(2025, 3, 29, tzinfo=timezone.utc),
+        status=MatchStatus.COMPLETED, home_score=100, away_score=113,
+    )
+    db_session.add_all([match1, match2, match3])
+    db_session.commit()
+
+    # AFL Tables: this team's page has no "R1" column at all (didn't
+    # feature in whatever AFL Tables considers round 1) - its grid starts
+    # at R2 for the real round-1 game, R3 for the real round-2 game
+    # (Richmond, 54 disposals), R4 for the real round-3 game.
+    rows = [
+        _row("North Melbourne", round_number=2, player_name="Sheezel, Harry", player_source_id="players/H/Harry_Sheezel.html", disposals=31),
+        _row("North Melbourne", round_number=3, player_name="Sheezel, Harry", player_source_id="players/H/Harry_Sheezel.html", disposals=54),
+        _row("North Melbourne", round_number=4, player_name="Sheezel, Harry", player_source_id="players/H/Harry_Sheezel.html", disposals=32),
+    ]
+    result = ingest_player_stats(db_session, rows, season_year=2025)
+
+    assert result.stats_created == 3
+    assert result.unmatched == []
+    assert result.fallback_resolved == 3  # every row's round number needed correcting
+
+    stats_by_match = {s.match_id: s for s in db_session.scalars(select(PlayerMatchStat)).all()}
+    assert stats_by_match[match1.id].disposals == 31
+    assert stats_by_match[match2.id].disposals == 54  # the Richmond game - not match3 (Adelaide)
+    assert stats_by_match[match3.id].disposals == 32
 
 
 def test_fallback_deterministic_across_reruns(db_session):
