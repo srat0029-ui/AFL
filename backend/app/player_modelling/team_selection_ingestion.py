@@ -30,7 +30,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import ExpectedLineup, Player, PlayerMatchStat, SelectionStatus, derive_coarse_status
+from app.models import ExpectedLineup, Player, PlayerAlias, PlayerMatchStat, SelectionStatus, derive_coarse_status
 
 ANNOUNCEMENT_NOT_ANNOUNCED = "teams_not_announced"
 ANNOUNCEMENT_SQUAD_ANNOUNCED = "squad_announced"
@@ -55,6 +55,20 @@ class PlayerResolution:
 
 def resolve_player_identity(db: Session, team_id: int, player_name: str) -> PlayerResolution:
     name_norm = player_name.strip()
+
+    # Section 9 of the live-operations stage brief: an explicit, reviewed
+    # PlayerAlias claim is tried first, same reasoning as
+    # prop_player_resolution.py's RESOLUTION_ALIAS tier — never fuzzy,
+    # always a specific human-entered string-to-player mapping.
+    aliased = db.scalars(
+        select(PlayerAlias).where(func.lower(PlayerAlias.alias_name) == name_norm.lower())
+    ).all()
+    aliased_players = {a.player.id: a.player for a in aliased if a.player.current_team_id == team_id}
+    if len(aliased_players) == 1:
+        return PlayerResolution(player=next(iter(aliased_players.values())))
+    if len(aliased_players) > 1:
+        return PlayerResolution(player=None, is_ambiguous=True)
+
     current_matches = db.scalars(
         select(Player).where(Player.current_team_id == team_id, func.lower(Player.display_name) == func.lower(name_norm))
     ).all()

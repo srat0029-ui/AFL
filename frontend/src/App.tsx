@@ -5,7 +5,9 @@ import DashboardPage from "./pages/DashboardPage";
 import MatchDetailPage from "./pages/MatchDetailPage";
 import PlayerInsightsPage from "./pages/PlayerInsightsPage";
 import PlayerProfilePage from "./pages/PlayerProfilePage";
+import LiveStatusPage from "./pages/LiveStatusPage";
 import PropInsightsPage from "./pages/PropInsightsPage";
+import RealMarketTrackingPage from "./pages/RealMarketTrackingPage";
 import StatusPage from "./pages/StatusPage";
 
 function App() {
@@ -22,6 +24,12 @@ function App() {
         <NavLink to="/prop-insights" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Prop Insights
         </NavLink>
+        <NavLink to="/real-market-tracking" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          Real Market Tracking
+        </NavLink>
+        <NavLink to="/live-status" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          Live Status
+        </NavLink>
         <NavLink to="/backtest" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Backtesting
         </NavLink>
@@ -35,6 +43,8 @@ function App() {
         <Route path="/players/:playerId" element={<PlayerProfilePage />} />
         <Route path="/player-insights" element={<PlayerInsightsPage />} />
         <Route path="/prop-insights" element={<PropInsightsPage />} />
+        <Route path="/real-market-tracking" element={<RealMarketTrackingPage />} />
+        <Route path="/live-status" element={<LiveStatusPage />} />
         <Route path="/backtest" element={<BacktestPage />} />
         <Route path="/status" element={<StatusPage />} />
       </Routes>

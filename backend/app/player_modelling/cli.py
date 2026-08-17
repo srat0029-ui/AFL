@@ -14,9 +14,29 @@
   refresh-prop-odds  — Sections 9/27 of the automated-odds stage brief:
                        fetches current AFL player-prop odds from The Odds
                        API for the upcoming round, resolves events/players,
-                       and persists quote snapshots. Idempotent and quota-
-                       aware (see prop_odds_quota.py) — safe to run on a
-                       schedule later without changing this command.
+                       persists quote snapshots, AND (Section 17 of the
+                       market-logging stage) freezes a PropMarketObservation
+                       for each new/changed quote against the model's
+                       current belief. Idempotent and quota-aware (see
+                       prop_odds_quota.py) — safe to run on a schedule.
+  settle-props       — Section 16 of the market-logging stage brief:
+                       finds completed matches with unsettled real prop
+                       observations, settles each against real
+                       PlayerMatchStat results (won/lost/push/void/
+                       unresolved), and reports a summary. Idempotent —
+                       an already-settled observation is never re-touched.
+  run-live-cycle     — Sections 1-3 of the live-operations stage brief: the
+                       single command to run through an AFL round —
+                       orchestrates fixtures -> player-stat updates ->
+                       settle-props -> stale-projection regeneration ->
+                       quota-aware, match-time-aware odds refresh ->
+                       observation creation -> sanity checks -> a persisted
+                       operational summary (see live_cycle.py). Every step
+                       reuses one of the commands above; nothing here is a
+                       new implementation. Exit code 0 = fully clean run,
+                       1 = partial (some step recoverably failed but the
+                       cycle still made progress), 2 = blocked (nothing at
+                       all could be done - see live_cycle.py's docstring).
 
 Kept as its own entry point (not folded into disposal_cli.py/goal_cli.py,
 which run the much slower historical research backtests) so re-running it
@@ -26,40 +46,29 @@ Usage:
     python -m app.player_modelling.cli project-upcoming
     python -m app.player_modelling.cli refresh-live
     python -m app.player_modelling.cli refresh-prop-odds [--force] [--min-interval-minutes N]
+    python -m app.player_modelling.cli settle-props
+    python -m app.player_modelling.cli run-live-cycle
 """
 
 import sys
 from datetime import timedelta
 
-from sqlalchemy import select
-
 from app.config import get_settings
 from app.database import SessionLocal
-from app.models import ExpectedLineup, SelectionStatus
 from app.player_modelling.live_change_detection import detect_matches_needing_regeneration
+from app.player_modelling.live_cycle import run_live_cycle
 from app.player_modelling.live_engine import (
     ModelsUnavailableError,
     PromotedModelsUnavailableError,
     generate_live_projections,
 )
 from app.player_modelling.live_persistence import persist_projection_run
-from app.player_modelling.live_sanity import run_all_sanity_checks
+from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, run_all_sanity_checks
+from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
-from app.player_modelling.prop_odds_quota import DEFAULT_MIN_REFRESH_INTERVAL
+from app.player_modelling.prop_settlement import settle_all_completed_matches
 from app.player_modelling.upcoming_features import count_missing_lineup_candidates, load_all_lineup_player_ids, load_next_upcoming_round
 from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiProvider
-
-
-def _confirmed_out_player_ids_by_match(db, match_ids: list[int]) -> dict[int, set[int]]:
-    if not match_ids:
-        return {}
-    rows = db.scalars(
-        select(ExpectedLineup).where(ExpectedLineup.match_id.in_(match_ids), ExpectedLineup.selection_status == SelectionStatus.CONFIRMED_OUT.value)
-    ).all()
-    result: dict[int, set[int]] = {}
-    for r in rows:
-        result.setdefault(r.match_id, set()).add(r.player_id)
-    return result
 
 
 def _report_confidence_distributions(run) -> None:
@@ -83,7 +92,7 @@ def _report_confidence_distributions(run) -> None:
 
 
 def _report_sanity_checks(db, run) -> None:
-    confirmed_out_by_match = _confirmed_out_player_ids_by_match(db, [m.match_id for m in run.upcoming_matches])
+    confirmed_out_by_match = confirmed_out_player_ids_by_match(db, [m.match_id for m in run.upcoming_matches])
     anomalies = run_all_sanity_checks(run, confirmed_out_by_match)
     if not anomalies:
         print("\nSanity checks: no anomalies found.")
@@ -222,7 +231,12 @@ def _refresh_prop_odds(force: bool = False, min_interval_minutes: float | None =
             return 0
 
         print("\nStep 2: listing current AFL events from The Odds API (free — does not use quota)...")
-        min_interval = DEFAULT_MIN_REFRESH_INTERVAL if min_interval_minutes is None else timedelta(minutes=min_interval_minutes)
+        if min_interval_minutes is not None:
+            min_interval: timedelta | None = timedelta(minutes=min_interval_minutes)
+            print(f"  using flat override interval: {min_interval}")
+        else:
+            min_interval = None
+            print("  using match-time-aware refresh policy (more frequent as kickoff approaches — see prop_odds_quota.py)")
         report = run_prop_odds_refresh(
             db, provider, upcoming_matches, MODELLED_MARKET_KEYS, min_refresh_interval=min_interval, force=force
         )
@@ -230,7 +244,8 @@ def _refresh_prop_odds(force: bool = False, min_interval_minutes: float | None =
         print(f"  {report.events_seen} AFL events returned by the provider.")
         print(f"\nStep 3: resolving events to matches, fetching quotes for matches due a refresh...")
         print(f"  matches refreshed (quota spent): {report.matches_resolved}")
-        print(f"  matches skipped (fresh within {min_interval}): {report.matches_skipped_fresh}")
+        skip_label = f"fresh within {min_interval}" if min_interval is not None else "fresh per the match-time-aware policy"
+        print(f"  matches skipped ({skip_label}): {report.matches_skipped_fresh}")
         if report.matches_unresolved:
             print(f"  {len(report.matches_unresolved)} event(s) could not be resolved to a match:")
             for msg in report.matches_unresolved[:10]:
@@ -265,20 +280,94 @@ def _refresh_prop_odds(force: bool = False, min_interval_minutes: float | None =
         else:
             print("  no request was made this run (nothing due a refresh).")
 
+        print("\nStep 6: creating model-market observations (freezing quote + model snapshot pairs)...")
+        obs_report = ObservationCreationReport()
+        for m in upcoming_matches:
+            match_report = create_observations_for_match(db, m.match_id)
+            obs_report.quotes_considered += match_report.quotes_considered
+            obs_report.observations_created += match_report.observations_created
+            obs_report.observations_unchanged += match_report.observations_unchanged
+            obs_report.skipped_manual_source += match_report.skipped_manual_source
+            obs_report.skipped_complementary_side += match_report.skipped_complementary_side
+            obs_report.skipped_no_projection += match_report.skipped_no_projection
+            obs_report.skipped_confirmed_out += match_report.skipped_confirmed_out
+            obs_report.skipped_unsupported_market += match_report.skipped_unsupported_market
+        print(
+            f"  {obs_report.observations_created} new observations, {obs_report.observations_unchanged} unchanged (idempotent) "
+            f"of {obs_report.quotes_considered} quotes considered"
+        )
+        if obs_report.skipped_no_projection:
+            print(f"  {obs_report.skipped_no_projection} quote(s) skipped — no live projection for this player yet")
+
         return 0
+    finally:
+        db.close()
+
+
+def _settle_props() -> int:
+    db = SessionLocal()
+    try:
+        print("Step 1: finding completed matches with unsettled real prop observations...")
+        report = settle_all_completed_matches(db)
+        if report.matches_considered == 0:
+            print("  No completed matches have unsettled observations — nothing to settle.")
+            return 0
+        print(f"  {report.matches_considered} match(es) considered.")
+
+        print("\nStep 2: settlement results")
+        print(f"  settled: {report.observations_settled} (already settled, skipped: {report.already_settled_skipped})")
+        print(
+            f"  won={report.observations_won} lost={report.observations_lost} push={report.observations_pushed} "
+            f"void={report.observations_voided} unresolved={report.observations_unresolved}"
+        )
+        if report.observations_voided:
+            print(f"  {report.observations_voided} observation(s) voided — match complete, other players' stats present, but this player has none (DNP).")
+        if report.awaiting_player_stats:
+            print(f"  {report.awaiting_player_stats} observation(s) left pending — match complete but no player-match stats ingested for it yet (will retry next cycle).")
+        if report.observations_flagged_for_review:
+            print(f"  {report.observations_flagged_for_review} observation(s) flagged for manual review — implausible actual stat value.")
+
+        return 0
+    finally:
+        db.close()
+
+
+def _run_live_cycle() -> int:
+    db = SessionLocal()
+    try:
+        run = run_live_cycle(db)
+        print(f"Live cycle run {run.id} — overall status: {run.overall_status.upper()}\n")
+        for step in run.steps:
+            print(f"  [{step['status']:>18}] {step['step']}: {step['detail']}")
+        print("\nSummary:")
+        print(f"  matches affected: {run.matches_affected}")
+        print(f"  quotes added: {run.quotes_added}")
+        print(f"  observations added: {run.observations_added}")
+        print(f"  observations settled: {run.observations_settled}")
+        if run.odds_credits_consumed is not None:
+            print(f"  odds API: requests_used={run.odds_credits_consumed} requests_remaining={run.odds_credits_remaining}")
+        exit_code = {"ok": 0, "partial": 1, "blocked": 2}[run.overall_status]
+        return exit_code
     finally:
         db.close()
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if not argv or argv[0] not in ("project-upcoming", "refresh-live", "refresh-prop-odds"):
-        print("Usage: python -m app.player_modelling.cli project-upcoming|refresh-live|refresh-prop-odds [--force] [--min-interval-minutes N]")
+    if not argv or argv[0] not in ("project-upcoming", "refresh-live", "refresh-prop-odds", "settle-props", "run-live-cycle"):
+        print(
+            "Usage: python -m app.player_modelling.cli "
+            "project-upcoming|refresh-live|refresh-prop-odds [--force] [--min-interval-minutes N]|settle-props|run-live-cycle"
+        )
         return 2
     if argv[0] == "project-upcoming":
         return _project_upcoming()
     if argv[0] == "refresh-live":
         return _refresh_live()
+    if argv[0] == "settle-props":
+        return _settle_props()
+    if argv[0] == "run-live-cycle":
+        return _run_live_cycle()
 
     force = "--force" in argv
     min_interval_minutes: float | None = None

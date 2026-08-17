@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import "./ExpectedLineupPanel.css";
 import {
   bulkApplyLineup,
+  bulkRemoveLineup,
   deleteMatchLineup,
   fetchLineupSummary,
   fetchMatchLineup,
@@ -71,6 +72,7 @@ function ExpectedLineupPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, aw
   const [bulkStatus, setBulkStatus] = useState<SelectionStatus>("placeholder");
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkReportMsg, setBulkReportMsg] = useState<string | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -181,6 +183,31 @@ function ExpectedLineupPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, aw
 
   const homeLineup = lineup.filter((l) => l.team_id === homeTeamId);
   const awayLineup = lineup.filter((l) => l.team_id === awayTeamId);
+
+  // Section 7 (live-operations stage): players currently on this match's
+  // lineup for the team just loaded, but NOT present in the freshly-loaded
+  // suggested roster - i.e. players who look to have been omitted/dropped
+  // since that reference roster was set. Only meaningful once a suggestion
+  // has actually been loaded for a team.
+  const suggestedPlayerIds = new Set(suggestions.map((s) => s.player_id));
+  const omittedFromSuggestion =
+    suggestions.length > 0 ? lineup.filter((l) => l.team_id === suggestTeamId && !suggestedPlayerIds.has(l.player_id)) : [];
+
+  async function removeOmitted() {
+    if (omittedFromSuggestion.length === 0) return;
+    setRemoveBusy(true);
+    setBulkReportMsg(null);
+    try {
+      const result = await bulkRemoveLineup(matchId, omittedFromSuggestion.map((l) => l.player_id));
+      setBulkReportMsg(`Removed ${result.removed.length} player(s) not in the new roster.`);
+      await load();
+      onChanged?.();
+    } catch (err) {
+      setBulkReportMsg(err instanceof Error ? err.message : "Bulk remove failed");
+    } finally {
+      setRemoveBusy(false);
+    }
+  }
 
   function renderTeamList(teamLineup: ExpectedLineup[], teamName: string) {
     return (
@@ -306,6 +333,22 @@ function ExpectedLineupPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, aw
                 {bulkBusy ? "Applying…" : `Apply to ${selectedSuggestionIds.size} player(s)`}
               </button>
             </div>
+            {omittedFromSuggestion.length > 0 && (
+              <div className="lineup-panel__diff">
+                <p className="hint">
+                  <strong>{omittedFromSuggestion.length} player(s)</strong> currently on this match's lineup for this
+                  team are NOT in the roster you just loaded — likely dropped/omitted:
+                </p>
+                <ul className="lineup-panel__diff-list">
+                  {omittedFromSuggestion.map((l) => (
+                    <li key={l.player_id}>{l.player_name}</li>
+                  ))}
+                </ul>
+                <button type="button" disabled={removeBusy} onClick={removeOmitted}>
+                  {removeBusy ? "Removing…" : `Remove all ${omittedFromSuggestion.length}`}
+                </button>
+              </div>
+            )}
             {bulkReportMsg && <p className="hint">{bulkReportMsg}</p>}
           </>
         )}

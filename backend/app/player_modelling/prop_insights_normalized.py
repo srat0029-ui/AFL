@@ -43,8 +43,8 @@ from app.player_modelling.prop_opportunity_ranking import compute_opportunity_sc
 
 CONFIDENCE_RANK = {"insufficient_history": 0, "lower_confidence": 1, "moderate_confidence": 2, "higher_confidence": 3}
 
-_PRIMARY_SELECTIONS = {"over", "yes", None}  # None: pre-automation manual rows (see PlayerPropMarket.selection docstring)
-_COMPLEMENTARY_SELECTIONS = {"under", "no"}
+PRIMARY_SELECTIONS = {"over", "yes", None}  # None: pre-automation manual rows (see PlayerPropMarket.selection docstring)
+COMPLEMENTARY_SELECTIONS = {"under", "no"}
 
 
 @dataclass(frozen=True)
@@ -89,8 +89,8 @@ def load_normalized_prop_insights(
 
     results: list[dict] = []
     for key, rows in grouped.items():
-        primary_rows = [r for r in rows if r.selection in _PRIMARY_SELECTIONS]
-        complementary_rows = [r for r in rows if r.selection in _COMPLEMENTARY_SELECTIONS]
+        primary_rows = [r for r in rows if r.selection in PRIMARY_SELECTIONS]
+        complementary_rows = [r for r in rows if r.selection in COMPLEMENTARY_SELECTIONS]
         if not primary_rows:
             continue
 

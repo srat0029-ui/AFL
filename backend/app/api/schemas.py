@@ -931,6 +931,15 @@ class BulkApplyResult(BaseModel):
     ambiguous: list[str]
 
 
+class BulkRemoveRequest(BaseModel):
+    player_ids: list[int]
+
+
+class BulkRemoveResult(BaseModel):
+    removed: list[int]
+    not_found: list[int]
+
+
 class LineupSummaryRead(BaseModel):
     match_id: int
     announcement_state: str
@@ -1149,3 +1158,237 @@ class GoalTeamDiagnosticRead(BaseModel):
     sum_predicted_goals: float
     team_expected_goals: float
     gap: float
+
+
+# --- Real market tracking (Sections 9-15, 20 of the market-logging stage) ---
+
+
+class DatasetSummaryRead(BaseModel):
+    total_observations: int
+    settled_observations: int
+    pending_observations: int
+    unique_player_matches: int
+    unique_players: int
+    unique_matches: int
+    unique_market_lines: int
+    bookmakers: list[str]
+    earliest_observed_at: datetime | None
+    latest_observed_at: datetime | None
+
+
+class ModelVsMarketRead(BaseModel):
+    n_settled_binary: int
+    model_brier: float | None
+    model_log_loss: float | None
+    market_brier: float | None
+    market_log_loss: float | None
+    market_probability_source: str
+
+
+class CalibrationBucketRead(BaseModel):
+    probability_range: str
+    n: int
+    mean_predicted: float | None
+    mean_actual: float | None
+
+
+class HypotheticalReturnRead(BaseModel):
+    n_settled_binary: int
+    n_pushed: int
+    n_voided: int
+    total_profit_flat_stake: float
+    roi: float | None
+    win_rate: float | None
+    average_odds: float | None
+    average_model_probability: float | None
+    average_difference_pp: float | None
+
+
+class BucketResultRead(BaseModel):
+    label: str
+    n_observations: int
+    n_unique_player_matches: int
+    returns: HypotheticalReturnRead
+    sample_size_level: str
+
+
+class CoverageMetricsRead(BaseModel):
+    total_raw_quotes: int
+    frozen_observations: int
+    unique_player_matches: int
+    unique_matches: int
+    unique_market_lines: int
+    bookmakers: list[str]
+    market_families: list[str]
+    average_snapshots_per_player_market: float | None
+
+
+class MarketOpenTimingRead(BaseModel):
+    player_id: int
+    player_name: str
+    match_id: int
+    bookmaker_id: int
+    bookmaker_name: str
+    market_type: str
+    line_type: str
+    threshold: float
+    first_observed_at: datetime
+    first_hours_before_kickoff: float
+    latest_observed_at: datetime
+    latest_hours_before_kickoff: float
+    n_price_changes: int
+    n_observations: int
+
+
+class RealMarketTrackingReportRead(BaseModel):
+    label: str
+    summary: DatasetSummaryRead
+    model_vs_market: ModelVsMarketRead
+    model_calibration: list[CalibrationBucketRead]
+    market_calibration: list[CalibrationBucketRead]
+    overall_return: HypotheticalReturnRead
+    edge_buckets: list[BucketResultRead]
+    confidence_buckets: list[BucketResultRead]
+    lineup_buckets: list[BucketResultRead]
+    timing_buckets: list[BucketResultRead]
+    overall_sample_level: str
+    coverage: CoverageMetricsRead
+    market_open_timing: list[MarketOpenTimingRead]
+
+
+class QuoteHistoryEntryRead(BaseModel):
+    observed_at: datetime
+    bookmaker_name: str
+    offered_odds: float
+    raw_implied_probability: float
+    devigged_probability: float | None
+    model_probability: float
+    difference_pp: float
+    confidence_tier: str
+    selection_status_at_observation: str
+    market_result: str | None
+
+
+class NewPlayerCreate(BaseModel):
+    display_name: str = Field(max_length=128)
+    team_id: int
+    note: str | None = Field(default=None, max_length=200)
+    force: bool = False  # bypass the duplicate-display-name safety check
+
+
+class NewPlayerRead(BaseModel):
+    id: int
+    display_name: str
+    current_team_id: int | None
+    source: str
+    is_active: bool | None
+
+
+class DuplicateNameWarningRead(BaseModel):
+    duplicate_warning: bool = True
+    existing_player_id: int
+    existing_player_source: str
+    existing_player_team_id: int | None
+
+
+class PlayerAliasCreate(BaseModel):
+    player_id: int
+    alias_name: str = Field(max_length=128)
+    source: str | None = Field(default=None, max_length=32)
+    note: str | None = Field(default=None, max_length=200)
+
+
+class PlayerAliasRead(BaseModel):
+    id: int
+    player_id: int
+    player_name: str
+    alias_name: str
+    source: str | None
+    note: str | None
+    created_at: datetime
+
+
+class MatchMarketDiagnosisRead(BaseModel):
+    match_id: int
+    category: str
+    detail: str
+    would_be_skipped_this_cycle: bool
+    hours_to_kickoff: float
+
+
+class MatchCoverageStatusRead(BaseModel):
+    match_id: int
+    home_team_name: str
+    away_team_name: str
+    scheduled_start: datetime
+    match_status: str
+    simple_status: str
+    lineup_announcement_state: str
+    projections_generated: bool
+    bookmaker_event_exists: bool
+    bookmaker_props_observed: bool
+    bookmakers_observed: list[str]
+    n_quotes: int
+    last_odds_refresh: datetime | None
+    n_observations: int
+    n_observations_settled: int
+    n_observations_awaiting_settlement: int
+    diagnosis: MatchMarketDiagnosisRead
+
+
+class RoundSummaryRead(BaseModel):
+    n_upcoming_matches: int
+    n_matches_with_projections: int
+    n_matches_with_bookmaker_events: int
+    n_matches_with_prop_markets: int
+    n_unique_players_with_markets: int
+    n_real_quotes_stored: int
+    n_real_observations_stored: int
+    n_confirmed_lineups: int
+    n_placeholder_or_uncertain_lineups: int
+
+
+class LiveCycleStepRead(BaseModel):
+    step: str
+    status: str
+    detail: str
+
+
+class LiveCycleRunRead(BaseModel):
+    id: int
+    run_at: datetime
+    finished_at: datetime | None
+    overall_status: str
+    steps: list[LiveCycleStepRead]
+    odds_credits_consumed: int | None
+    odds_credits_remaining: int | None
+    matches_affected: int
+    quotes_added: int
+    observations_added: int
+    observations_settled: int
+
+
+class LiveStatusReportRead(BaseModel):
+    round_summary: RoundSummaryRead
+    matches: list[MatchCoverageStatusRead]
+    recent_runs: list[LiveCycleRunRead]
+
+
+class MarketMovementRead(BaseModel):
+    player_id: int
+    player_name: str
+    match_id: int
+    bookmaker_id: int
+    bookmaker_name: str
+    market_type: str
+    line_type: str
+    threshold: float
+    first_odds: float
+    latest_odds: float
+    highest_odds: float
+    lowest_odds: float
+    first_difference_pp: float
+    latest_difference_pp: float
+    first_observed_at: datetime
+    latest_observed_at: datetime
+    n_observations: int

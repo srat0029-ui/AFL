@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.api.schemas import (
     BulkApplyRequest,
     BulkApplyResult,
+    BulkRemoveRequest,
+    BulkRemoveResult,
     DisposalProjectionRead,
     ExpectedLineupCreate,
     ExpectedLineupRead,
@@ -190,6 +192,30 @@ def bulk_apply_lineup(match_id: int, payload: BulkApplyRequest, db: Session = De
         created=report.created, updated=report.updated, status_changed=report.status_changed,
         skipped_manual_override=report.skipped_manual_override, unresolved=report.unresolved, ambiguous=report.ambiguous,
     )
+
+
+@router.post("/matches/{match_id}/lineup/bulk-remove", response_model=BulkRemoveResult)
+def bulk_remove_lineup(match_id: int, payload: BulkRemoveRequest, db: Session = Depends(get_db)) -> BulkRemoveResult:
+    """Section 7 of the live-operations stage brief: efficiently removing
+    players who were on a previous/suggested roster but are omitted from
+    the new one — the bulk counterpart to the single-player DELETE below.
+    Removes unconditionally (including manual-override rows) since this is
+    itself an explicit human bulk action, same trust level as the single
+    DELETE endpoint."""
+    if db.get(Match, match_id) is None:
+        raise HTTPException(status_code=404, detail="Match not found")
+
+    removed: list[int] = []
+    not_found: list[int] = []
+    for player_id in payload.player_ids:
+        lineup = db.scalar(select(ExpectedLineup).where(ExpectedLineup.match_id == match_id, ExpectedLineup.player_id == player_id))
+        if lineup is None:
+            not_found.append(player_id)
+            continue
+        db.delete(lineup)
+        removed.append(player_id)
+    db.commit()
+    return BulkRemoveResult(removed=removed, not_found=not_found)
 
 
 @router.put("/matches/{match_id}/lineup/{player_id}", response_model=ExpectedLineupRead)

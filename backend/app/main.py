@@ -9,11 +9,14 @@ from app.api.routes import (
     edges,
     goal_models,
     health,
+    live_status,
     matches,
     odds,
+    player_identity,
     player_models,
     player_projections,
     predictions,
+    real_market_tracking,
 )
 from app.config import get_settings
 
@@ -60,3 +63,6 @@ app.include_router(backtests.router)
 app.include_router(player_models.router)
 app.include_router(goal_models.router)
 app.include_router(player_projections.router)
+app.include_router(real_market_tracking.router)
+app.include_router(player_identity.router)
+app.include_router(live_status.router)

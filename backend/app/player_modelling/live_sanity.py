@@ -7,6 +7,9 @@ the caller's job (see cli.py's project-upcoming/refresh-live commands).
 
 from dataclasses import dataclass
 
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from app.player_modelling.disposal_distribution import NegativeBinomialDistribution
 from app.player_modelling.goal_distribution import HurdleDistribution, NegativeBinomialGoalDistribution
 from app.player_modelling.live_engine import DisposalProjectionResult, GoalProjectionResult, LiveProjectionRun
@@ -103,6 +106,22 @@ def check_no_projection_for_confirmed_out(
         if p.player_id in confirmed_out_player_ids_by_match.get(p.match_id, set()):
             anomalies.append(SanityAnomaly("projection_for_confirmed_out", p.player_id, p.match_id, "a goal projection exists for a player marked confirmed_out"))
     return anomalies
+
+
+def confirmed_out_player_ids_by_match(db: Session, match_ids: list[int]) -> dict[int, set[int]]:
+    """Shared by every caller of run_all_sanity_checks (project-upcoming,
+    refresh-live, run-live-cycle) so this query is written once."""
+    from app.models import ExpectedLineup, SelectionStatus
+
+    if not match_ids:
+        return {}
+    rows = db.scalars(
+        select(ExpectedLineup).where(ExpectedLineup.match_id.in_(match_ids), ExpectedLineup.selection_status == SelectionStatus.CONFIRMED_OUT.value)
+    ).all()
+    result: dict[int, set[int]] = {}
+    for r in rows:
+        result.setdefault(r.match_id, set()).add(r.player_id)
+    return result
 
 
 def run_all_sanity_checks(

@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.models import Match, PlayerPropMarket
 from app.player_modelling.prop_market_mapping import NormalizedProp, UnsupportedMarket, normalize_prop_quote
 from app.player_modelling.prop_odds_matching import get_or_create_bookmaker, resolve_event_to_match
-from app.player_modelling.prop_odds_quota import DEFAULT_MIN_REFRESH_INTERVAL, event_needs_refresh
+from app.player_modelling.prop_odds_quota import event_needs_refresh, recommended_refresh_interval
 from app.player_modelling.prop_player_resolution import TRUSTED_TIERS, resolve_prop_player
 from app.player_modelling.upcoming_features import UpcomingMatchTeams
 from app.providers.player_prop_odds import PlayerPropOddsProvider, QuotaStatus
@@ -44,6 +44,10 @@ class PropOddsRefreshReport:
     @property
     def has_activity(self) -> bool:
         return self.quotes_created > 0 or self.matches_resolved > 0
+
+
+def _aware(dt: datetime) -> datetime:
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
 
 
 def _same_instant(a: datetime, b: datetime) -> bool:
@@ -115,9 +119,16 @@ def run_prop_odds_refresh(
     provider: PlayerPropOddsProvider,
     upcoming_matches: list[UpcomingMatchTeams],
     market_keys: list[str],
-    min_refresh_interval: timedelta = DEFAULT_MIN_REFRESH_INTERVAL,
+    min_refresh_interval: timedelta | None = None,
     force: bool = False,
 ) -> PropOddsRefreshReport:
+    """`min_refresh_interval=None` (the default) uses the match-time-aware
+    policy (Section 4 of the live-operations stage brief — see
+    prop_odds_quota.recommended_refresh_interval): a match 6 days out is
+    refreshed far less often than one kicking off soon. Passing an explicit
+    timedelta overrides that with one flat interval for every match in this
+    run (e.g. the CLI's --min-interval-minutes flag) - useful for testing
+    or a deliberate one-off override, but loses the time-awareness."""
     report = PropOddsRefreshReport()
     if not provider.is_available:
         report.provider_available = False
@@ -141,7 +152,13 @@ def run_prop_odds_refresh(
 
         db.commit()  # persist the Match.external_ids cache write from resolve_event_to_match even if we skip below
 
-        if not force and not event_needs_refresh(db, match.id, event.provider, min_refresh_interval):
+        if min_refresh_interval is not None:
+            effective_interval = min_refresh_interval
+        else:
+            hours_to_kickoff = (_aware(match.scheduled_start) - datetime.now(timezone.utc)).total_seconds() / 3600.0
+            effective_interval = recommended_refresh_interval(hours_to_kickoff)
+
+        if not force and not event_needs_refresh(db, match.id, event.provider, effective_interval):
             report.matches_skipped_fresh += 1
             continue
 
@@ -164,7 +181,7 @@ def _ingest_one_quote(db: Session, match: Match, quote: PlayerPropQuote, report:
         report.unsupported_markets.append(f"{quote.market_key}: {normalized.reason}")
         return
 
-    resolution = resolve_prop_player(db, match, quote.player_name)
+    resolution = resolve_prop_player(db, match, quote.player_name, source=quote.provider)
     if resolution.tier == "ambiguous":
         report.ambiguous_players.append(f"{quote.player_name} ({match.home_team.name} v {match.away_team.name})")
         return

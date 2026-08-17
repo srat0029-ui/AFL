@@ -1137,6 +1137,18 @@ export function bulkApplyLineup(
   });
 }
 
+export interface BulkRemoveResult {
+  removed: number[];
+  not_found: number[];
+}
+
+export function bulkRemoveLineup(matchId: number, playerIds: number[]): Promise<BulkRemoveResult> {
+  return request(`/api/afl/matches/${matchId}/lineup/bulk-remove`, {
+    method: "POST",
+    body: JSON.stringify({ player_ids: playerIds }),
+  });
+}
+
 export interface ThresholdProbability {
   probability: number;
   warning: string | null;
@@ -1423,4 +1435,261 @@ export function fetchNormalizedPropInsights(
   if (params.matchId !== undefined) query.set("match_id", String(params.matchId));
   const qs = query.toString();
   return request(`/api/afl/prop-insights/normalized${qs ? `?${qs}` : ""}`);
+}
+
+// --- Real Market Tracking (Sections 18-19 of the market-logging stage) ---
+
+export type SampleSizeLevel = "exploratory" | "low_confidence" | "still_developing" | "informative";
+
+export interface DatasetSummary {
+  total_observations: number;
+  settled_observations: number;
+  pending_observations: number;
+  unique_player_matches: number;
+  unique_players: number;
+  unique_matches: number;
+  unique_market_lines: number;
+  bookmakers: string[];
+  earliest_observed_at: string | null;
+  latest_observed_at: string | null;
+}
+
+export interface ModelVsMarket {
+  n_settled_binary: number;
+  model_brier: number | null;
+  model_log_loss: number | null;
+  market_brier: number | null;
+  market_log_loss: number | null;
+  market_probability_source: string;
+}
+
+export interface CalibrationBucket {
+  probability_range: string;
+  n: number;
+  mean_predicted: number | null;
+  mean_actual: number | null;
+}
+
+export interface HypotheticalReturn {
+  n_settled_binary: number;
+  n_pushed: number;
+  n_voided: number;
+  total_profit_flat_stake: number;
+  roi: number | null;
+  win_rate: number | null;
+  average_odds: number | null;
+  average_model_probability: number | null;
+  average_difference_pp: number | null;
+}
+
+export interface BucketResult {
+  label: string;
+  n_observations: number;
+  n_unique_player_matches: number;
+  returns: HypotheticalReturn;
+  sample_size_level: SampleSizeLevel;
+}
+
+export interface RealMarketTrackingReport {
+  label: string;
+  summary: DatasetSummary;
+  model_vs_market: ModelVsMarket;
+  model_calibration: CalibrationBucket[];
+  market_calibration: CalibrationBucket[];
+  overall_return: HypotheticalReturn;
+  edge_buckets: BucketResult[];
+  confidence_buckets: BucketResult[];
+  lineup_buckets: BucketResult[];
+  timing_buckets: BucketResult[];
+  overall_sample_level: SampleSizeLevel;
+  coverage: CoverageMetrics;
+  market_open_timing: MarketOpenTiming[];
+}
+
+export function fetchRealMarketTracking(params: { matchId?: number; marketType?: PlayerPropMarketType } = {}): Promise<RealMarketTrackingReport> {
+  const query = new URLSearchParams();
+  if (params.matchId !== undefined) query.set("match_id", String(params.matchId));
+  if (params.marketType) query.set("market_type", params.marketType);
+  const qs = query.toString();
+  return request(`/api/afl/real-market-tracking${qs ? `?${qs}` : ""}`);
+}
+
+export interface QuoteHistoryEntry {
+  observed_at: string;
+  bookmaker_name: string;
+  offered_odds: number;
+  raw_implied_probability: number;
+  devigged_probability: number | null;
+  model_probability: number;
+  difference_pp: number;
+  confidence_tier: ConfidenceTierLive;
+  selection_status_at_observation: string;
+  market_result: string | null;
+}
+
+export function fetchQuoteHistory(params: {
+  playerId: number;
+  matchId: number;
+  bookmakerId: number;
+  marketType: PlayerPropMarketType;
+  lineType: PlayerPropLineType;
+  threshold: number;
+}): Promise<QuoteHistoryEntry[]> {
+  const query = new URLSearchParams({
+    player_id: String(params.playerId),
+    match_id: String(params.matchId),
+    bookmaker_id: String(params.bookmakerId),
+    market_type: params.marketType,
+    line_type: params.lineType,
+    threshold: String(params.threshold),
+  });
+  return request(`/api/afl/real-market-tracking/quote-history?${query.toString()}`);
+}
+
+export interface MarketMovement {
+  player_id: number;
+  player_name: string;
+  match_id: number;
+  bookmaker_id: number;
+  bookmaker_name: string;
+  market_type: PlayerPropMarketType;
+  line_type: PlayerPropLineType;
+  threshold: number;
+  first_odds: number;
+  latest_odds: number;
+  highest_odds: number;
+  lowest_odds: number;
+  first_difference_pp: number;
+  latest_difference_pp: number;
+  first_observed_at: string;
+  latest_observed_at: string;
+  n_observations: number;
+}
+
+export function fetchMarketMovement(params: { matchId?: number; playerId?: number } = {}): Promise<MarketMovement[]> {
+  const query = new URLSearchParams();
+  if (params.matchId !== undefined) query.set("match_id", String(params.matchId));
+  if (params.playerId !== undefined) query.set("player_id", String(params.playerId));
+  const qs = query.toString();
+  return request(`/api/afl/real-market-tracking/movement${qs ? `?${qs}` : ""}`);
+}
+
+// --- Live Status (Sections 5-6, 18 of the live-operations stage) ----------
+
+export interface CoverageMetrics {
+  total_raw_quotes: number;
+  frozen_observations: number;
+  unique_player_matches: number;
+  unique_matches: number;
+  unique_market_lines: number;
+  bookmakers: string[];
+  market_families: string[];
+  average_snapshots_per_player_market: number | null;
+}
+
+export interface MarketOpenTiming {
+  player_id: number;
+  player_name: string;
+  match_id: number;
+  bookmaker_id: number;
+  bookmaker_name: string;
+  market_type: PlayerPropMarketType;
+  line_type: PlayerPropLineType;
+  threshold: number;
+  first_observed_at: string;
+  first_hours_before_kickoff: number;
+  latest_observed_at: string;
+  latest_hours_before_kickoff: number;
+  n_price_changes: number;
+  n_observations: number;
+}
+
+export type MatchSimpleStatus =
+  | "waiting_for_teams"
+  | "waiting_for_bookmaker_markets"
+  | "stale"
+  | "ready"
+  | "odds_available"
+  | "completed_awaiting_player_stats"
+  | "settled"
+  | "completed_no_market_data";
+
+export type MarketDiagnosisCategory =
+  | "event_absent"
+  | "not_yet_refreshed"
+  | "event_no_props"
+  | "disposal_market_absent"
+  | "bookmaker_absent"
+  | "odds_available";
+
+export interface MatchMarketDiagnosis {
+  match_id: number;
+  category: MarketDiagnosisCategory;
+  detail: string;
+  would_be_skipped_this_cycle: boolean;
+  hours_to_kickoff: number;
+}
+
+export interface MatchCoverageStatus {
+  match_id: number;
+  home_team_name: string;
+  away_team_name: string;
+  scheduled_start: string;
+  match_status: string;
+  simple_status: MatchSimpleStatus;
+  lineup_announcement_state: AnnouncementState;
+  projections_generated: boolean;
+  bookmaker_event_exists: boolean;
+  bookmaker_props_observed: boolean;
+  bookmakers_observed: string[];
+  n_quotes: number;
+  last_odds_refresh: string | null;
+  n_observations: number;
+  n_observations_settled: number;
+  n_observations_awaiting_settlement: number;
+  diagnosis: MatchMarketDiagnosis;
+}
+
+export interface RoundSummary {
+  n_upcoming_matches: number;
+  n_matches_with_projections: number;
+  n_matches_with_bookmaker_events: number;
+  n_matches_with_prop_markets: number;
+  n_unique_players_with_markets: number;
+  n_real_quotes_stored: number;
+  n_real_observations_stored: number;
+  n_confirmed_lineups: number;
+  n_placeholder_or_uncertain_lineups: number;
+}
+
+export type LiveCycleStepStatus = "success" | "warning" | "recoverable_failure" | "blocking_failure";
+
+export interface LiveCycleStep {
+  step: string;
+  status: LiveCycleStepStatus;
+  detail: string;
+}
+
+export interface LiveCycleRun {
+  id: number;
+  run_at: string;
+  finished_at: string | null;
+  overall_status: "ok" | "partial" | "blocked";
+  steps: LiveCycleStep[];
+  odds_credits_consumed: number | null;
+  odds_credits_remaining: number | null;
+  matches_affected: number;
+  quotes_added: number;
+  observations_added: number;
+  observations_settled: number;
+}
+
+export interface LiveStatusReport {
+  round_summary: RoundSummary;
+  matches: MatchCoverageStatus[];
+  recent_runs: LiveCycleRun[];
+}
+
+export function fetchLiveStatus(): Promise<LiveStatusReport> {
+  return request("/api/afl/live-status");
 }
