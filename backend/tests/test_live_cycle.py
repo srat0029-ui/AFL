@@ -93,10 +93,69 @@ def test_full_cycle_persists_a_run_with_every_step(db_session, monkeypatch):
     assert "settle_props" in step_names
     assert "regenerate_projections" in step_names
     assert "refresh_prop_odds" in step_names
+    assert "refresh_team_odds" in step_names
+    assert "refresh_weather" in step_names
     # No promoted disposal/goal model exists in this fresh test DB, so
     # regeneration recoverably fails - the cycle must still complete and
     # persist a run rather than crashing.
     assert run.overall_status in (RUN_OK, RUN_PARTIAL)
+
+
+def test_team_odds_provider_not_configured_is_a_warning_not_a_failure(db_session, monkeypatch):
+    _seed_scheduled_match(db_session)
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+
+    run = run_live_cycle(db_session)
+
+    team_odds_step = next(s for s in run.steps if s["step"] == "refresh_team_odds")
+    assert team_odds_step["status"] == STEP_WARNING
+    assert run.team_odds_quotes_added == 0
+
+
+def test_weather_step_reports_skipped_when_match_has_no_venue(db_session, monkeypatch):
+    """No venue was seeded on the test match, so refresh_weather_for_matches
+    skips it before ever reaching the Open-Meteo provider - no HTTP call is
+    made, matching the module's own network-free unit tests."""
+    _seed_scheduled_match(db_session)
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+
+    run = run_live_cycle(db_session)
+
+    weather_step = next(s for s in run.steps if s["step"] == "refresh_weather")
+    assert weather_step["status"] == STEP_SUCCESS
+    assert run.weather_snapshots_added == 0
+
+
+def test_team_odds_needs_refresh_gate(db_session):
+    from app.models import Bookmaker, OddsQuote
+    from app.player_modelling.live_cycle import _team_odds_needs_refresh
+    from app.player_modelling.upcoming_features import UpcomingMatchTeams
+
+    match = _seed_scheduled_match(db_session)
+    upcoming = [UpcomingMatchTeams(
+        match_id=match.id, home_team_id=match.home_team_id, away_team_id=match.away_team_id, venue_id=None,
+        scheduled_start=match.scheduled_start, season_year=2026, round_number=1, is_final=False,
+    )]
+
+    # No automated team-odds quote at all yet -> needs a refresh.
+    assert _team_odds_needs_refresh(db_session, upcoming) is True
+
+    bookmaker = Bookmaker(name="SportsBet")
+    db_session.add(bookmaker)
+    db_session.flush()
+    db_session.add(OddsQuote(
+        match_id=match.id, bookmaker_id=bookmaker.id, market_type="h2h", selection="Collingwood",
+        line_value=None, price_decimal=1.9, recorded_at=datetime.now(timezone.utc), source="the_odds_api", is_closing_line=False,
+    ))
+    db_session.commit()
+
+    # A quote fetched moments ago, for a match still days from bounce, is
+    # within the match-time-aware interval -> no refresh needed yet.
+    assert _team_odds_needs_refresh(db_session, upcoming) is False
 
 
 def test_odds_provider_not_configured_is_a_warning_not_a_failure(db_session, monkeypatch):

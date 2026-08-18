@@ -412,6 +412,8 @@ def _run_live_cycle() -> int:
         print(f"  quotes added: {run.quotes_added}")
         print(f"  observations added: {run.observations_added}")
         print(f"  observations settled: {run.observations_settled}")
+        print(f"  team odds quotes added: {run.team_odds_quotes_added}")
+        print(f"  weather snapshots added: {run.weather_snapshots_added}")
         if run.odds_credits_consumed is not None:
             print(f"  odds API: requests_used={run.odds_credits_consumed} requests_remaining={run.odds_credits_remaining}")
         exit_code = {"ok": 0, "partial": 1, "blocked": 2}[run.overall_status]

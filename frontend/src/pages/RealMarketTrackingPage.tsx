@@ -74,7 +74,7 @@ function BucketTable({ title, buckets }: { title: string; buckets: BucketResult[
   );
 }
 
-function QuoteHistoryDrawer({ movement, onClose }: { movement: MarketMovement; onClose: () => void }) {
+export function QuoteHistoryDrawer({ movement, onClose }: { movement: MarketMovement; onClose: () => void }) {
   const [entries, setEntries] = useState<QuoteHistoryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -189,10 +189,18 @@ function MarketOpenTimingTable({ timing }: { timing: MarketOpenTiming[] }) {
   );
 }
 
-function MarketMovementTable({ movements, onSelect }: { movements: MarketMovement[]; onSelect: (m: MarketMovement) => void }) {
+export function MarketMovementTable({
+  movements,
+  onSelect,
+  title = "Market movement (per player / market / bookmaker)",
+}: {
+  movements: MarketMovement[];
+  onSelect: (m: MarketMovement) => void;
+  title?: string;
+}) {
   return (
     <div className="rmt-card">
-      <h3>Market movement (per player / market / bookmaker)</h3>
+      <h3>{title}</h3>
       <p className="hint">First vs latest odds and model-market difference for every tracked line. Click a row for the full price history.</p>
       <div className="rmt-table-scroll">
         <table className="rmt-table rmt-table--clickable">

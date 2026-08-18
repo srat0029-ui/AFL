@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import DataFreshnessPanel from "../components/DataFreshnessPanel";
 import Disclaimer from "../components/Disclaimer";
 import OpportunityComparisonTable from "../components/OpportunityComparisonTable";
 import ShortlistSnapshotHistory from "../components/ShortlistSnapshotHistory";
@@ -56,6 +57,8 @@ function WeeklyReviewPage() {
           on team confirmation, and bookmaker coverage. Select opportunities below to compare them side by side.
         </p>
       </header>
+
+      <DataFreshnessPanel />
 
       <nav className="tab-bar">
         <button className={`tab-bar__tab${activeSection === "shortlist" ? " tab-bar__tab--active" : ""}`} onClick={() => setActiveSection("shortlist")}>

@@ -2262,6 +2262,8 @@ export interface LiveCycleRun {
   quotes_added: number;
   observations_added: number;
   observations_settled: number;
+  team_odds_quotes_added: number;
+  weather_snapshots_added: number;
 }
 
 export interface LiveStatusReport {
@@ -2272,6 +2274,34 @@ export interface LiveStatusReport {
 
 export function fetchLiveStatus(): Promise<LiveStatusReport> {
   return request("/api/afl/live-status");
+}
+
+// --- Data freshness + "Refresh Data" (product-polish stage) ----------------
+
+export type FreshnessStatus = "fresh" | "aging" | "stale" | "not_available";
+
+export interface DataFreshnessItem {
+  category: string;
+  label: string;
+  status: FreshnessStatus;
+  last_refreshed: string | null;
+  detail: string;
+}
+
+export interface DataFreshnessReport {
+  items: DataFreshnessItem[];
+}
+
+// Read-only — never triggers a provider request, safe to call on page load.
+export function fetchDataFreshness(): Promise<DataFreshnessReport> {
+  return request("/api/afl/data-freshness");
+}
+
+// The ONLY call in this client that can trigger a paid external API
+// request — deliberately a POST, only ever fired from an explicit user
+// click on the "Refresh Data" button, never on page load.
+export function triggerRefresh(): Promise<LiveCycleRun> {
+  return request("/api/afl/refresh", { method: "POST" });
 }
 
 // --- Current Context + Team News Intelligence stage ------------------------

@@ -26,9 +26,9 @@ step order below (settle_props is step 3, before regeneration/odds).
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -45,6 +45,7 @@ from app.models import (
     LiveCycleRun,
     Match,
     MatchStatus,
+    OddsQuote,
     PlayerMatchStat,
     Season,
     Team,
@@ -55,11 +56,23 @@ from app.player_modelling.live_persistence import persist_projection_run
 from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, run_all_sanity_checks
 from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
+from app.player_modelling.prop_odds_quota import recommended_refresh_interval
 from app.player_modelling.prop_settlement import settle_all_completed_matches
-from app.player_modelling.upcoming_features import load_next_upcoming_round
+from app.player_modelling.team_odds_ingestion import PROVIDER_NAME as TEAM_ODDS_PROVIDER_NAME, ingest_team_odds
+from app.player_modelling.upcoming_features import UpcomingMatchTeams, load_next_upcoming_round
+from app.player_modelling.weather_ingestion import refresh_weather_for_matches
 from app.providers.afl.afltables_players import AFLTablesPlayerStatsProvider
 from app.providers.afl.squiggle import SquiggleFixtureProvider
 from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiProvider
+
+# How much staler than the match-time-aware odds interval (Section 4, see
+# prop_odds_quota.py) team odds are allowed to get before a manual refresh
+# spends quota on the standard-match-odds call again. Team odds are one
+# call for every upcoming match combined (not per-match like player props),
+# so this is a single yes/no gate keyed off whichever upcoming match is
+# soonest to bounce - the same match that would need the tightest player-
+# prop refresh interval right now.
+TEAM_ODDS_STALENESS_MULTIPLIER = 1
 
 
 @dataclass
@@ -76,6 +89,8 @@ class LiveCycleReport:
     quotes_added: int = 0
     observations_added: int = 0
     observations_settled: int = 0
+    team_odds_quotes_added: int = 0
+    weather_snapshots_added: int = 0
     odds_credits_consumed: int | None = None
     odds_credits_remaining: int | None = None
 
@@ -143,6 +158,30 @@ def _update_completed_player_stats(db: Session) -> tuple[int, int]:
         except Exception:  # noqa: BLE001 — one team-season failing must not stop the others
             failed += 1
     return updated, failed
+
+
+def _aware(dt: datetime) -> datetime:
+    return dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+
+
+def _team_odds_needs_refresh(db: Session, upcoming_matches: list[UpcomingMatchTeams]) -> bool:
+    """Mirrors prop_odds_quota.event_needs_refresh's reasoning (reuses the
+    same recommended_refresh_interval policy) but for the single
+    all-matches-in-one-call team-odds endpoint: gated off whichever
+    upcoming match is soonest to bounce, since that's the tightest
+    freshness requirement in play right now."""
+    if not upcoming_matches:
+        return False
+    now = datetime.now(timezone.utc)
+    soonest_hours = min((_aware(m.scheduled_start) - now).total_seconds() / 3600.0 for m in upcoming_matches)
+    interval = recommended_refresh_interval(soonest_hours) * TEAM_ODDS_STALENESS_MULTIPLIER
+    match_ids = [m.match_id for m in upcoming_matches]
+    latest = db.scalar(
+        select(func.max(OddsQuote.recorded_at)).where(OddsQuote.match_id.in_(match_ids), OddsQuote.source == TEAM_ODDS_PROVIDER_NAME)
+    )
+    if latest is None:
+        return True
+    return now - _aware(latest) >= interval
 
 
 def run_live_cycle(db: Session) -> LiveCycleRun:
@@ -257,6 +296,41 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     except Exception as exc:  # noqa: BLE001
         report.add("refresh_prop_odds", STEP_RECOVERABLE_FAILURE, f"odds refresh failed: {exc}")
 
+    # Step 10: quota-aware standard team-market (h2h/spreads/totals) odds
+    # refresh - one call covers every upcoming match, so it's gated as a
+    # single freshness check rather than per-match (see
+    # _team_odds_needs_refresh). Reuses ingest_team_odds/
+    # get_standard_match_odds exactly as `refresh-team-odds` does.
+    try:
+        settings = get_settings()
+        team_odds_provider = TheOddsApiProvider(api_key=settings.the_odds_api_key)
+        if not team_odds_provider.is_available:
+            report.add("refresh_team_odds", STEP_WARNING, "THE_ODDS_API_KEY not configured — skipped (manual team odds entry still works)")
+        elif not _team_odds_needs_refresh(db, upcoming_matches):
+            report.add("refresh_team_odds", STEP_SUCCESS, "skipped — still within the match-time-aware refresh interval")
+        else:
+            odds_result = team_odds_provider.get_standard_match_odds("AFL")
+            team_odds_report = ingest_team_odds(db, odds_result)
+            report.team_odds_quotes_added += team_odds_report.quotes_created
+            report.add(
+                "refresh_team_odds", STEP_SUCCESS,
+                f"{team_odds_report.matches_resolved} match(es) resolved, {team_odds_report.quotes_created} new quote(s)",
+            )
+    except Exception as exc:  # noqa: BLE001
+        report.add("refresh_team_odds", STEP_RECOVERABLE_FAILURE, f"team odds refresh failed: {exc}")
+
+    # Step 11: venue-local weather forecast refresh (free, keyless Open-Meteo
+    # — reuses refresh_weather_for_matches exactly as `refresh-weather` does).
+    try:
+        weather_report = refresh_weather_for_matches(db, upcoming_matches)
+        report.weather_snapshots_added += weather_report.snapshots_created
+        report.add(
+            "refresh_weather", STEP_SUCCESS,
+            f"{weather_report.snapshots_created} snapshot(s) created of {weather_report.matches_considered} match(es) considered",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("refresh_weather", STEP_RECOVERABLE_FAILURE, f"weather refresh failed: {exc}")
+
     from app.player_modelling.request_cache import clear_ttl_cache
 
     clear_ttl_cache()
@@ -275,6 +349,8 @@ def _persist_run(db: Session, report: LiveCycleReport, run_at: datetime) -> Live
         quotes_added=report.quotes_added,
         observations_added=report.observations_added,
         observations_settled=report.observations_settled,
+        team_odds_quotes_added=report.team_odds_quotes_added,
+        weather_snapshots_added=report.weather_snapshots_added,
     )
     db.add(row)
     db.commit()

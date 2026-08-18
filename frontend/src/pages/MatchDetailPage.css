@@ -46,6 +46,16 @@
   margin-top: 0.4rem;
 }
 
+.match-freshness {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.match-freshness__caption {
+  margin: 0;
+}
+
 .model-panel {
   border: 1px solid var(--border);
   border-radius: 12px;

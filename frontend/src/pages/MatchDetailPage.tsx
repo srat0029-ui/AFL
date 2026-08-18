@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import "./MatchDetailPage.css";
+import "../pages/DashboardPage.css";
+import "../pages/RealMarketTrackingPage.css";
+import DataFreshnessPanel from "../components/DataFreshnessPanel";
 import Disclaimer from "../components/Disclaimer";
 import ExpectedLineupPanel from "../components/ExpectedLineupPanel";
 import MatchContextPanel from "../components/MatchContextPanel";
@@ -8,17 +11,75 @@ import OddsPanel from "../components/OddsPanel";
 import PlayerPropPanel from "../components/PlayerPropPanel";
 import PlayerStatsTable, { type Column } from "../components/PlayerStatsTable";
 import { DisposalProjectionTable, GoalProjectionTable } from "../components/ProjectionTable";
+import { MarketMovementTable, QuoteHistoryDrawer } from "./RealMarketTrackingPage";
 import {
+  fetchDiversifiedOpportunities,
+  fetchMarketMovement,
   fetchMatch,
   fetchMatchPlayers,
   fetchMatchProjections,
   fetchPredictions,
+  type DiversifiedOpportunity,
+  type MarketMovement,
   type MatchPlayers,
   type MatchPredictions,
   type MatchProjections,
   type MatchSummary,
 } from "../api/client";
 import { formatCountdown, formatFullDateTime } from "../lib/datetime";
+
+function MatchOpportunitiesSection({ opportunities, loading }: { opportunities: DiversifiedOpportunity[]; loading: boolean }) {
+  return (
+    <section className="dashboard-section">
+      <h2>Top Player Opportunities</h2>
+      {loading && <p className="loading-state">Loading…</p>}
+      {!loading && opportunities.length === 0 && (
+        <p className="empty-state">No player opportunities currently pass the quality gates for this match.</p>
+      )}
+      {!loading && opportunities.length > 0 && (
+        <div className="opportunity-list">
+          {opportunities.map((o, i) => (
+            <div key={`${o.opportunity_type}-${o.player_id ?? o.selection}-${o.threshold ?? o.line_value}`} className="opportunity-list__row">
+              <span className="opportunity-list__rank">{i + 1}</span>
+              <span className={`prop-insights-table__type-badge prop-insights-table__type-badge--${o.opportunity_type}`}>
+                {o.opportunity_type === "player" ? "Player" : "Team"}
+              </span>
+              <span className="opportunity-list__label">
+                {o.label}
+                {o.alternate_lines.length > 0 && (
+                  <span className="diversified-view__alt-count" title={`${o.alternate_lines.length} alternate line(s) in this family`}>
+                    +{o.alternate_lines.length} alt
+                  </span>
+                )}
+              </span>
+              <span className="opportunity-list__price">
+                ${o.best_price.toFixed(2)} <span className="hint">{o.best_bookmaker}</span>
+              </span>
+              <span className={o.difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>
+                {o.difference_pp >= 0 ? "+" : ""}
+                {(o.difference_pp * 100).toFixed(1)}pp
+              </span>
+              <span className={`confidence-badge confidence-badge--${o.confidence_tier.replace("_confidence", "").replace("insufficient_history", "insufficient_data")}`}>
+                {o.confidence_tier.replace("_confidence", "").replace("insufficient_history", "insufficient data")}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MatchMovementSection({ movements }: { movements: MarketMovement[] }) {
+  const [selected, setSelected] = useState<MarketMovement | null>(null);
+  if (movements.length === 0) return null;
+  return (
+    <>
+      <MarketMovementTable movements={movements} onSelect={setSelected} title="Market movement for this match" />
+      {selected && <QuoteHistoryDrawer movement={selected} onClose={() => setSelected(null)} />}
+    </>
+  );
+}
 
 // Round/opponent are redundant on a page already scoped to one match.
 const MATCH_PLAYER_COLUMNS: Column[] = [
@@ -42,6 +103,9 @@ function MatchDetailPage() {
   const [players, setPlayers] = useState<MatchPlayers | null>(null);
   const [projections, setProjections] = useState<MatchProjections | null>(null);
   const [projectionsTab, setProjectionsTab] = useState<"disposals" | "goals">("disposals");
+  const [opportunities, setOpportunities] = useState<DiversifiedOpportunity[]>([]);
+  const [opportunitiesLoading, setOpportunitiesLoading] = useState(true);
+  const [movements, setMovements] = useState<MarketMovement[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -62,6 +126,17 @@ function MatchDetailPage() {
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load match"))
       .finally(() => setLoading(false));
+
+    // Diversified so a single hot player's alternate lines can't dominate
+    // this match's list — same guarantee as the Dashboard/Prop Insights view.
+    fetchDiversifiedOpportunities({ view: "overall", marketScope: "player", limit: null })
+      .then((r) => setOpportunities(r.opportunities.filter((o) => o.match_id === id)))
+      .catch(() => setOpportunities([]))
+      .finally(() => setOpportunitiesLoading(false));
+
+    fetchMarketMovement({ matchId: id })
+      .then(setMovements)
+      .catch(() => setMovements([]));
   }, [id]);
 
   if (loading) {
@@ -109,6 +184,13 @@ function MatchDetailPage() {
           </p>
         )}
       </header>
+
+      {match.status === "scheduled" && (
+        <div className="match-freshness">
+          <p className="hint match-freshness__caption">Data freshness for the current upcoming round.</p>
+          <DataFreshnessPanel />
+        </div>
+      )}
 
       {predictions ? (
         <section className="model-panel">
@@ -162,16 +244,10 @@ function MatchDetailPage() {
 
       <OddsPanel matchId={match.id} homeTeamName={match.home_team.name} awayTeamName={match.away_team.name} />
 
+      {match.status === "scheduled" && <MatchOpportunitiesSection opportunities={opportunities} loading={opportunitiesLoading} />}
+
       {match.status === "scheduled" && (
         <>
-          <MatchContextPanel
-            matchId={match.id}
-            homeTeamId={match.home_team.id}
-            awayTeamId={match.away_team.id}
-            homeTeamName={match.home_team.name}
-            awayTeamName={match.away_team.name}
-          />
-
           <ExpectedLineupPanel
             matchId={match.id}
             homeTeamId={match.home_team.id}
@@ -179,6 +255,14 @@ function MatchDetailPage() {
             homeTeamName={match.home_team.name}
             awayTeamName={match.away_team.name}
             onChanged={loadProjections}
+          />
+
+          <MatchContextPanel
+            matchId={match.id}
+            homeTeamId={match.home_team.id}
+            awayTeamId={match.away_team.id}
+            homeTeamName={match.home_team.name}
+            awayTeamName={match.away_team.name}
           />
 
           <section className="backtest-panel">
@@ -216,6 +300,8 @@ function MatchDetailPage() {
           <PlayerPropPanel matchId={match.id} />
         </>
       )}
+
+      <MatchMovementSection movements={movements} />
 
       {players && (players.home_team_players.length > 0 || players.away_team_players.length > 0) && (
         <section className="backtest-panel">

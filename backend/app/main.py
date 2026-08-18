@@ -18,6 +18,7 @@ from app.api.routes import (
     player_projections,
     predictions,
     real_market_tracking,
+    refresh,
     weekly_review,
 )
 from app.config import get_settings
@@ -68,5 +69,6 @@ app.include_router(player_projections.router)
 app.include_router(real_market_tracking.router)
 app.include_router(player_identity.router)
 app.include_router(live_status.router)
+app.include_router(refresh.router)
 app.include_router(weekly_review.router)
 app.include_router(context.router)

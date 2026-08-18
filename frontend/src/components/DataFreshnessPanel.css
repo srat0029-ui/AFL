@@ -1,0 +1,134 @@
+.freshness-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.freshness-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.freshness-panel__header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--text-h);
+}
+
+.freshness-panel__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: var(--space-2) var(--space-4);
+}
+
+.freshness-panel__row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.5rem 0.6rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.freshness-panel__label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.freshness-panel__detail {
+  font-size: 0.75rem;
+  color: var(--text-dim);
+}
+
+.freshness-badge {
+  display: inline-block;
+  align-self: flex-start;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+}
+
+.freshness-badge--fresh {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.freshness-badge--aging {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.freshness-badge--stale {
+  background: #3a1c1c;
+  color: var(--danger-text);
+}
+
+.freshness-badge--not_available {
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.freshness-panel__result {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.freshness-panel__result-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.freshness-panel__run-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 0.15rem 0.5rem;
+  white-space: nowrap;
+}
+
+.freshness-panel__run-badge--ok {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.freshness-panel__run-badge--partial {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.freshness-panel__run-badge--blocked {
+  background: #3a1c1c;
+  color: var(--danger-text);
+}
+
+.freshness-panel__changes {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: var(--text);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.3rem 1rem;
+}
+
+@media (max-width: 640px) {
+  .freshness-panel__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .freshness-panel__grid,
+  .freshness-panel__changes {
+    grid-template-columns: 1fr;
+  }
+}

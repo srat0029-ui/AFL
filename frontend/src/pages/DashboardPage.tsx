@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import "./DashboardPage.css";
+import DataFreshnessPanel from "../components/DataFreshnessPanel";
 import Disclaimer from "../components/Disclaimer";
 import { DisposalProjectionTable, GoalProjectionTable } from "../components/ProjectionTable";
 import {
@@ -285,6 +286,8 @@ function DashboardPage() {
       <p className="subtitle">Model probabilities, best-priced opportunities, and market coverage for the current AFL round.</p>
 
       {error && <div className="error-banner">{error}</div>}
+
+      <DataFreshnessPanel />
 
       <BestOpportunitiesSection opportunities={opportunities} summary={weeklySummary} loading={opportunitiesLoading} />
 

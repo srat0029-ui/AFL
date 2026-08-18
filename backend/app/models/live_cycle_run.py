@@ -46,6 +46,8 @@ class LiveCycleRun(TimestampMixin, Base):
     quotes_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     observations_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     observations_settled: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    team_odds_quotes_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    weather_snapshots_added: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     def __repr__(self) -> str:
         return f"<LiveCycleRun {self.run_at.isoformat()} status={self.overall_status}>"

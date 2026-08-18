@@ -2062,12 +2062,26 @@ class LiveCycleRunRead(BaseModel):
     quotes_added: int
     observations_added: int
     observations_settled: int
+    team_odds_quotes_added: int
+    weather_snapshots_added: int
 
 
 class LiveStatusReportRead(BaseModel):
     round_summary: RoundSummaryRead
     matches: list[MatchCoverageStatusRead]
     recent_runs: list[LiveCycleRunRead]
+
+
+class DataFreshnessItemRead(BaseModel):
+    category: str
+    label: str
+    status: str  # fresh | aging | stale | not_available
+    last_refreshed: UtcDatetime | None
+    detail: str
+
+
+class DataFreshnessReportRead(BaseModel):
+    items: list[DataFreshnessItemRead]
 
 
 class MarketMovementRead(BaseModel):
