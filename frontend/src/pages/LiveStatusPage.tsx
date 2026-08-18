@@ -8,6 +8,7 @@ import {
   type MatchSimpleStatus,
   type LiveStatusReport,
 } from "../api/client";
+import { formatCompactDateTime } from "../lib/datetime";
 
 const STATUS_LABELS: Record<MatchSimpleStatus, string> = {
   waiting_for_teams: "Waiting for teams",
@@ -36,7 +37,7 @@ const CLI_COMMANDS = [
 
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString();
+  return formatCompactDateTime(iso);
 }
 
 function MatchRow({ match }: { match: MatchCoverageStatus }) {
@@ -55,7 +56,16 @@ function MatchRow({ match }: { match: MatchCoverageStatus }) {
         <td>{match.projections_generated ? "Yes" : "No"}</td>
         <td>{match.bookmaker_event_exists ? "Yes" : "No"}</td>
         <td>{match.bookmakers_observed.join(", ") || "—"}</td>
+        <td>
+          <span className={match.disposals_available ? "market-flag market-flag--yes" : "market-flag market-flag--no"}>
+            {match.disposals_available ? "Disposals" : "—"}
+          </span>{" "}
+          <span className={match.goals_available ? "market-flag market-flag--yes" : "market-flag market-flag--no"}>
+            {match.goals_available ? "Goals" : "—"}
+          </span>
+        </td>
         <td>{match.n_quotes}</td>
+        <td>{match.unique_player_count}</td>
         <td>{formatDateTime(match.last_odds_refresh)}</td>
         <td>
           {match.n_observations} ({match.n_observations_settled} settled)
@@ -63,7 +73,7 @@ function MatchRow({ match }: { match: MatchCoverageStatus }) {
       </tr>
       {expanded && (
         <tr className="live-status-table__detail-row">
-          <td colSpan={10}>
+          <td colSpan={12}>
             <strong>Diagnosis:</strong> {match.diagnosis.detail}{" "}
             {match.diagnosis.would_be_skipped_this_cycle ? "(within refresh interval — considered fresh)" : "(due for refresh now)"} ·{" "}
             {match.diagnosis.hours_to_kickoff >= 0 ? `${match.diagnosis.hours_to_kickoff.toFixed(1)}h to kickoff` : "in progress or completed"}
@@ -159,7 +169,9 @@ function LiveStatusPage() {
                     <th>Projections</th>
                     <th>Bookmaker event</th>
                     <th>Bookmakers</th>
+                    <th>Markets</th>
                     <th>Quotes</th>
+                    <th>Players</th>
                     <th>Last odds refresh</th>
                     <th>Observations</th>
                   </tr>

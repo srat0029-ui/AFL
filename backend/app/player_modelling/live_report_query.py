@@ -320,7 +320,22 @@ _GOAL_CALIBRATION_THRESHOLDS = (1, 2, 3, 4, 5)
 MIN_CALIBRATION_SAMPLE = 1000
 
 
-def historical_calibration_note(db: Session, market_type: str, threshold: float) -> str | None:
+@dataclass(frozen=True)
+class CalibrationMetrics:
+    """The numeric facts behind historical_calibration_note's pre-formatted
+    string (Section 12 of the best-bets stage brief) - callers that want to
+    render their own display (e.g. a per-threshold calibration table) or
+    compare calibration quality across markets need the raw ECE/n/threshold,
+    not just prose."""
+
+    market_type: str
+    requested_threshold: float
+    evaluated_threshold: float
+    ece: float
+    n: int
+
+
+def historical_calibration_metrics(db: Session, market_type: str, threshold: float) -> CalibrationMetrics | None:
     if market_type == PlayerMarket.DISPOSALS.value:
         run = db.scalar(select(PlayerModelRun).where(PlayerModelRun.is_promoted.is_(True)))
         candidates = _DISPOSAL_CALIBRATION_THRESHOLDS
@@ -341,9 +356,19 @@ def historical_calibration_note(db: Session, market_type: str, threshold: float)
     )
     if ece_row is None or ece_row.n < MIN_CALIBRATION_SAMPLE:
         return None
+    return CalibrationMetrics(
+        market_type=market_type, requested_threshold=threshold, evaluated_threshold=float(nearest),
+        ece=ece_row.value, n=ece_row.n,
+    )
+
+
+def historical_calibration_note(db: Session, market_type: str, threshold: float) -> str | None:
+    metrics = historical_calibration_metrics(db, market_type, threshold)
+    if metrics is None:
+        return None
     return (
-        f"Historical context: this model's {nearest}+ predictions had a calibration error (ECE) of "
-        f"{ece_row.value:.3f} across {ece_row.n:,} evaluation games (nearest evaluated threshold to {threshold:g})."
+        f"Historical context: this model's {metrics.evaluated_threshold:g}+ predictions had a calibration error (ECE) of "
+        f"{metrics.ece:.3f} across {metrics.n:,} evaluation games (nearest evaluated threshold to {metrics.requested_threshold:g})."
     )
 
 

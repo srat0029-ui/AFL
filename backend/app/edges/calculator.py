@@ -91,6 +91,21 @@ class ModelContext:
 
 
 def build_model_context(db: Session) -> ModelContext:
+    """Cached per-Session (see player_modelling/request_cache.py): a
+    single Weekly Review page build calls this independently from several
+    modules (best_opportunities, diversified_opportunities,
+    final_shortlist, model_market_disagreements, weekly_review itself) -
+    without caching, each one repeats the same walk-forward recompute over
+    the same completed-match history within one request. The underlying
+    computation intentionally stays request-scoped, never persisted
+    (see module docstring) - this only removes exact-duplicate work
+    inside a single request, not across requests."""
+    from app.player_modelling.request_cache import cached
+
+    return cached(db, ("model_context",), lambda: _build_model_context_uncached(db))
+
+
+def _build_model_context_uncached(db: Session) -> ModelContext:
     elo_run = db.scalar(select(ModelRun).where(ModelRun.model_name == "elo"))
     poisson_run = db.scalar(select(ModelRun).where(ModelRun.model_name == "poisson"))
     if elo_run is None or poisson_run is None:

@@ -24,6 +24,8 @@ def check_staleness(
     current_lineup_status: str | None,
     projection_team_model_version: str | None = None,
     current_team_model_version: str | None = None,
+    projection_generated_at: datetime | None = None,
+    latest_context_at: datetime | None = None,
 ) -> StalenessCheck:
     reasons: list[str] = []
 
@@ -51,5 +53,18 @@ def check_staleness(
         reasons.append(
             f"Lineup status has changed since generation (was {projection_lineup_status!r}, now {current_lineup_status!r})."
         )
+
+    # A 5th, independent axis (Current Context + Team News Intelligence
+    # stage, Sections 7, 13): a current-context item (injury, substitute,
+    # returning-player, etc.) for this player was recorded/reported AFTER
+    # this projection was generated — the projection's own lineup-status
+    # snapshot may not have moved yet even though newer context exists.
+    if projection_generated_at is not None and latest_context_at is not None:
+        from datetime import timezone as _tz
+
+        gen = projection_generated_at if projection_generated_at.tzinfo is not None else projection_generated_at.replace(tzinfo=_tz.utc)
+        ctx = latest_context_at if latest_context_at.tzinfo is not None else latest_context_at.replace(tzinfo=_tz.utc)
+        if ctx > gen:
+            reasons.append("Newer team/player context is available than this projection used.")
 
     return StalenessCheck(is_stale=bool(reasons), reasons=reasons)

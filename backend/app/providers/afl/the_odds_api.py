@@ -54,7 +54,7 @@ from datetime import datetime, timezone
 import httpx
 
 from app.providers.player_prop_odds import PlayerPropOddsProvider, PlayerPropOddsResult, QuotaStatus
-from app.providers.types import PlayerPropQuote, ProviderEvent
+from app.providers.types import PlayerPropQuote, ProviderEvent, TeamOddsQuote
 
 BASE_URL = "https://api.the-odds-api.com/v4"
 PROVIDER_NAME = "the_odds_api"
@@ -95,6 +95,23 @@ MODELLED_MARKET_KEYS: list[str] = [
     "player_goal_scorer_anytime",
     "player_goals_scored_over",
 ]
+
+
+# Section 23 of the diversification stage: standard AFL match markets
+# (NOT player props). Fetched from the standard /v4/sports/{sport}/odds
+# endpoint (see module docstring) - one call covers every upcoming event
+# in a single request, unlike the event-specific player-prop endpoint, so
+# this is considerably cheaper per match covered.
+STANDARD_MARKET_KEYS: list[str] = ["h2h", "spreads", "totals"]
+
+
+@dataclass(frozen=True)
+class StandardMatchOddsResult:
+    events: list[ProviderEvent]
+    quotes: list[TeamOddsQuote]
+    quota: QuotaStatus
+    markets_requested: list[str]
+    markets_returned: list[str]
 
 
 class TheOddsApiError(Exception):
@@ -248,5 +265,85 @@ class TheOddsApiProvider(PlayerPropOddsProvider):
             quotes=quotes,
             quota=quota,
             markets_requested=list(market_keys),
+            markets_returned=sorted(markets_returned),
+        )
+
+    def get_standard_match_odds(
+        self, sport_code: str, market_keys: list[str] | None = None
+    ) -> StandardMatchOddsResult:
+        """Section 23: standard match-level markets (h2h/spreads/totals)
+        via the non-event-specific /v4/sports/{sport}/odds endpoint - one
+        call returns every upcoming event with odds already attached, so
+        (unlike player props) there is no separate free "list events"
+        step here."""
+        if not self.is_available:
+            raise TheOddsApiError("THE_ODDS_API_KEY is not configured")
+        if sport_code != "AFL":
+            raise ValueError(f"TheOddsApiProvider only supports AFL, got {sport_code!r}")
+        keys = market_keys if market_keys is not None else STANDARD_MARKET_KEYS
+
+        try:
+            response = self._client.get(
+                f"/sports/{AFL_SPORT_KEY}/odds",
+                params={
+                    "apiKey": self._api_key,
+                    "regions": DEFAULT_REGION,
+                    "markets": ",".join(keys),
+                    "oddsFormat": "decimal",
+                },
+            )
+        except httpx.HTTPError as exc:
+            raise TheOddsApiError(f"request for standard AFL match odds failed: {exc}") from exc
+        if response.status_code != 200:
+            raise TheOddsApiError(
+                f"standard AFL match odds returned HTTP {response.status_code}: {response.text[:300]}"
+            )
+
+        quota = _parse_quota_headers(response.headers)
+        fetched_at = datetime.now(timezone.utc)
+
+        events: list[ProviderEvent] = []
+        quotes: list[TeamOddsQuote] = []
+        markets_returned: set[str] = set()
+        for event_row in response.json():
+            event = ProviderEvent(
+                provider=PROVIDER_NAME,
+                event_id=event_row["id"],
+                sport_key=event_row["sport_key"],
+                home_team=event_row["home_team"],
+                away_team=event_row["away_team"],
+                commence_time=_parse_commence_time(event_row["commence_time"]),
+            )
+            events.append(event)
+            for bookmaker in event_row.get("bookmakers", []):
+                bookmaker_key = bookmaker["key"]
+                bookmaker_title = bookmaker.get("title", bookmaker_key)
+                for market in bookmaker.get("markets", []):
+                    market_key = market["key"]
+                    markets_returned.add(market_key)
+                    market_last_update = _parse_commence_time(market["last_update"]) if market.get("last_update") else fetched_at
+                    for outcome in market.get("outcomes", []):
+                        quotes.append(
+                            TeamOddsQuote(
+                                provider=PROVIDER_NAME,
+                                event_id=event.event_id,
+                                sport_code=sport_code,
+                                bookmaker_key=bookmaker_key,
+                                bookmaker_title=bookmaker_title,
+                                bookmaker_region=DEFAULT_REGION,
+                                market_key=market_key,
+                                selection=outcome["name"],
+                                price_decimal=float(outcome["price"]),
+                                bookmaker_last_update=market_last_update,
+                                fetched_at=fetched_at,
+                                line_value=outcome.get("point"),
+                            )
+                        )
+
+        return StandardMatchOddsResult(
+            events=events,
+            quotes=quotes,
+            quota=quota,
+            markets_requested=list(keys),
             markets_returned=sorted(markets_returned),
         )

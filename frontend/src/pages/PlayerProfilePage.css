@@ -54,3 +54,25 @@
   color: #9aa4b2;
   white-space: nowrap;
 }
+
+.player-context-block {
+  margin-top: 1.2rem;
+  padding-top: 1rem;
+  border-top: 1px solid #2a2f3a;
+}
+
+.player-context-block h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  color: #f3f4f6;
+}
+
+.player-context-block__list {
+  margin: 0;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+  color: #cbd2db;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}

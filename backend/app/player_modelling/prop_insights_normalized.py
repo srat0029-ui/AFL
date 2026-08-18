@@ -26,20 +26,24 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import PlayerDisposalProjection, PlayerGoalProjection, PlayerPropMarket
+from app.player_modelling.bookmaker_classification import annotate_price_entries, best_prices, load_bookmaker_info
 from app.player_modelling.live_confidence import rare_event_warning
+from app.models.bookmaker import ELIGIBILITY_INCLUDED
 from app.player_modelling.live_report_query import (
     EXPECTED_IN_SELECTION_STATUSES,
     current_lineup_for,
     disposal_distribution_for,
     downgrade_confidence,
     goal_distribution_for,
-    historical_calibration_note,
+    historical_calibration_metrics,
     price_line,
 )
 from app.player_modelling.market import PlayerMarket
+from app.player_modelling.opportunity_explanation import why_model_likes_it
 from app.player_modelling.prop_math import categorize_edge, compare_model_to_market
 from app.player_modelling.prop_odds_freshness import DEFAULT_THRESHOLDS, FreshnessThresholds, freshness_state
 from app.player_modelling.prop_opportunity_ranking import compute_opportunity_score
+from app.player_modelling.request_cache import cached_with_ttl
 
 CONFIDENCE_RANK = {"insufficient_history": 0, "lower_confidence": 1, "moderate_confidence": 2, "higher_confidence": 3}
 
@@ -75,12 +79,39 @@ def load_normalized_prop_insights(
     match_id: int | None = None,
     freshness_thresholds: FreshnessThresholds = DEFAULT_THRESHOLDS,
 ) -> list[dict]:
+    """Short-TTL cross-request cache (see request_cache.py): the Weekly
+    Review page builds several hierarchy sections that each call this with
+    the same arguments over the same DB state within one request, AND a
+    real repeat visit to the page gets a brand-new DB Session each time -
+    profiling showed this recomputing the full normalized prop-insights
+    pass (~3s) up to 5 times per page load, every load, before this cache
+    was added. The underlying data only changes when a live-cycle refresh
+    runs, so a 60s TTL trades a small, disclosed staleness window for a
+    page that's fast to open repeatedly."""
+    key = ("normalized_prop_insights", market, min_confidence, include_uncertain, opportunities_only, match_id, freshness_thresholds)
+    return cached_with_ttl(db, key, lambda: _load_normalized_prop_insights_uncached(
+        db, market=market, min_confidence=min_confidence, include_uncertain=include_uncertain,
+        opportunities_only=opportunities_only, match_id=match_id, freshness_thresholds=freshness_thresholds,
+    ))
+
+
+def _load_normalized_prop_insights_uncached(
+    db: Session,
+    *,
+    market: str | None = None,
+    min_confidence: str | None = None,
+    include_uncertain: bool = True,
+    opportunities_only: bool = False,
+    match_id: int | None = None,
+    freshness_thresholds: FreshnessThresholds = DEFAULT_THRESHOLDS,
+) -> list[dict]:
     stmt = select(PlayerPropMarket)
     if market is not None:
         stmt = stmt.where(PlayerPropMarket.market_type == market)
     if match_id is not None:
         stmt = stmt.where(PlayerPropMarket.match_id == match_id)
     all_rows = db.scalars(stmt).all()
+    bookmaker_info = load_bookmaker_info(db)
 
     grouped: dict[_MarketKey, list[PlayerPropMarket]] = defaultdict(list)
     for row in all_rows:
@@ -107,6 +138,7 @@ def load_normalized_prop_insights(
             dist = disposal_distribution_for(proj)
             base_confidence_tier = proj.confidence_tier
             base_warnings = list(proj.warnings)
+            input_features = proj.input_features
         elif key.market_type == PlayerMarket.GOALS.value:
             proj = db.scalar(
                 select(PlayerGoalProjection).where(
@@ -118,6 +150,7 @@ def load_normalized_prop_insights(
             dist = goal_distribution_for(proj)
             base_confidence_tier = proj.confidence_tier
             base_warnings = list(proj.warnings)
+            input_features = proj.input_features
         else:
             continue
 
@@ -153,11 +186,22 @@ def load_normalized_prop_insights(
                 }
             )
         book_entries.sort(key=lambda e: e["price_decimal"], reverse=True)
+        book_entries = annotate_price_entries(book_entries, bookmaker_info)
 
-        non_stale = [e for e in book_entries if e["freshness"] != "stale"]
-        best_entry = (non_stale or book_entries)[0] if book_entries else None
+        # Section 4-5, 13: never let an exchange/excluded bookmaker's price
+        # silently become "the" headline price. Prefer eligible bookmakers;
+        # only fall back to the full (informational-only) set if literally
+        # no enabled bookmaker quotes this exact market, and disclose that
+        # via a warning below rather than hiding the market.
+        eligible = [e for e in book_entries if e["eligibility"] == ELIGIBILITY_INCLUDED]
+        eligible_price_available = bool(eligible)
+        candidates = eligible if eligible else book_entries
+
+        non_stale = [e for e in candidates if e["freshness"] != "stale"]
+        best_entry = (non_stale or candidates)[0] if candidates else None
         if best_entry is None:
             continue
+        price_summary = best_prices(book_entries)
 
         # --- devig (Section 15): only using the SAME bookmaker's paired side ---
         opposite_odds = None
@@ -182,8 +226,25 @@ def load_normalized_prop_insights(
             warnings.append("This player's participation is not confirmed — confidence has been downgraded for this insight.")
         if best_entry["freshness"] == "stale":
             warnings.append("The best available price is stale — treat as indicative only, not currently actionable.")
-        calibration_note = historical_calibration_note(db, key.market_type, key.threshold)
-        if calibration_note:
+        if not eligible_price_available:
+            kind = "exchange" if best_entry["is_exchange"] else "excluded"
+            warnings.append(
+                f"No enabled bookmaker currently quotes this market — showing {best_entry['bookmaker_name']} "
+                f"({kind}, informational only). Enable this bookmaker in settings to use it as a headline price."
+            )
+        elif best_entry["is_exchange"]:
+            warnings.append(
+                f"{best_entry['bookmaker_name']} is a betting exchange — this is a back price set by other bettors, "
+                "not a fixed-odds bookmaker price, and can diverge more than a normal price-shopping gap would suggest."
+            )
+        calibration_metrics = historical_calibration_metrics(db, key.market_type, key.threshold)
+        calibration_note = None
+        if calibration_metrics is not None:
+            calibration_note = (
+                f"Historical context: this model's {calibration_metrics.evaluated_threshold:g}+ predictions had a calibration "
+                f"error (ECE) of {calibration_metrics.ece:.3f} across {calibration_metrics.n:,} evaluation games "
+                f"(nearest evaluated threshold to {calibration_metrics.requested_threshold:g})."
+            )
             warnings.append(calibration_note)
 
         # --- movement (Section 22): across every snapshot ever seen for this market, any bookmaker ---
@@ -214,6 +275,7 @@ def load_normalized_prop_insights(
                 "season_year": match.season.year,
                 "player_id": key.player_id,
                 "player_name": player.display_name,
+                "team_id": current_lineup.team_id if current_lineup else player.current_team_id,
                 "market_type": key.market_type,
                 "line_type": key.line_type,
                 "threshold": key.threshold,
@@ -221,6 +283,16 @@ def load_normalized_prop_insights(
                 "model_fair_odds": comparison.model_fair_odds,
                 "best_price": best_entry["price_decimal"],
                 "best_bookmaker": best_entry["bookmaker_name"],
+                "best_price_is_exchange": best_entry["is_exchange"],
+                "eligible_price_available": eligible_price_available,
+                "best_price_all_bookmakers": price_summary["best_all"]["price_decimal"] if price_summary["best_all"] else None,
+                "best_bookmaker_all_bookmakers": price_summary["best_all"]["bookmaker_name"] if price_summary["best_all"] else None,
+                "best_price_all_differs_from_enabled": price_summary["best_all_differs_from_enabled"],
+                "price_shopping": {
+                    "best_enabled": price_summary["best_enabled"],
+                    "next_best_enabled": price_summary["next_best_enabled"],
+                    "worst_enabled": price_summary["worst_enabled"],
+                },
                 "raw_implied_probability": comparison.raw_implied_probability,
                 "devigged_probability": comparison.devigged_probability,
                 "overround_removed": comparison.overround_removed,
@@ -241,6 +313,17 @@ def load_normalized_prop_insights(
                     "lowest_price": lowest_price,
                     "last_movement_at": last_movement_at,
                 },
+                "snapshot_count": len(movement_rows),
+                "why_model_likes_it": why_model_likes_it(key.market_type, comparison.difference_pp, input_features),
+                "calibration": (
+                    {
+                        "evaluated_threshold": calibration_metrics.evaluated_threshold,
+                        "ece": calibration_metrics.ece,
+                        "n": calibration_metrics.n,
+                    }
+                    if calibration_metrics is not None
+                    else None
+                ),
                 "opportunity_score": opportunity.total,
                 "opportunity_components": {
                     "difference": opportunity.difference_component,

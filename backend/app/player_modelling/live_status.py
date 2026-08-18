@@ -54,6 +54,9 @@ class MatchCoverageStatus:
     n_observations: int
     n_observations_settled: int
     n_observations_awaiting_settlement: int
+    disposals_available: bool
+    goals_available: bool
+    unique_player_count: int
     diagnosis: MatchMarketDiagnosis
 
 
@@ -127,6 +130,8 @@ def load_match_coverage(db: Session, match: UpcomingMatchTeams, *, expected_book
         bookmaker_event_exists=bool((match_row.external_ids or {}).get("the_odds_api")), bookmaker_props_observed=bool(quotes),
         bookmakers_observed=bookmakers_observed, n_quotes=len(quotes), last_odds_refresh=last_refresh,
         n_observations=len(observations), n_observations_settled=n_settled, n_observations_awaiting_settlement=n_awaiting,
+        disposals_available=diagnosis.disposals_available, goals_available=diagnosis.goals_available,
+        unique_player_count=diagnosis.unique_player_count,
         diagnosis=diagnosis,
     )
 

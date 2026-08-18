@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.schemas import MarketType, OddsQuoteCreate, OddsQuoteRead
+from app.api.schemas import BookmakerEligibilityUpdate, BookmakerRead, MarketType, OddsQuoteCreate, OddsQuoteRead
 from app.database import get_db
 from app.models import Bookmaker, Match, OddsQuote
+from app.player_modelling.bookmaker_classification import VALID_ELIGIBILITIES, set_bookmaker_eligibility
 
 odds_router = APIRouter(prefix="/api/matches/{match_id}/odds", tags=["odds"])
 bookmakers_router = APIRouter(prefix="/api/bookmakers", tags=["odds"])
@@ -98,3 +99,29 @@ def delete_odds(odds_id: int, db: Session = Depends(get_db)) -> None:
 @bookmakers_router.get("", response_model=list[str])
 def list_bookmakers(db: Session = Depends(get_db)) -> list[str]:
     return list(db.scalars(select(Bookmaker.name).order_by(Bookmaker.name)).all())
+
+
+def _bookmaker_read(b: Bookmaker) -> BookmakerRead:
+    return BookmakerRead(id=b.id, name=b.name, provider_key=b.provider_key, region=b.region, is_exchange=b.is_exchange, eligibility=b.eligibility)
+
+
+@bookmakers_router.get("/eligibility", response_model=list[BookmakerRead])
+def list_bookmaker_eligibility(db: Session = Depends(get_db)) -> list[BookmakerRead]:
+    """Market Integrity stage, Sections 5 & 13: the settings panel's data
+    source — every observed bookmaker, its automatically-detected
+    exchange status, and its current (user-editable) eligibility for
+    best-price calculations. Never hardcoded; reflects whatever bookmakers
+    have actually been seen via manual entry or an automated provider."""
+    rows = db.scalars(select(Bookmaker).order_by(Bookmaker.name)).all()
+    return [_bookmaker_read(b) for b in rows]
+
+
+@bookmakers_router.patch("/{bookmaker_id}/eligibility", response_model=BookmakerRead)
+def update_bookmaker_eligibility(bookmaker_id: int, payload: BookmakerEligibilityUpdate, db: Session = Depends(get_db)) -> BookmakerRead:
+    if payload.eligibility not in VALID_ELIGIBILITIES:
+        raise HTTPException(status_code=400, detail=f"eligibility must be one of {sorted(VALID_ELIGIBILITIES)}")
+    try:
+        bookmaker = set_bookmaker_eligibility(db, bookmaker_id, payload.eligibility)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _bookmaker_read(bookmaker)

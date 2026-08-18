@@ -1,0 +1,44 @@
+.recent-form-chart {
+  width: 100%;
+  max-width: 360px;
+  height: auto;
+}
+
+.recent-form-chart__bar {
+  fill: #4b5563;
+}
+
+.recent-form-chart__bar--hit {
+  fill: #22c55e;
+}
+
+.recent-form-chart__bar--miss {
+  fill: #6b7280;
+}
+
+.recent-form-chart__threshold-line {
+  stroke: #fdba74;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+}
+
+.recent-form-chart__mean-line {
+  stroke: #7dd3fc;
+  stroke-width: 1.5;
+  stroke-dasharray: 1 3;
+}
+
+.recent-form-chart__label {
+  font-size: 7px;
+  fill: #9aa4b2;
+}
+
+.recent-form-chart__line-label {
+  font-size: 7px;
+  fill: #fdba74;
+}
+
+.recent-form-chart__mean-label {
+  font-size: 7px;
+  fill: #7dd3fc;
+}

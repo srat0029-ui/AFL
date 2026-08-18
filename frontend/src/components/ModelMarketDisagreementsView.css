@@ -1,0 +1,82 @@
+.disagreements-view {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.disagreements-view__section h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.4rem;
+  color: #f3f4f6;
+}
+
+.disagreements-view__direction {
+  display: inline-block;
+  font-size: 0.72rem;
+  border-radius: 4px;
+  padding: 0.12rem 0.4rem;
+  white-space: nowrap;
+}
+
+.disagreements-view__direction--model_above_market {
+  background: #1e3a2f;
+  color: #6ee7b7;
+}
+
+.disagreements-view__direction--market_above_model {
+  background: #3a1c1c;
+  color: #fca5a5;
+}
+
+.disagreements-view__buckets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.disagreements-view__bucket-card {
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.disagreements-view__bucket-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.5rem;
+}
+
+.disagreements-view__bucket-label {
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.disagreements-view__bucket-stats {
+  display: flex;
+  gap: 1.2rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: #cbd2db;
+  margin-bottom: 0.6rem;
+}
+
+.disagreements-view__player-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+
+.disagreements-view__player-table th {
+  text-align: left;
+  color: #9aa4b2;
+  font-weight: 500;
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid #2a2f3a;
+}
+
+.disagreements-view__player-table td {
+  padding: 0.25rem 0.5rem;
+  border-bottom: 1px solid #1c212b;
+}

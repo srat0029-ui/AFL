@@ -48,3 +48,23 @@ def client(db_session):
         yield TestClient(app)
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def _reset_backtests_route_cache():
+    """app/api/routes/backtests.py process-level-caches its three most
+    expensive comparison endpoints (poisson-revision was observed taking
+    ~33s recomputed live - see that module's cache comment) for the life
+    of the real server process. Each test gets its own throwaway in-memory
+    DB via db_session above, so that cache must be cleared before/after
+    every test - otherwise a later test could silently read a cached
+    result computed against an earlier test's already-torn-down database."""
+    import app.api.routes.backtests as backtests_route
+
+    backtests_route._logistic_comparison_cache = None
+    backtests_route._boosting_comparison_cache = None
+    backtests_route._poisson_revision_cache = None
+    yield
+    backtests_route._logistic_comparison_cache = None
+    backtests_route._boosting_comparison_cache = None
+    backtests_route._poisson_revision_cache = None

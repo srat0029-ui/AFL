@@ -18,6 +18,7 @@ import {
   type RosterSuggestion,
   type SelectionStatus,
 } from "../api/client";
+import { formatCompactDateTime, formatShortDate } from "../lib/datetime";
 
 const SELECTION_LABELS: Record<SelectionStatus, string> = {
   placeholder: "Placeholder",
@@ -257,7 +258,7 @@ function ExpectedLineupPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, aw
           {summary.n_confirmed_selected} confirmed, {summary.n_named_in_squad} named in squad,{" "}
           {summary.n_uncertain + summary.n_placeholder} uncertain/placeholder, {summary.n_confirmed_out} confirmed out
           {summary.n_manual_overrides > 0 && `, ${summary.n_manual_overrides} manual override(s)`}
-          {summary.last_updated && <span className="hint"> · last updated {new Date(summary.last_updated).toLocaleString()}</span>}
+          {summary.last_updated && <span className="hint"> · last updated {formatCompactDateTime(summary.last_updated)}</span>}
         </div>
       )}
 
@@ -314,7 +315,7 @@ function ExpectedLineupPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, aw
                 <label key={s.player_id} className="lineup-panel__bulk-item">
                   <input type="checkbox" checked={selectedSuggestionIds.has(s.player_id)} onChange={() => toggleSuggestion(s.player_id)} />
                   {s.display_name}
-                  <span className="hint">last played {new Date(s.last_played_at).toLocaleDateString()}</span>
+                  <span className="hint">last played {formatShortDate(s.last_played_at)}</span>
                 </label>
               ))}
             </div>

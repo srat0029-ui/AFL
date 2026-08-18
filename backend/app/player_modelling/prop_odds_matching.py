@@ -24,6 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Bookmaker, Match, Team
+from app.player_modelling.bookmaker_classification import classify_provider_key
 from app.providers.types import ProviderEvent
 
 # provider team-name text (lowercased) -> this project's internal Team.name
@@ -59,7 +60,7 @@ _TEAM_NAME_ALIASES: dict[str, str] = {
 _MATCH_TIME_TOLERANCE = timedelta(hours=36)
 
 
-def _resolve_team_name(db: Session, provider_name: str) -> Team | None:
+def resolve_team_name(db: Session, provider_name: str) -> Team | None:
     exact = db.scalar(select(Team).where(Team.name == provider_name))
     if exact is not None:
         return exact
@@ -84,8 +85,8 @@ def resolve_event_to_match(db: Session, event: ProviderEvent) -> MatchResolution
     fast path — this just re-derives the same answer and re-writes the
     same Match.external_ids entry every time, which is cheap (a handful of
     matches per round) and simpler than maintaining a second lookup path."""
-    home = _resolve_team_name(db, event.home_team)
-    away = _resolve_team_name(db, event.away_team)
+    home = resolve_team_name(db, event.home_team)
+    away = resolve_team_name(db, event.away_team)
     if home is None or away is None:
         unresolved = [name for name, team in ((event.home_team, home), (event.away_team, away)) if team is None]
         return MatchResolution(match=None, reason=f"unresolved team name(s): {unresolved}")
@@ -122,15 +123,24 @@ def get_or_create_bookmaker(db: Session, key: str, title: str, region: str) -> B
     _get_or_create_bookmaker) so a bookmaker seen both manually and via a
     provider is the SAME row, not a duplicate. provider_key/region are
     filled in the first time a provider supplies them; an existing manual
-    -only row is enriched in place rather than left blank forever."""
+    -only row is enriched in place rather than left blank forever.
+
+    is_exchange/eligibility (Market Integrity stage, Section 4) are
+    classified from the provider key the FIRST time it's known, exactly
+    once - a later manual eligibility edit (PATCH /api/bookmakers/{id})
+    must never be silently overwritten by a subsequent refresh."""
     bookmaker = db.scalar(select(Bookmaker).where(Bookmaker.name == title))
     if bookmaker is None:
-        bookmaker = Bookmaker(name=title, provider_key=key, region=region)
+        is_exchange, eligibility = classify_provider_key(key)
+        bookmaker = Bookmaker(name=title, provider_key=key, region=region, is_exchange=is_exchange, eligibility=eligibility)
         db.add(bookmaker)
         db.flush()
         return bookmaker
     if bookmaker.provider_key is None:
+        is_exchange, eligibility = classify_provider_key(key)
         bookmaker.provider_key = key
+        bookmaker.is_exchange = is_exchange
+        bookmaker.eligibility = eligibility
     if bookmaker.region is None:
         bookmaker.region = region
     return bookmaker

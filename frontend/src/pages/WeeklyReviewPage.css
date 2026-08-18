@@ -1,0 +1,98 @@
+.weekly-review-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.weekly-review-page__header h1 {
+  margin: 0 0 0.5rem;
+  font-size: 1.6rem;
+  color: #f3f4f6;
+}
+
+.weekly-review-page__tabs {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #2a2f3a;
+  padding-bottom: 0.5rem;
+}
+
+.weekly-review-page__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.weekly-review-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+}
+
+.weekly-review-row__checkbox {
+  padding-top: 0.2rem;
+}
+
+.weekly-review-row__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.weekly-review-row__header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.weekly-review-row__label {
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.weekly-review-row__price {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.weekly-review-row__meta {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: #cbd2db;
+}
+
+.weekly-review-row__caution {
+  color: #fdba74;
+}
+
+.weekly-review-page__comparison {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.weekly-review-page__comparison-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.weekly-review-page__comparison-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #f3f4f6;
+}

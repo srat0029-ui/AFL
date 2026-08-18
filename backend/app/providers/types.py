@@ -146,6 +146,33 @@ class ProviderEvent:
 
 
 @dataclass(frozen=True)
+class TeamOddsQuote:
+    """One bookmaker's price for one standard AFL match-market outcome
+    (h2h/spreads/totals), as reported by an odds provider — the
+    team-market analogue of PlayerPropQuote. Deliberately raw/unmapped:
+    `market_key` is the PROVIDER'S own vocabulary ("h2h" | "spreads" |
+    "totals"), and `selection` is the provider's own team name text or
+    "Over"/"Under" — translating both into this project's OddsQuote
+    conventions ("h2h"/"line"/"total", canonical Team.name, lowercase
+    "over"/"under") is ingestion's job, not the provider's, exactly like
+    PlayerPropQuote's market_key/player_name are left raw for the same
+    reason."""
+
+    provider: str  # e.g. "the_odds_api"
+    event_id: str
+    sport_code: str
+    bookmaker_key: str
+    bookmaker_title: str
+    bookmaker_region: str
+    market_key: str  # "h2h" | "spreads" | "totals"
+    selection: str  # provider's team name, or "Over"/"Under"
+    price_decimal: float
+    bookmaker_last_update: datetime
+    fetched_at: datetime
+    line_value: float | None = None  # the provider's "point" value; None for h2h
+
+
+@dataclass(frozen=True)
 class PlayerPropQuote:
     """One bookmaker's price for one player-prop market outcome, as reported
     by an odds provider — the player-prop analogue of OddsQuote.

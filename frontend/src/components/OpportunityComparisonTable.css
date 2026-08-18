@@ -1,0 +1,67 @@
+.comparison-table-scroll {
+  overflow-x: auto;
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+}
+
+.comparison-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.82rem;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #1c212b;
+  text-align: left;
+  vertical-align: top;
+  min-width: 180px;
+}
+
+.comparison-table th {
+  color: #f3f4f6;
+  font-weight: 600;
+  position: relative;
+  white-space: nowrap;
+}
+
+.comparison-table__row-label {
+  color: #9aa4b2;
+  font-weight: 500;
+  white-space: nowrap;
+  min-width: 160px;
+  position: sticky;
+  left: 0;
+  background: #161a22;
+}
+
+.comparison-table__remove {
+  margin-left: 0.5rem;
+  background: transparent;
+  border: 1px solid #3a1c1c;
+  color: #fca5a5;
+  border-radius: 4px;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.comparison-table__list {
+  margin: 0;
+  padding-left: 1rem;
+}
+
+.comparison-table__list--caution li {
+  color: #fdba74;
+}
+
+.comparison-table__predates-warning {
+  margin-top: 0.3rem;
+  color: #f87171;
+  font-weight: 600;
+  font-size: 0.78rem;
+}

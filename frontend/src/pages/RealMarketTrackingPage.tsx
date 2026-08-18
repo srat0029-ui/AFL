@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./RealMarketTrackingPage.css";
 import Disclaimer from "../components/Disclaimer";
+import { formatPreciseDateTime, formatShortDate } from "../lib/datetime";
 import {
   fetchMarketMovement,
   fetchQuoteHistory,
@@ -122,7 +123,7 @@ function QuoteHistoryDrawer({ movement, onClose }: { movement: MarketMovement; o
               <tbody>
                 {entries.map((e, i) => (
                   <tr key={i}>
-                    <td>{new Date(e.observed_at).toLocaleString()}</td>
+                    <td>{formatPreciseDateTime(e.observed_at)}</td>
                     <td>${e.offered_odds.toFixed(2)}</td>
                     <td>{pct(e.raw_implied_probability)}</td>
                     <td>{pct(e.devigged_probability)}</td>
@@ -173,9 +174,9 @@ function MarketOpenTimingTable({ timing }: { timing: MarketOpenTiming[] }) {
                 <td>{t.player_name}</td>
                 <td>{t.market_type} {t.line_type === "multi_plus" ? `${t.threshold}+` : t.threshold}</td>
                 <td>{t.bookmaker_name}</td>
-                <td>{new Date(t.first_observed_at).toLocaleString()}</td>
+                <td>{formatPreciseDateTime(t.first_observed_at)}</td>
                 <td>{t.first_hours_before_kickoff.toFixed(1)}</td>
-                <td>{new Date(t.latest_observed_at).toLocaleString()}</td>
+                <td>{formatPreciseDateTime(t.latest_observed_at)}</td>
                 <td>{t.latest_hours_before_kickoff.toFixed(1)}</td>
                 <td>{t.n_price_changes}</td>
                 <td>{t.n_observations}</td>
@@ -286,9 +287,9 @@ function RealMarketTrackingPage() {
               <div><span className="rmt-grid__label">Unique matches</span><span className="rmt-grid__value">{report.summary.unique_matches}</span></div>
               <div><span className="rmt-grid__label">Bookmakers</span><span className="rmt-grid__value">{report.summary.bookmakers.join(", ") || "—"}</span></div>
               <div><span className="rmt-grid__label">Date range</span><span className="rmt-grid__value">
-                {report.summary.earliest_observed_at ? new Date(report.summary.earliest_observed_at).toLocaleDateString() : "—"}
+                {report.summary.earliest_observed_at ? formatShortDate(report.summary.earliest_observed_at) : "—"}
                 {" – "}
-                {report.summary.latest_observed_at ? new Date(report.summary.latest_observed_at).toLocaleDateString() : "—"}
+                {report.summary.latest_observed_at ? formatShortDate(report.summary.latest_observed_at) : "—"}
               </span></div>
             </div>
           </div>

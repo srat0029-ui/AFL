@@ -1,0 +1,52 @@
+.bookmaker-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.bookmaker-settings__intro {
+  margin: 0;
+}
+
+.bookmaker-settings__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+}
+
+.bookmaker-settings__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #1c212b;
+}
+
+.bookmaker-settings__row:last-child {
+  border-bottom: none;
+}
+
+.bookmaker-settings__name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+  color: #f3f4f6;
+}
+
+.bookmaker-settings__exchange-flag {
+  font-size: 0.65rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 4px;
+  background: #2a1e3a;
+  color: #c4b5fd;
+}
+
+.bookmaker-settings__row select {
+  min-width: 320px;
+}

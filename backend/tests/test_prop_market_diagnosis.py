@@ -143,3 +143,63 @@ def test_would_be_skipped_and_hours_to_kickoff_always_computed(db_session):
     diagnosis = diagnose_match_market_coverage(db_session, match, provider_events=None)
     assert diagnosis.hours_to_kickoff > 0
     assert isinstance(diagnosis.would_be_skipped_this_cycle, bool)
+
+
+def test_market_availability_split_when_both_markets_quoted(db_session):
+    match, home, away = _seed(db_session)
+    match.external_ids = {"the_odds_api": "evt1"}
+    p1 = Player(sport_id=match.sport_id, display_name="Nick Daicos", source="afltables", source_player_id="p1", current_team_id=home.id)
+    p2 = Player(sport_id=match.sport_id, display_name="Charlie Curnow", source="afltables", source_player_id="p2", current_team_id=away.id)
+    bookmaker = Bookmaker(name="SportsBet")
+    db_session.add_all([p1, p2, bookmaker])
+    db_session.flush()
+    db_session.add_all([
+        PlayerPropMarket(
+            match_id=match.id, player_id=p1.id, bookmaker_id=bookmaker.id, market_type="player_disposals",
+            line_type="over_under", threshold=29.5, selection="over", price_decimal=1.9,
+            recorded_at=KICKOFF - timedelta(days=1), source="the_odds_api",
+        ),
+        PlayerPropMarket(
+            match_id=match.id, player_id=p2.id, bookmaker_id=bookmaker.id, market_type="player_goals",
+            line_type="multi_plus", threshold=2.0, selection="yes", price_decimal=3.2,
+            recorded_at=KICKOFF - timedelta(days=1), source="the_odds_api",
+        ),
+    ])
+    db_session.commit()
+
+    diagnosis = diagnose_match_market_coverage(db_session, match, provider_events=None, expected_bookmaker_name="SportsBet")
+    assert diagnosis.disposals_available is True
+    assert diagnosis.goals_available is True
+    assert diagnosis.unique_player_count == 2
+
+
+def test_goals_available_reported_even_when_disposal_market_absent(db_session):
+    match, home, away = _seed(db_session)
+    match.external_ids = {"the_odds_api": "evt1"}
+    player = Player(sport_id=match.sport_id, display_name="Charlie Curnow", source="afltables", source_player_id="p1", current_team_id=home.id)
+    bookmaker = Bookmaker(name="SportsBet")
+    db_session.add_all([player, bookmaker])
+    db_session.flush()
+    db_session.add(PlayerPropMarket(
+        match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id, market_type="player_goal_scorer_anytime",
+        line_type="multi_plus", threshold=1.0, selection="yes", price_decimal=2.5,
+        recorded_at=KICKOFF - timedelta(days=1), source="the_odds_api",
+    ))
+    db_session.commit()
+
+    diagnosis = diagnose_match_market_coverage(db_session, match, provider_events=None)
+    assert diagnosis.category == DIAG_DISPOSAL_MARKET_ABSENT
+    assert diagnosis.disposals_available is False
+    assert diagnosis.unique_player_count == 1
+
+
+def test_market_flags_default_false_when_no_quotes_exist(db_session):
+    match, home, away = _seed(db_session)
+    match.external_ids = {"the_odds_api": "evt1"}
+    db_session.commit()
+
+    diagnosis = diagnose_match_market_coverage(db_session, match, provider_events=None)
+    assert diagnosis.category == DIAG_EVENT_NO_PROPS
+    assert diagnosis.disposals_available is False
+    assert diagnosis.goals_available is False
+    assert diagnosis.unique_player_count == 0

@@ -103,6 +103,30 @@ function PlayerProfilePage() {
               <GoalProjectionTable rows={[projection.goals]} />
             </>
           )}
+
+          {(projection.current_context.length > 0 ||
+            projection.tog_volatile ||
+            projection.substitute_risk ||
+            projection.returning_from_injury ||
+            projection.role_note) && (
+            <div className="player-context-block">
+              <h3>Selection &amp; context</h3>
+              <ul className="player-context-block__list">
+                {projection.substitute_risk && <li>Flagged as a substitute risk in the current lineup entry.</li>}
+                {projection.returning_from_injury && <li>Marked as returning from injury in the current lineup entry.</li>}
+                {projection.role_note && <li>Role note: {projection.role_note}</li>}
+                {projection.tog_volatile && <li>Recent time-on-ground% has been volatile over the last 5 games.</li>}
+                {projection.current_context.map((c) => (
+                  <li key={c.id}>
+                    {c.context_type_label}: {c.summary}{" "}
+                    <span className="hint">
+                      ({c.source}, {c.freshness})
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </section>
       )}
 

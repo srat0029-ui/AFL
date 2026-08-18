@@ -50,6 +50,9 @@ class MatchMarketDiagnosis:
     detail: str
     would_be_skipped_this_cycle: bool  # True if the match-time-aware quota policy would currently skip this match
     hours_to_kickoff: float
+    disposals_available: bool = False  # at least one real player_disposals quote exists for this match, any bookmaker
+    goals_available: bool = False  # at least one real player_goals quote exists for this match, any bookmaker
+    unique_player_count: int = 0  # distinct players with at least one real quote (either market), any bookmaker
 
 
 def _aware(dt: datetime) -> datetime:
@@ -101,12 +104,16 @@ def diagnose_match_market_coverage(
         )
 
     disposal_quotes = [q for q in quotes if q.market_type == PlayerMarket.DISPOSALS.value]
+    goal_quotes = [q for q in quotes if q.market_type == PlayerMarket.GOALS.value]
+    unique_player_count = len({q.player_id for q in quotes})
+
     if not disposal_quotes:
         markets_seen = sorted({q.market_type for q in quotes})
         return MatchMarketDiagnosis(
             match_id=match.id, category=DIAG_DISPOSAL_MARKET_ABSENT,
             detail=f"Quotes exist ({', '.join(markets_seen)}) but none are player_disposals.",
             would_be_skipped_this_cycle=would_skip, hours_to_kickoff=hours_to_kickoff,
+            disposals_available=False, goals_available=bool(goal_quotes), unique_player_count=unique_player_count,
         )
 
     if expected_bookmaker_name is not None:
@@ -116,10 +123,12 @@ def diagnose_match_market_coverage(
                 match_id=match.id, category=DIAG_BOOKMAKER_ABSENT,
                 detail=f"Disposal quotes exist from {sorted(bookmaker_names)}, but not from {expected_bookmaker_name!r}.",
                 would_be_skipped_this_cycle=would_skip, hours_to_kickoff=hours_to_kickoff,
+                disposals_available=True, goals_available=bool(goal_quotes), unique_player_count=unique_player_count,
             )
 
     return MatchMarketDiagnosis(
         match_id=match.id, category=DIAG_ODDS_AVAILABLE,
         detail=f"{len(disposal_quotes)} disposal quote(s) available.",
         would_be_skipped_this_cycle=would_skip, hours_to_kickoff=hours_to_kickoff,
+        disposals_available=True, goals_available=bool(goal_quotes), unique_player_count=unique_player_count,
     )

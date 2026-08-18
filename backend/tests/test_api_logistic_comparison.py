@@ -66,3 +66,32 @@ def test_logistic_comparison_route_does_not_shadow_model_id_route(client, db_ses
     response = client.get("/api/backtests/elo")
     assert response.status_code == 200
     assert response.json()["model_name"] == "elo"
+
+
+def test_logistic_comparison_is_cached_across_requests(client, db_session, monkeypatch):
+    """The comparison-building call was observed taking multiple seconds
+    live; a second request within the same server process must reuse the
+    cached result rather than recomputing it."""
+    import app.api.routes.backtests as backtests_route
+
+    _seed_full_dataset(db_session)
+    _seed_model_runs(db_session)
+    _seed_logistic_runs(db_session)
+
+    call_count = 0
+    real_build = backtests_route.build_logistic_comparison
+
+    def _counting_build(*args, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        return real_build(*args, **kwargs)
+
+    monkeypatch.setattr(backtests_route, "build_logistic_comparison", _counting_build)
+
+    first = client.get("/api/backtests/logistic-comparison")
+    second = client.get("/api/backtests/logistic-comparison")
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json() == second.json()
+    assert call_count == 1

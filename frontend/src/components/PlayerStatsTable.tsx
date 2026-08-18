@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import type { PlayerGameStat } from "../api/client";
+import { formatShortDateWithYear } from "../lib/datetime";
 
 export interface Column {
   key: keyof PlayerGameStat | "opponent" | "round";
@@ -23,9 +24,7 @@ function num(value: number | null | undefined): string {
   return value === null || value === undefined ? "—" : String(value);
 }
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
-}
+const formatDate = formatShortDateWithYear;
 
 /** Sortable player-match-stats table. showPlayerColumn=true (match-detail
  * pages, many players) adds a leading player-name column linking to their

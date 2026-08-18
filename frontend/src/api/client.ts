@@ -135,6 +135,30 @@ export function fetchBookmakers(): Promise<string[]> {
   return request("/api/bookmakers");
 }
 
+// --- Bookmaker eligibility (Market Integrity stage, Sections 4-5, 13) ---
+
+export type BookmakerEligibility = "included" | "excluded" | "informational_only";
+
+export interface BookmakerSetting {
+  id: number;
+  name: string;
+  provider_key: string | null;
+  region: string | null;
+  is_exchange: boolean;
+  eligibility: BookmakerEligibility;
+}
+
+export function fetchBookmakerEligibility(): Promise<BookmakerSetting[]> {
+  return request("/api/bookmakers/eligibility");
+}
+
+export function updateBookmakerEligibility(bookmakerId: number, eligibility: BookmakerEligibility): Promise<BookmakerSetting> {
+  return request(`/api/bookmakers/${bookmakerId}/eligibility`, {
+    method: "PATCH",
+    body: JSON.stringify({ eligibility }),
+  });
+}
+
 export type EdgeTier = "none" | "weak" | "moderate" | "strong";
 export type ConfidenceTier = "insufficient_data" | "lower" | "moderate" | "higher";
 
@@ -1233,6 +1257,11 @@ export async function fetchMatchProjections(matchId: number): Promise<MatchProje
 export interface PlayerProjection {
   disposals: DisposalProjection | null;
   goals: GoalProjection | null;
+  current_context: MatchContextItem[];
+  tog_volatile: boolean | null;
+  substitute_risk: boolean | null;
+  returning_from_injury: boolean | null;
+  role_note: string | null;
 }
 
 export async function fetchPlayerProjection(playerId: number): Promise<PlayerProjection | null> {
@@ -1366,6 +1395,8 @@ export interface BookmakerQuote {
   recorded_at: string;
   freshness: OddsFreshness;
   source: string;
+  is_exchange: boolean;
+  eligibility: BookmakerEligibility;
 }
 
 export interface PriceMovement {
@@ -1385,6 +1416,12 @@ export interface OpportunityComponents {
   calibration: number;
   penalty_multiplier: number;
   penalty_reasons: string[];
+}
+
+export interface CalibrationMetrics {
+  evaluated_threshold: number;
+  ece: number;
+  n: number;
 }
 
 export interface NormalizedPropInsight {
@@ -1414,6 +1451,8 @@ export interface NormalizedPropInsight {
   bookmakers: BookmakerQuote[];
   odds_freshness: OddsFreshness;
   price_movement: PriceMovement;
+  why_model_likes_it: string;
+  calibration: CalibrationMetrics | null;
   opportunity_score: number;
   opportunity_components: OpportunityComponents;
 }
@@ -1435,6 +1474,541 @@ export function fetchNormalizedPropInsights(
   if (params.matchId !== undefined) query.set("match_id", String(params.matchId));
   const qs = query.toString();
   return request(`/api/afl/prop-insights/normalized${qs ? `?${qs}` : ""}`);
+}
+
+// --- Best Opportunities (Sections 6-11, 17-18 of the best-bets stage) ---
+
+export type OpportunityType = "player" | "team";
+
+export interface PriceIntegrityCheck {
+  price_advantage_pct: number;
+  band_pct: number;
+  best_bookmaker: string;
+  best_price: number;
+  best_price_freshness: OddsFreshness;
+  next_best_bookmaker: string;
+  next_best_price: number;
+  next_best_price_freshness: OddsFreshness;
+  recorded_at_gap_seconds: number;
+  passes_integrity: boolean;
+  checks: Record<string, boolean>;
+  issues: string[];
+}
+
+export type MarketMaturityTier = "early_market" | "developing_market" | "mature_market";
+
+export interface MarketMaturity {
+  tier: MarketMaturityTier;
+  label: string;
+  n_bookmakers: number;
+  snapshot_count: number | null;
+  hours_until_kickoff: number | null;
+}
+
+export type QualityTierName = "strong_candidate" | "worth_reviewing" | "speculative" | "do_not_headline";
+
+export interface QualityTier {
+  tier: QualityTierName;
+  label: string;
+  caveats: string[];
+}
+
+export interface PriceShopping {
+  best_enabled: BookmakerQuote | null;
+  next_best_enabled: BookmakerQuote | null;
+  worst_enabled: BookmakerQuote | null;
+}
+
+export interface BestOpportunity {
+  opportunity_type: OpportunityType;
+  match_id: number;
+  round_number: number;
+  season_year: number;
+  label: string;
+  market_type: string;
+  player_id: number | null;
+  player_name: string | null;
+  team_id: number | null;
+  line_type: PlayerPropLineType | null;
+  threshold: number | null;
+  selection: string | null;
+  line_value: number | null;
+  model_probability: number;
+  model_fair_odds: number;
+  best_price: number;
+  best_bookmaker: string;
+  best_price_is_exchange: boolean;
+  eligible_price_available: boolean;
+  best_price_all_bookmakers: number | null;
+  best_bookmaker_all_bookmakers: string | null;
+  best_price_all_differs_from_enabled: boolean;
+  price_shopping: PriceShopping | null;
+  quote_source: string | null;
+  market_implied_probability: number;
+  devigged_probability: number | null;
+  overround_removed: boolean;
+  difference_pp: number;
+  expected_value: number;
+  edge_category: EdgeCategory | null;
+  confidence_tier: ConfidenceTierLive;
+  selection_status: SelectionStatus | null;
+  is_confirmed: boolean | null;
+  n_bookmakers: number;
+  bookmakers: BookmakerQuote[];
+  snapshot_count: number | null;
+  odds_freshness: OddsFreshness;
+  why_model_likes_it: string;
+  calibration: CalibrationMetrics | null;
+  warnings: string[];
+  opportunity_score: number;
+  opportunity_components: OpportunityComponents;
+  price_integrity: PriceIntegrityCheck | null;
+  market_maturity: MarketMaturity | null;
+  quality_tier: QualityTier | null;
+}
+
+export function fetchBestOpportunities(
+  params: {
+    marketScope?: "all" | "player" | "team";
+    includeUncertain?: boolean;
+    includeStale?: boolean;
+    includeInsufficientHistory?: boolean;
+    limit?: number;
+  } = {}
+): Promise<BestOpportunity[]> {
+  const query = new URLSearchParams();
+  if (params.marketScope) query.set("market_scope", params.marketScope);
+  if (params.includeUncertain !== undefined) query.set("include_uncertain", String(params.includeUncertain));
+  if (params.includeStale !== undefined) query.set("include_stale", String(params.includeStale));
+  if (params.includeInsufficientHistory !== undefined) query.set("include_insufficient_history", String(params.includeInsufficientHistory));
+  if (params.limit !== undefined) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return request(`/api/afl/best-opportunities${qs ? `?${qs}` : ""}`);
+}
+
+// --- Diversified Best Opportunities (Weekly Opportunity Discovery stage) ---
+
+export interface OpportunityAlternateLine {
+  threshold: number | null;
+  line_type: PlayerPropLineType | null;
+  label: string;
+  model_probability: number;
+  best_price: number;
+  best_bookmaker: string;
+  difference_pp: number;
+  expected_value: number;
+  n_bookmakers: number;
+}
+
+export interface RecentForm {
+  stat_field: string;
+  last5: number[];
+  last10: number[];
+  last5_avg: number | null;
+  last10_avg: number | null;
+  predicted_mean: number | null;
+  hit_rate_description: string;
+  form_disagreement_label: string | null;
+  conservative_model_flag: string | null;
+}
+
+export interface DiversifiedOpportunity extends BestOpportunity {
+  family_label: string;
+  alternate_lines: OpportunityAlternateLine[];
+  correlation_labels: string[];
+  price_advantage_pct: number | null;
+  recent_form: RecentForm | null;
+  reason_codes: string[];
+  reason_labels: string[];
+  representative_score: number;
+}
+
+export interface WeeklySummary {
+  round_number: number | null;
+  n_opportunities_passing_gates: number;
+  n_unique_players: number;
+  n_unique_matches: number;
+  n_bookmakers: number;
+  best_difference_pp: number | null;
+  best_price_advantage_pct: number | null;
+}
+
+export interface BookmakerCoverage {
+  bookmaker_name: string;
+  n_active_player_markets: number;
+  n_matches_covered: number;
+}
+
+export interface DiversifiedOpportunitiesResponse {
+  opportunities: DiversifiedOpportunity[];
+  summary: WeeklySummary;
+  bookmaker_coverage: BookmakerCoverage[];
+}
+
+export type OpportunityView = "overall" | "disposals" | "goals";
+
+export function fetchDiversifiedOpportunities(
+  params: {
+    view?: OpportunityView;
+    marketScope?: "all" | "player" | "team";
+    includeUncertain?: boolean;
+    includeStale?: boolean;
+    includeInsufficientHistory?: boolean;
+    onePerMatch?: boolean;
+    onePerPlayer?: boolean;
+    limit?: number | null;
+  } = {}
+): Promise<DiversifiedOpportunitiesResponse> {
+  const query = new URLSearchParams();
+  if (params.view) query.set("view", params.view);
+  if (params.marketScope) query.set("market_scope", params.marketScope);
+  if (params.includeUncertain !== undefined) query.set("include_uncertain", String(params.includeUncertain));
+  if (params.includeStale !== undefined) query.set("include_stale", String(params.includeStale));
+  if (params.includeInsufficientHistory !== undefined) query.set("include_insufficient_history", String(params.includeInsufficientHistory));
+  if (params.onePerMatch !== undefined) query.set("one_per_match", String(params.onePerMatch));
+  if (params.onePerPlayer !== undefined) query.set("one_per_player", String(params.onePerPlayer));
+  if (params.limit !== undefined && params.limit !== null) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return request(`/api/afl/best-opportunities/diversified${qs ? `?${qs}` : ""}`);
+}
+
+// --- Final Weekly Shortlist (Market Integrity stage, Sections 7-11, 22) ---
+
+export interface FinalShortlistOpportunity extends BestOpportunity {
+  family_label: string;
+  alternate_lines: OpportunityAlternateLine[];
+  correlation_labels: string[];
+  reason_codes: string[];
+  why_it_ranks_here: string[];
+  caveats: string[];
+}
+
+export interface ExcludedOpportunity {
+  label: string;
+  opportunity_type: OpportunityType;
+  reason: string;
+}
+
+export interface FinalShortlistResponse {
+  opportunities: FinalShortlistOpportunity[];
+  excluded: ExcludedOpportunity[];
+  empty_state_reason: string | null;
+  any_confirmed_player_lineups: boolean;
+}
+
+export function fetchFinalShortlist(
+  params: { limit?: number | null; includeUnconfirmedPlayers?: boolean } = {}
+): Promise<FinalShortlistResponse> {
+  const query = new URLSearchParams();
+  if (params.limit !== undefined && params.limit !== null) query.set("limit", String(params.limit));
+  if (params.includeUnconfirmedPlayers !== undefined) query.set("include_unconfirmed_players", String(params.includeUnconfirmedPlayers));
+  const qs = query.toString();
+  return request(`/api/afl/best-opportunities/final-shortlist${qs ? `?${qs}` : ""}`);
+}
+
+// --- Model vs Market Disagreements (Section 18 — NOT an opportunity list) ---
+
+export type DisagreementDirection = "model_above_market" | "market_above_model";
+
+export interface ModelMarketDisagreement {
+  opportunity_type: OpportunityType;
+  match_id: number;
+  label: string;
+  market_type: string;
+  player_id: number | null;
+  player_name: string | null;
+  threshold: number | null;
+  line_type: PlayerPropLineType | null;
+  model_probability: number;
+  model_predicted_mean: number | null;
+  market_probability: number;
+  overround_removed: boolean;
+  difference_pp: number;
+  direction: DisagreementDirection;
+  confidence_tier: ConfidenceTierLive;
+  best_price: number;
+  best_bookmaker: string;
+  bookmakers: BookmakerQuote[];
+  n_bookmakers: number;
+  recent_form: { last5: number[]; last10: number[]; last5_avg: number | null; last10_avg: number | null; ewma?: number | null } | null;
+  calibration: CalibrationMetrics | null;
+  odds_freshness: OddsFreshness;
+  warnings: string[];
+}
+
+export function fetchModelMarketDisagreements(params: { thresholdPp?: number; limit?: number | null } = {}): Promise<ModelMarketDisagreement[]> {
+  const query = new URLSearchParams();
+  if (params.thresholdPp !== undefined) query.set("threshold_pp", String(params.thresholdPp));
+  if (params.limit !== undefined && params.limit !== null) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return request(`/api/afl/model-vs-market-disagreements${qs ? `?${qs}` : ""}`);
+}
+
+// --- Elite disposal player monitoring diagnostic (Section 19) ---
+
+export interface PlayerBiasEntry {
+  player_id: number;
+  player_name: string;
+  n_predictions: number;
+  avg_actual: number;
+  avg_predicted: number;
+  bias: number;
+}
+
+export interface EliteDisposalBucket {
+  bucket: string;
+  label: string;
+  n_players: number;
+  n_predictions: number;
+  avg_actual: number;
+  avg_predicted: number;
+  bias: number;
+  mae: number;
+  most_under_predicted_players: PlayerBiasEntry[];
+}
+
+export function fetchEliteDisposalDiagnostic(): Promise<EliteDisposalBucket[] | null> {
+  return request("/api/afl/elite-disposal-diagnostic");
+}
+
+// --- Weekly Bet Review + Decision Support stage ---
+
+export interface ModelStrength {
+  market_type: string;
+  model_name: string;
+  metrics: Record<string, number | null>;
+  evaluation_sample: number;
+  caveats: string[];
+}
+
+export interface CalibrationBand {
+  band_label: string;
+  avg_predicted: number | null;
+  actual_rate: number | null;
+  n: number;
+  meets_min_sample: boolean;
+}
+
+export type DirectionClassification = "agrees_on_direction" | "disagrees_on_direction";
+
+export interface DirectionAgreement {
+  classification: DirectionClassification;
+  model_favours_selection: boolean;
+  market_favours_selection: boolean;
+  description: string;
+}
+
+export interface ProjectionLineDistance {
+  market_type: string;
+  model_projection: number;
+  line_value: number;
+  distance: number;
+  unit: string;
+}
+
+export interface PricePoint {
+  bookmaker_name: string | null;
+  price_decimal: number;
+  model_estimated_ev: number;
+}
+
+export interface PriceSensitivity {
+  model_fair_price: number;
+  price_points: PricePoint[];
+}
+
+export type MovementDirection = "toward_model" | "away_from_model" | "unchanged";
+
+export interface MarketMovement {
+  first_price: number;
+  first_observed_at: string;
+  latest_price: number;
+  latest_observed_at: string;
+  best_current_price: number;
+  model_fair_odds: number;
+  direction: MovementDirection;
+  description: string;
+}
+
+export interface BookmakerProbability {
+  bookmaker_name: string;
+  price_decimal: number;
+  probability: number;
+  overround_removed: boolean;
+}
+
+export interface Consensus {
+  consensus_probability: number;
+  n_bookmakers: number;
+  n_devigged: number;
+  spread: number;
+  methodology: string;
+  per_bookmaker: BookmakerProbability[];
+}
+
+export interface OutlierCheck {
+  is_outlier: boolean;
+  best_price: number;
+  median_eligible_price: number;
+  pct_difference: number;
+  message: string | null;
+}
+
+export interface EvidenceSummary {
+  evidence_codes: string[];
+  evidence_labels: string[];
+  caution_codes: string[];
+  caution_labels: string[];
+}
+
+export interface WeeklyReviewOpportunity extends BestOpportunity {
+  family_label: string | null;
+  alternate_lines: OpportunityAlternateLine[];
+  correlation_labels: string[];
+  reason_codes: string[];
+  why_it_ranks_here: string[];
+  caveats: string[];
+  model_strength: ModelStrength | null;
+  calibration_band: CalibrationBand | null;
+  direction_agreement: DirectionAgreement;
+  projection_line_distance: ProjectionLineDistance | null;
+  price_sensitivity: PriceSensitivity;
+  market_movement: MarketMovement | null;
+  consensus: Consensus | null;
+  outlier_check: OutlierCheck | null;
+  evidence_summary: EvidenceSummary;
+  current_context: MatchContextItem[];
+  context_conflict: ContextConflict | null;
+}
+
+export interface WeeklyReviewPage {
+  final_shortlist: WeeklyReviewOpportunity[];
+  strongest_player_opportunities: WeeklyReviewOpportunity[];
+  strongest_team_opportunities: WeeklyReviewOpportunity[];
+  model_vs_market_disagreements_count: number;
+  markets_waiting_on_team_confirmation: WeeklyReviewOpportunity[];
+  bookmaker_coverage: BookmakerCoverage[];
+  weekly_summary: WeeklySummary;
+  any_confirmed_player_lineups: boolean;
+}
+
+export function fetchWeeklyReviewPage(params: { shortlistLimit?: number; comparisonLimit?: number } = {}): Promise<WeeklyReviewPage> {
+  const query = new URLSearchParams();
+  if (params.shortlistLimit !== undefined) query.set("shortlist_limit", String(params.shortlistLimit));
+  if (params.comparisonLimit !== undefined) query.set("comparison_limit", String(params.comparisonLimit));
+  const qs = query.toString();
+  return request(`/api/afl/weekly-review${qs ? `?${qs}` : ""}`);
+}
+
+export interface ShortlistSnapshotSummary {
+  id: number;
+  created_at: string;
+  round_number: number | null;
+  season_year: number | null;
+  n_items: number;
+  label: string | null;
+}
+
+export interface ShortlistSnapshotItem {
+  id: number;
+  rank: number;
+  opportunity_type: OpportunityType;
+  label: string;
+  match_id: number;
+  market_type: string;
+  player_id: number | null;
+  selection: string | null;
+  threshold: number | null;
+  line_value: number | null;
+  line_type: string | null;
+  best_price: number;
+  best_bookmaker: string;
+  recorded_at: string;
+  model_probability: number;
+  model_fair_odds: number;
+  market_implied_probability: number;
+  devigged_probability: number | null;
+  overround_removed: boolean;
+  difference_pp: number;
+  expected_value: number;
+  confidence_tier: ConfidenceTierLive;
+  quality_tier: QualityTierName;
+  market_maturity_tier: MarketMaturityTier | null;
+  is_confirmed: boolean | null;
+  model_name: string | null;
+  model_version: string | null;
+  n_bookmakers: number;
+  reasons_json: { why_it_ranks_here: string[]; caveats: string[]; correlation_labels: string[] };
+  actual_stat_value: number | null;
+  match_result: "won" | "lost" | "push" | null;
+  settled_at: string | null;
+}
+
+export interface ShortlistSnapshot {
+  id: number;
+  created_at: string;
+  round_number: number | null;
+  season_year: number | null;
+  limit_requested: number | null;
+  include_unconfirmed_players: boolean;
+  n_items: number;
+  label: string | null;
+  items: ShortlistSnapshotItem[];
+}
+
+export function fetchShortlistSnapshots(limit = 50): Promise<ShortlistSnapshotSummary[]> {
+  return request(`/api/afl/weekly-review/shortlist-snapshots?limit=${limit}`);
+}
+
+export function createShortlistSnapshot(params: { limit?: number | null; includeUnconfirmedPlayers?: boolean; label?: string } = {}): Promise<ShortlistSnapshot> {
+  return request("/api/afl/weekly-review/shortlist-snapshots", {
+    method: "POST",
+    body: JSON.stringify({ limit: params.limit ?? null, include_unconfirmed_players: params.includeUnconfirmedPlayers ?? false, label: params.label ?? null }),
+  });
+}
+
+export function fetchShortlistSnapshot(snapshotId: number): Promise<ShortlistSnapshot> {
+  return request(`/api/afl/weekly-review/shortlist-snapshots/${snapshotId}`);
+}
+
+export function settleShortlistSnapshot(snapshotId: number): Promise<{ snapshot_id: number; settled_count: number }> {
+  return request(`/api/afl/weekly-review/shortlist-snapshots/${snapshotId}/settle`, { method: "POST" });
+}
+
+export interface ShortlistRoundSummaryItem {
+  label: string;
+  opportunity_type: OpportunityType;
+  best_price: number;
+  best_bookmaker: string;
+  model_probability: number;
+  market_implied_probability: number;
+  match_result: "won" | "lost" | "push" | null;
+  actual_stat_value: number | null;
+  flat_stake_pl: number | null;
+}
+
+export interface ShortlistRoundSummary {
+  snapshot_id: number;
+  round_number: number | null;
+  season_year: number | null;
+  n_items: number;
+  n_settled: number;
+  n_unresolved: number;
+  n_won: number;
+  n_lost: number;
+  n_push: number;
+  hypothetical_flat_stake_pl: number | null;
+  n_unique_matches: number;
+  n_team: number;
+  n_player: number;
+  confidence_tier_breakdown: Record<string, number>;
+  quality_tier_breakdown: Record<string, number>;
+  small_sample_warning: boolean;
+  items: ShortlistRoundSummaryItem[];
+}
+
+export function fetchShortlistRoundSummary(snapshotId: number): Promise<ShortlistRoundSummary> {
+  return request(`/api/afl/weekly-review/shortlist-snapshots/${snapshotId}/round-summary`);
 }
 
 // --- Real Market Tracking (Sections 18-19 of the market-logging stage) ---
@@ -1628,6 +2202,9 @@ export interface MatchMarketDiagnosis {
   detail: string;
   would_be_skipped_this_cycle: boolean;
   hours_to_kickoff: number;
+  disposals_available: boolean;
+  goals_available: boolean;
+  unique_player_count: number;
 }
 
 export interface MatchCoverageStatus {
@@ -1647,6 +2224,9 @@ export interface MatchCoverageStatus {
   n_observations: number;
   n_observations_settled: number;
   n_observations_awaiting_settlement: number;
+  disposals_available: boolean;
+  goals_available: boolean;
+  unique_player_count: number;
   diagnosis: MatchMarketDiagnosis;
 }
 
@@ -1692,4 +2272,159 @@ export interface LiveStatusReport {
 
 export function fetchLiveStatus(): Promise<LiveStatusReport> {
   return request("/api/afl/live-status");
+}
+
+// --- Current Context + Team News Intelligence stage ------------------------
+
+export type ContextType =
+  | "confirmed_in"
+  | "confirmed_out"
+  | "injury"
+  | "late_withdrawal"
+  | "named_substitute"
+  | "emergency"
+  | "returning_player"
+  | "limited_game_time_concern"
+  | "weather"
+  | "venue_condition"
+  | "major_role_change"
+  | "other";
+
+export type ContextConfidence = "official" | "reputable_source" | "unverified";
+export type ContextFreshness = "fresh" | "aging" | "stale";
+
+export interface MatchContextItem {
+  id: number;
+  match_id: number;
+  team_id: number | null;
+  player_id: number | null;
+  player_name: string | null;
+  context_type: ContextType;
+  context_type_label: string;
+  confidence: ContextConfidence;
+  confidence_label: string;
+  source: string;
+  source_reference: string | null;
+  source_timestamp: string | null;
+  recorded_at: string;
+  summary: string;
+  freshness: ContextFreshness;
+  is_current: boolean;
+}
+
+export interface CreateContextItemInput {
+  context_type: ContextType;
+  source: string;
+  summary: string;
+  confidence: ContextConfidence;
+  team_id?: number | null;
+  player_id?: number | null;
+  source_timestamp?: string | null;
+  source_reference?: string | null;
+  apply_to_lineup?: boolean;
+}
+
+export interface MatchContextApplyResult {
+  item: MatchContextItem;
+  lineup_updated: boolean;
+  lineup_apply_note: string | null;
+}
+
+export interface WeatherSnapshot {
+  match_id: number;
+  venue_id: number;
+  fetched_at: string;
+  forecast_for: string;
+  temperature_c: number | null;
+  rain_probability_pct: number | null;
+  expected_rainfall_mm: number | null;
+  wind_speed_kph: number | null;
+  wind_gust_kph: number | null;
+  severe_weather_warning: boolean;
+  severe_weather_note: string | null;
+  source: string;
+}
+
+export interface WeatherDiagnostic {
+  match_id: number;
+  weather_available: boolean;
+  rain_probability_pct: number | null;
+  wind_gust_kph: number | null;
+  is_wet: boolean;
+  is_windy: boolean;
+  projected_total_points: number | null;
+  historical_sample_overall: number;
+  historical_mae_overall: number | null;
+  historical_sample_similar_condition: number;
+  historical_mae_similar_condition: number | null;
+  has_sufficient_data: boolean;
+  note: string;
+}
+
+export interface ContextConflict {
+  codes: string[];
+  labels: string[];
+  latest_context_at: string | null;
+  model_generated_at: string | null;
+}
+
+export interface MatchContextPanel {
+  match_id: number;
+  current_context: MatchContextItem[];
+  weather: WeatherSnapshot | null;
+  last_updated: string | null;
+}
+
+export interface RoundContextMatch {
+  match_id: number;
+  round_number: number;
+  season_year: number;
+  scheduled_start: string;
+  home_team_name: string;
+  away_team_name: string;
+  lineup_announcement_state: string;
+  n_confirmed_in: number;
+  n_confirmed_out: number;
+  n_substitutes: number;
+  n_other_context_items: number;
+  weather: WeatherSnapshot | null;
+  n_stale_projections: number;
+}
+
+export interface RoundContextDashboard {
+  round_number: number | null;
+  season_year: number | null;
+  matches: RoundContextMatch[];
+}
+
+export function fetchMatchContextHistory(matchId: number): Promise<MatchContextItem[]> {
+  return request(`/api/afl/matches/${matchId}/context`);
+}
+
+export function fetchMatchContextCurrent(matchId: number): Promise<MatchContextItem[]> {
+  return request(`/api/afl/matches/${matchId}/context/current`);
+}
+
+export function createMatchContextItem(matchId: number, input: CreateContextItemInput): Promise<MatchContextApplyResult> {
+  return request(`/api/afl/matches/${matchId}/context`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export function fetchMatchContextPanel(matchId: number): Promise<MatchContextPanel> {
+  return request(`/api/afl/matches/${matchId}/context-panel`);
+}
+
+export function fetchMatchWeather(matchId: number): Promise<WeatherSnapshot | null> {
+  return request(`/api/afl/matches/${matchId}/weather`);
+}
+
+export function refreshWeather(): Promise<{ matches_considered: number; snapshots_created: number; skipped_no_venue: number[]; skipped_no_coordinates: number[]; skipped_too_far_out: number[]; errors: string[] }> {
+  return request("/api/afl/weather/refresh", { method: "POST" });
+}
+
+export function fetchWeatherDiagnostic(matchId: number): Promise<WeatherDiagnostic> {
+  return request(`/api/afl/matches/${matchId}/weather-diagnostic`);
+}
+
+export function fetchContextDashboard(): Promise<RoundContextDashboard> {
+  return request("/api/afl/context-dashboard");
 }

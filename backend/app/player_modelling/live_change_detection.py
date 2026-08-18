@@ -16,16 +16,35 @@ Reuses check_staleness rather than re-deriving a second notion of
 "changed" — "stale" and "needs regenerating" are the same condition.
 """
 
+from datetime import timezone
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ExpectedLineup, ExpectedLineupStatus, PlayerDisposalProjection, PlayerGoalProjection
+from app.models import ExpectedLineup, ExpectedLineupStatus, MatchContextItem, PlayerDisposalProjection, PlayerGoalProjection
 from app.player_modelling.live_engine import compute_team_model_version
 from app.player_modelling.live_report_query import current_disposal_model_version, current_goal_model_version
 from app.player_modelling.live_staleness import check_staleness
 from app.player_modelling.upcoming_features import UpcomingMatchTeams
 
 _ELIGIBLE_STATUSES = (ExpectedLineupStatus.EXPECTED_IN.value, ExpectedLineupStatus.UNCERTAIN.value)
+
+
+def _latest_context_by_player(db: Session, match_ids: list[int]) -> dict[tuple[int, int], object]:
+    """(player_id, match_id) -> latest source_timestamp/recorded_at across
+    that player's current-context items — Section 7/13: a projection whose
+    generation predates newer context should be regenerated."""
+    items = db.scalars(
+        select(MatchContextItem).where(MatchContextItem.match_id.in_(match_ids), MatchContextItem.player_id.is_not(None))
+    ).all()
+    latest: dict[tuple[int, int], object] = {}
+    for item in items:
+        ts = item.source_timestamp or item.recorded_at
+        ts = ts if ts.tzinfo is not None else ts.replace(tzinfo=timezone.utc)
+        key = (item.player_id, item.match_id)
+        if key not in latest or ts > latest[key]:
+            latest[key] = ts
+    return latest
 
 
 def detect_matches_needing_regeneration(db: Session, upcoming_matches: list[UpcomingMatchTeams]) -> set[int]:
@@ -48,6 +67,7 @@ def detect_matches_needing_regeneration(db: Session, upcoming_matches: list[Upco
 
     disposal_rows = db.scalars(select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id.in_(match_ids))).all()
     goal_rows = db.scalars(select(PlayerGoalProjection).where(PlayerGoalProjection.match_id.in_(match_ids))).all()
+    latest_context = _latest_context_by_player(db, match_ids)
 
     changed: set[int] = set()
 
@@ -62,12 +82,14 @@ def detect_matches_needing_regeneration(db: Session, upcoming_matches: list[Upco
 
         for player_id in expected_players:
             current_status = lineup_status_by_key.get((player_id, m.match_id))
+            player_latest_context = latest_context.get((player_id, m.match_id))
             d = projected_disposal.get(player_id)
             if d is not None and check_staleness(
                 projection_model_version=d.model_version, projection_data_cutoff=d.data_cutoff,
                 projection_lineup_status=d.lineup_status_at_generation, current_model_version=current_disposal_version,
                 current_data_cutoff=None, current_lineup_status=current_status,
                 projection_team_model_version=d.team_model_version, current_team_model_version=current_team_version,
+                projection_generated_at=d.generated_at, latest_context_at=player_latest_context,
             ).is_stale:
                 changed.add(m.match_id)
                 break
@@ -77,6 +99,7 @@ def detect_matches_needing_regeneration(db: Session, upcoming_matches: list[Upco
                 projection_lineup_status=g.lineup_status_at_generation, current_model_version=current_goal_version,
                 current_data_cutoff=None, current_lineup_status=current_status,
                 projection_team_model_version=g.team_model_version, current_team_model_version=current_team_version,
+                projection_generated_at=g.generated_at, latest_context_at=player_latest_context,
             ).is_stale:
                 changed.add(m.match_id)
                 break

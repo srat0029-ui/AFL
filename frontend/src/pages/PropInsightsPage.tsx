@@ -1,9 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import "./PropInsightsPage.css";
+import BookmakerSettingsPanel from "../components/BookmakerSettingsPanel";
 import Disclaimer from "../components/Disclaimer";
+import DiversifiedOpportunitiesView from "../components/DiversifiedOpportunitiesView";
+import FinalShortlistView from "../components/FinalShortlistView";
+import ModelMarketDisagreementsView from "../components/ModelMarketDisagreementsView";
+import OpportunityDrawer from "../components/OpportunityDrawer";
 import {
+  fetchBestOpportunities,
   fetchNormalizedPropInsights,
   fetchPropInsights,
+  type BestOpportunity,
   type ConfidenceTierLive,
   type EdgeCategory,
   type NormalizedPropInsight,
@@ -39,15 +46,38 @@ const LINEUP_LABELS: Partial<Record<SelectionStatus, string>> = {
   uncertain: "Uncertain",
 };
 
-type Tab = "opportunities" | "disposals" | "goals" | "by_match" | "manual_log";
+type Tab =
+  | "final_shortlist"
+  | "best_overall"
+  | "best_disposals"
+  | "best_goals"
+  | "all_markets"
+  | "disposals"
+  | "goals"
+  | "by_match"
+  | "manual_log"
+  | "disagreements"
+  | "bookmaker_settings";
 
 const TABS: { key: Tab; label: string }[] = [
-  { key: "opportunities", label: "Best Opportunities" },
+  { key: "final_shortlist", label: "Final Shortlist" },
+  { key: "best_overall", label: "Best Overall" },
+  { key: "best_disposals", label: "Best Disposals" },
+  { key: "best_goals", label: "Best Goals" },
+  { key: "all_markets", label: "All Markets" },
   { key: "disposals", label: "Disposals" },
   { key: "goals", label: "Goals" },
   { key: "by_match", label: "By Match" },
   { key: "manual_log", label: "Quote Log" },
+  { key: "disagreements", label: "Model vs Market" },
+  { key: "bookmaker_settings", label: "Bookmaker Settings" },
 ];
+
+const DIVERSIFIED_TABS: Partial<Record<Tab, "overall" | "disposals" | "goals">> = {
+  best_overall: "overall",
+  best_disposals: "disposals",
+  best_goals: "goals",
+};
 
 function marketLabel(marketType: PlayerPropMarketType, lineType: string, threshold: number): string {
   const market = marketType === "player_disposals" ? "Disposals" : "Goals";
@@ -55,8 +85,10 @@ function marketLabel(marketType: PlayerPropMarketType, lineType: string, thresho
   return `${market} ${line}`;
 }
 
+type TopN = 10 | 25 | 0; // 0 = All
+
 function PropInsightsPage() {
-  const [tab, setTab] = useState<Tab>("opportunities");
+  const [tab, setTab] = useState<Tab>("best_overall");
   const [rows, setRows] = useState<NormalizedPropInsight[]>([]);
   const [manualRows, setManualRows] = useState<PropInsight[]>([]);
   const [confidence, setConfidence] = useState<ConfidenceTierLive | "">("");
@@ -69,12 +101,34 @@ function PropInsightsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const isNormalizedTab = tab !== "manual_log";
+  // "All Markets" tab state (Section 1: the raw, ungrouped ranking —
+  // every supported market individually, exactly as computed, never
+  // hidden behind family grouping).
+  const [allMarketsOpportunities, setAllMarketsOpportunities] = useState<BestOpportunity[]>([]);
+  const [allMarketsTopN, setAllMarketsTopN] = useState<TopN>(25);
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+
+  const isDiversifiedTab = tab in DIVERSIFIED_TABS;
+  const isSelfManagedTab = isDiversifiedTab || tab === "final_shortlist" || tab === "disagreements" || tab === "bookmaker_settings";
+  const isNormalizedTab = !isSelfManagedTab && tab !== "manual_log" && tab !== "all_markets";
   const marketForTab: PlayerPropMarketType | undefined =
     tab === "disposals" ? "player_disposals" : tab === "goals" ? "player_goals" : undefined;
 
   useEffect(() => {
-    if (!isNormalizedTab) {
+    if (isSelfManagedTab) return; // this tab's own component manages its own fetch
+    if (tab === "all_markets") {
+      setLoading(true);
+      fetchBestOpportunities({
+        marketScope: "all",
+        includeUncertain,
+        limit: allMarketsTopN === 0 ? undefined : allMarketsTopN,
+      })
+        .then(setAllMarketsOpportunities)
+        .catch((err) => setError(err instanceof Error ? err.message : "Failed to load market ranking"))
+        .finally(() => setLoading(false));
+      return;
+    }
+    if (tab === "manual_log") {
       setLoading(true);
       fetchPropInsights({ confidence: confidence || undefined, includeUncertain })
         .then(setManualRows)
@@ -87,14 +141,14 @@ function PropInsightsPage() {
       market: marketForTab,
       confidence: confidence || undefined,
       includeUncertain,
-      opportunitiesOnly: tab === "opportunities",
+      opportunitiesOnly: false,
       matchId: tab === "by_match" && selectedMatchId !== "" ? selectedMatchId : undefined,
     })
       .then(setRows)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load prop insights"))
       .finally(() => setLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, confidence, includeUncertain, selectedMatchId]);
+  }, [tab, confidence, includeUncertain, selectedMatchId, allMarketsTopN, isSelfManagedTab]);
 
   // "By Match" needs a match list to pick from - derive it from an
   // unfiltered fetch rather than a separate endpoint, since every
@@ -147,6 +201,134 @@ function PropInsightsPage() {
           </button>
         ))}
       </nav>
+
+      {isDiversifiedTab && <DiversifiedOpportunitiesView view={DIVERSIFIED_TABS[tab]!} />}
+      {tab === "final_shortlist" && <FinalShortlistView />}
+      {tab === "disagreements" && <ModelMarketDisagreementsView />}
+      {tab === "bookmaker_settings" && <BookmakerSettingsPanel />}
+
+      {tab === "all_markets" && (
+        <>
+          <section className="prop-insights-page__filters">
+            <label>
+              Show
+              <select value={allMarketsTopN} onChange={(e) => setAllMarketsTopN(Number(e.target.value) as TopN)}>
+                <option value={10}>Top 10</option>
+                <option value={25}>Top 25</option>
+                <option value={0}>All</option>
+              </select>
+            </label>
+            <label className="prop-insights-page__checkbox">
+              <input type="checkbox" checked={includeUncertain} onChange={(e) => setIncludeUncertain(e.target.checked)} />
+              Include unconfirmed participation
+            </label>
+          </section>
+          <p className="hint">The raw, ungrouped ranking — every supported market individually, with no family grouping or diversification.</p>
+
+          {loading && <p className="hint">Loading…</p>}
+          {error && <div className="prop-insights-page__error">{error}</div>}
+
+          {!loading && !error && allMarketsOpportunities.length === 0 && (
+            <p className="hint">No markets currently pass the quality gates — check back once bookmaker markets open.</p>
+          )}
+
+          {!loading && !error && allMarketsOpportunities.length > 0 && (
+            <div className="prop-insights-table-scroll">
+              <table className="prop-insights-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Type</th>
+                    <th>Opportunity</th>
+                    <th>Model prob.</th>
+                    <th>Best price</th>
+                    <th>Books</th>
+                    <th>Market prob.</th>
+                    <th>Edge</th>
+                    <th>Model-est. EV</th>
+                    <th>Confidence</th>
+                    <th>Freshness</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allMarketsOpportunities.map((o, i) => {
+                    const key = `${o.opportunity_type}-${o.match_id}-${o.player_id ?? o.selection}-${o.market_type}-${o.threshold ?? o.line_value}`;
+                    const expanded = expandedKey === key;
+                    return (
+                      <Fragment key={key}>
+                        <tr className="prop-insights-table__row-clickable" onClick={() => setExpandedKey(expanded ? null : key)}>
+                          <td>{i + 1}</td>
+                          <td>
+                            <span className={`prop-insights-table__type-badge prop-insights-table__type-badge--${o.opportunity_type}`}>
+                              {o.opportunity_type === "player" ? "Player" : "Team"}
+                            </span>
+                          </td>
+                          <td>
+                            {o.label}
+                            {o.opportunity_type === "player" && !o.is_confirmed && (
+                              <span className="prop-insights-table__unconfirmed-flag" title="Participation not confirmed">
+                                unconfirmed
+                              </span>
+                            )}
+                          </td>
+                          <td>{(o.model_probability * 100).toFixed(1)}%</td>
+                          <td title={o.best_bookmaker}>
+                            ${o.best_price.toFixed(2)}
+                            <br />
+                            <span className="hint">{o.best_bookmaker}</span>
+                          </td>
+                          <td>{o.n_bookmakers}</td>
+                          <td title={o.overround_removed ? "No-vig market probability — bookmaker margin removed" : "Raw implied probability — bookmaker margin NOT removed, only one side of the market was quoted"}>
+                            {((o.devigged_probability ?? o.market_implied_probability) * 100).toFixed(1)}%
+                            {!o.overround_removed && <span className="prop-insights-table__raw-flag">raw implied</span>}
+                          </td>
+                          <td className={o.difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>
+                            {o.difference_pp >= 0 ? "+" : ""}
+                            {(o.difference_pp * 100).toFixed(1)}pp
+                          </td>
+                          <td className={o.expected_value >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>
+                            {o.expected_value >= 0 ? "+" : ""}
+                            {o.expected_value.toFixed(2)}
+                          </td>
+                          <td>
+                            <span className={`confidence-badge confidence-badge--${o.confidence_tier.replace("_confidence", "").replace("insufficient_history", "insufficient_data")}`}>
+                              {CONFIDENCE_LABELS[o.confidence_tier]}
+                            </span>
+                          </td>
+                          <td>
+                            <span className={`prop-insights-table__freshness prop-insights-table__freshness--${o.odds_freshness}`}>
+                              {FRESHNESS_LABELS[o.odds_freshness]}
+                            </span>
+                          </td>
+                          <td
+                            title={`difference ${o.opportunity_components.difference.toFixed(1)} + EV ${o.opportunity_components.expected_value.toFixed(1)} + confidence ${o.opportunity_components.confidence.toFixed(1)} + freshness ${o.opportunity_components.freshness.toFixed(1)} + lineup ${o.opportunity_components.lineup.toFixed(1)} + calibration ${o.opportunity_components.calibration.toFixed(1)}, x${o.opportunity_components.penalty_multiplier.toFixed(2)} (${o.opportunity_components.penalty_reasons.join(", ") || "no penalty"})`}
+                          >
+                            {o.opportunity_score.toFixed(1)}
+                          </td>
+                        </tr>
+                        {expanded && (
+                          <tr className="prop-insights-table__drawer-row">
+                            <td colSpan={12}>
+                              <OpportunityDrawer
+                                bookmakers={o.bookmakers}
+                                bestBookmaker={o.best_bookmaker}
+                                whyModelLikesIt={o.why_model_likes_it}
+                                calibration={o.calibration}
+                                warnings={o.warnings}
+                              />
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
 
       {isNormalizedTab && (
         <section className="prop-insights-page__filters">
@@ -205,10 +387,10 @@ function PropInsightsPage() {
           </label>
         </section>
       )}
-      <p className="hint">Confirmed-out players are never shown here, regardless of any setting above.</p>
+      {!isSelfManagedTab && <p className="hint">Confirmed-out players are never shown here, regardless of any setting above.</p>}
 
-      {loading && <p className="hint">Loading…</p>}
-      {error && <div className="prop-insights-page__error">{error}</div>}
+      {isNormalizedTab && loading && <p className="hint">Loading…</p>}
+      {isNormalizedTab && error && <div className="prop-insights-page__error">{error}</div>}
 
       {!loading && !error && isNormalizedTab && filtered.length === 0 && (
         <p className="hint">
@@ -257,9 +439,9 @@ function PropInsightsPage() {
                     <span className="hint">{r.best_bookmaker}</span>
                   </td>
                   <td>{r.n_bookmakers}</td>
-                  <td title={r.overround_removed ? "Vig removed (same bookmaker's paired side)" : "Raw implied — vig not removed"}>
+                  <td title={r.overround_removed ? "No-vig market probability — bookmaker margin removed (same bookmaker's paired side)" : "Raw implied probability — bookmaker margin NOT removed, only one side of the market was quoted"}>
                     {((r.devigged_probability ?? r.raw_implied_probability) * 100).toFixed(1)}%
-                    {!r.overround_removed && <span className="prop-insights-table__raw-flag">raw</span>}
+                    {!r.overround_removed && <span className="prop-insights-table__raw-flag">raw implied</span>}
                   </td>
                   <td className={r.difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>
                     {r.difference_pp >= 0 ? "+" : ""}
@@ -298,11 +480,11 @@ function PropInsightsPage() {
         </div>
       )}
 
-      {!loading && !error && !isNormalizedTab && manualRows.length === 0 && (
+      {!loading && !error && tab === "manual_log" && manualRows.length === 0 && (
         <p className="hint">No player prop quotes recorded yet — add some from a match's detail page.</p>
       )}
 
-      {!loading && !error && !isNormalizedTab && manualRows.length > 0 && (
+      {!loading && !error && tab === "manual_log" && manualRows.length > 0 && (
         <div className="prop-insights-table-scroll">
           <table className="prop-insights-table">
             <thead>
@@ -338,9 +520,9 @@ function PropInsightsPage() {
                   </td>
                   <td>{(r.model_probability * 100).toFixed(1)}%</td>
                   <td>${r.offered_odds.toFixed(2)}</td>
-                  <td title={r.overround_removed ? "Vig removed" : "Raw implied — vig not removed"}>
+                  <td title={r.overround_removed ? "No-vig market probability — bookmaker margin removed" : "Raw implied probability — bookmaker margin NOT removed, only one side of the market was quoted"}>
                     {((r.devigged_probability ?? r.raw_implied_probability) * 100).toFixed(1)}%
-                    {!r.overround_removed && <span className="prop-insights-table__raw-flag">raw</span>}
+                    {!r.overround_removed && <span className="prop-insights-table__raw-flag">raw implied</span>}
                   </td>
                   <td className={r.difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>
                     {r.difference_pp >= 0 ? "+" : ""}

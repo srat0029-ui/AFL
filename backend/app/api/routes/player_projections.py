@@ -13,16 +13,25 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.schemas import (
+    BestOpportunityRead,
+    BookmakerCoverageRead,
     BulkApplyRequest,
     BulkApplyResult,
     BulkRemoveRequest,
     BulkRemoveResult,
+    DiversifiedOpportunitiesResponseRead,
+    DiversifiedOpportunityRead,
     DisposalProjectionRead,
+    EliteDisposalBucketRead,
+    ExcludedOpportunityRead,
     ExpectedLineupCreate,
     ExpectedLineupRead,
+    FinalShortlistOpportunityRead,
+    FinalShortlistResponseRead,
     GoalProjectionRead,
     LineupSummaryRead,
     MatchProjectionsRead,
+    ModelMarketDisagreementRead,
     NormalizedPropInsightRead,
     PlayerProjectionRead,
     PlayerPropMarketCreate,
@@ -30,9 +39,14 @@ from app.api.schemas import (
     PropInsightRead,
     RosterSuggestionRead,
     ThresholdProbabilityRead,
+    WeeklySummaryRead,
 )
 from app.database import get_db
 from app.models import Bookmaker, ExpectedLineup, Match, Player, PlayerPropMarket, SelectionStatus, Team, derive_coarse_status
+from app.player_modelling.best_opportunities import load_best_opportunities
+from app.player_modelling.diversified_opportunities import load_diversified_opportunities
+from app.player_modelling.elite_disposal_diagnostic import bucket_diagnostic_as_dict, load_elite_disposal_diagnostic
+from app.player_modelling.final_shortlist import DEFAULT_SHORTLIST_LIMIT, load_final_shortlist
 from app.player_modelling.live_report_query import (
     ProjectionFilters,
     load_lineup_summary,
@@ -42,12 +56,18 @@ from app.player_modelling.live_report_query import (
     load_upcoming_disposal_projections,
     load_upcoming_goal_projections,
 )
+from app.player_modelling.match_context_service import context_item_as_dict, current_context_for_match
+from app.player_modelling.model_market_disagreements import DEFAULT_DISAGREEMENT_THRESHOLD_PP, load_model_market_disagreements
+from app.player_modelling.request_cache import clear_ttl_cache
 from app.player_modelling.prop_insights_normalized import load_normalized_prop_insights
 from app.player_modelling.team_selection_ingestion import (
     SelectionEntry,
     ingest_team_selections,
     suggest_roster_from_recent_match,
 )
+from app.player_modelling.uncertainty_flags import high_tog_volatility
+from app.player_modelling.upcoming_features import load_next_upcoming_round
+from app.player_modelling.weekly_summary import bookmaker_coverage_summary, compute_weekly_summary
 
 router = APIRouter(prefix="/api/afl", tags=["player-projections"])
 
@@ -113,9 +133,23 @@ def get_player_projection(player_id: int, db: Session = Depends(get_db)) -> Play
     view = load_player_projection(db, player_id)
     if view is None:
         return PlayerProjectionRead(disposals=None, goals=None)
+
+    match_id = (view["disposals"] or view["goals"])["match_id"]
+    lineup = db.scalar(select(ExpectedLineup).where(ExpectedLineup.match_id == match_id, ExpectedLineup.player_id == player_id))
+    current_context = [context_item_as_dict(c) for c in current_context_for_match(db, match_id) if c.player_id == player_id]
+    tog_volatile = None
+    match = db.get(Match, match_id)
+    if match is not None:
+        tog_volatile = high_tog_volatility(db, player_id, match.scheduled_start)
+
     return PlayerProjectionRead(
         disposals=_disposal_read(view["disposals"]) if view["disposals"] else None,
         goals=_goal_read(view["goals"]) if view["goals"] else None,
+        current_context=current_context,
+        tog_volatile=tog_volatile,
+        substitute_risk=lineup.substitute_risk if lineup is not None else None,
+        returning_from_injury=lineup.returning_from_injury if lineup is not None else None,
+        role_note=lineup.role_note if lineup is not None else None,
     )
 
 
@@ -188,6 +222,7 @@ def bulk_apply_lineup(match_id: int, payload: BulkApplyRequest, db: Session = De
     report = ingest_team_selections(
         db, match_id, entries, source=payload.source, source_timestamp=None, allow_override_manual=payload.allow_override_manual
     )
+    clear_ttl_cache()
     return BulkApplyResult(
         created=report.created, updated=report.updated, status_changed=report.status_changed,
         skipped_manual_override=report.skipped_manual_override, unresolved=report.unresolved, ambiguous=report.ambiguous,
@@ -256,6 +291,7 @@ def set_expected_lineup(match_id: int, player_id: int, payload: ExpectedLineupCr
     lineup.expected_tog_adjustment = payload.expected_tog_adjustment
     db.commit()
     db.refresh(lineup)
+    clear_ttl_cache()
     return _lineup_read(lineup)
 
 
@@ -360,3 +396,132 @@ def get_normalized_prop_insights(
         match_id=match_id,
     )
     return [NormalizedPropInsightRead(**r) for r in rows]
+
+
+@router.get("/best-opportunities", response_model=list[BestOpportunityRead])
+def get_best_opportunities(
+    market_scope: str = Query(default="all", description="'all' | 'player' | 'team'"),
+    include_uncertain: bool = Query(default=False, description="True includes players whose participation isn't confirmed/expected"),
+    include_stale: bool = Query(default=False, description="True includes markets whose best price is stale"),
+    include_insufficient_history: bool = Query(default=False, description="True includes markets with insufficient model history/confidence"),
+    limit: int | None = Query(default=None, description="Top N by opportunity score; omit for all that pass the quality gates"),
+    db: Session = Depends(get_db),
+) -> list[BestOpportunityRead]:
+    """The single round-wide ranked list Sections 6-11 and 17-18 ask for:
+    'What are the strongest model-vs-market opportunities available across
+    this AFL round right now, and which bookmaker currently has the best
+    price?' Merges player markets (prop_insights_normalized.py) and team
+    markets (edges/calculator.py) into one list, ranked by the same
+    transparent opportunity score, with quality gates on by default and
+    individually overridable."""
+    rows = load_best_opportunities(
+        db,
+        market_scope=market_scope,
+        include_uncertain=include_uncertain,
+        include_stale=include_stale,
+        include_insufficient_history=include_insufficient_history,
+        limit=limit,
+    )
+    return [BestOpportunityRead(**r) for r in rows]
+
+
+@router.get("/best-opportunities/diversified", response_model=DiversifiedOpportunitiesResponseRead)
+def get_diversified_opportunities(
+    view: str = Query(default="overall", description="'overall' | 'disposals' | 'goals'"),
+    market_scope: str = Query(default="all", description="'all' | 'player' | 'team' — only applies to view='overall'"),
+    include_uncertain: bool = Query(default=False, description="True includes players whose participation isn't confirmed/expected"),
+    include_stale: bool = Query(default=False, description="True includes markets whose best price is stale"),
+    include_insufficient_history: bool = Query(default=False, description="True includes markets with insufficient model history/confidence"),
+    one_per_match: bool = Query(default=False, description="Off by default — collapses each match to its single best family before diversifying"),
+    one_per_player: bool = Query(default=False, description="Off by default — collapses each player to their single best family before diversifying"),
+    limit: int | None = Query(default=None, description="Top N diversified headlines; omit for all that pass the quality gates"),
+    db: Session = Depends(get_db),
+) -> DiversifiedOpportunitiesResponseRead:
+    """Weekly Opportunity Discovery + Diversification stage: the curated
+    'Best Opportunities This Round' experience (Sections 1-7) — groups
+    correlated alternate lines (e.g. every disposal threshold for one
+    player in one match) into one opportunity_family, picks the single
+    most useful representative line to headline, and applies the
+    diversification selection rules (max 2 per player, soft per-match
+    cap) so a single hot player's alternate lines can never fill the
+    entire list. The raw, ungrouped ranking (GET /best-opportunities)
+    is unaffected and remains fully accessible — nothing here hides or
+    deletes an alternate market, it's attached under `alternate_lines`."""
+    result = load_diversified_opportunities(
+        db,
+        view=view,
+        market_scope=market_scope,
+        include_uncertain=include_uncertain,
+        include_stale=include_stale,
+        include_insufficient_history=include_insufficient_history,
+        one_per_match=one_per_match,
+        one_per_player=one_per_player,
+        limit=limit,
+    )
+
+    upcoming = load_next_upcoming_round(db)
+    round_number = upcoming[0].round_number if upcoming else None
+    summary = compute_weekly_summary(round_number, result.all_passing)
+    coverage = bookmaker_coverage_summary(db)
+
+    return DiversifiedOpportunitiesResponseRead(
+        opportunities=[DiversifiedOpportunityRead(**o) for o in result.opportunities],
+        summary=WeeklySummaryRead(**summary),
+        bookmaker_coverage=[BookmakerCoverageRead(**c) for c in coverage],
+    )
+
+
+@router.get("/best-opportunities/final-shortlist", response_model=FinalShortlistResponseRead)
+def get_final_shortlist(
+    limit: int | None = Query(default=DEFAULT_SHORTLIST_LIMIT, description="Maximum shortlist size (5/10/20) — never padded to reach it"),
+    include_unconfirmed_players: bool = Query(default=False, description="True includes player opportunities whose selection isn't confirmed"),
+    db: Session = Depends(get_db),
+) -> FinalShortlistResponseRead:
+    """Market Integrity + Final Weekly Picks stage, Sections 7-11, 22: the
+    Final Weekly Shortlist — more selective than Best Opportunities
+    (GET /best-opportunities/diversified). Only quality-tier
+    strong_candidate/worth_reviewing opportunities can headline, player
+    opportunities require a confirmed selection by default, and at most
+    one representative survives per strongly-correlated team-market group
+    (e.g. a team's H2H and line collapse to one). Never manufactures a
+    Top N: if fewer opportunities genuinely qualify, fewer are returned."""
+    result = load_final_shortlist(db, limit=limit, include_unconfirmed_players=include_unconfirmed_players)
+    return FinalShortlistResponseRead(
+        opportunities=[FinalShortlistOpportunityRead(**o) for o in result.opportunities],
+        excluded=[ExcludedOpportunityRead(label=e.label, opportunity_type=e.opportunity_type, reason=e.reason) for e in result.excluded],
+        empty_state_reason=result.empty_state_reason,
+        any_confirmed_player_lineups=result.any_confirmed_player_lineups,
+    )
+
+
+@router.get("/model-vs-market-disagreements", response_model=list[ModelMarketDisagreementRead])
+def get_model_market_disagreements(
+    threshold_pp: float = Query(default=DEFAULT_DISAGREEMENT_THRESHOLD_PP, description="Minimum |model - market| gap (as a probability, e.g. 0.15 = 15pp) to flag"),
+    limit: int | None = Query(default=20, description="Maximum rows to return, largest gap first"),
+    db: Session = Depends(get_db),
+) -> list[ModelMarketDisagreementRead]:
+    """Section 18 — 'Model vs Market Disagreements'. NOT an opportunity
+    list and never called 'Best Bets': surfaces the largest model/market
+    probability gaps in EITHER direction, including cases (like the
+    brief's own Nick Daicos example) where the MARKET is far more
+    confident than the model — invisible everywhere else in this app,
+    since Best Opportunities and the Final Shortlist only ever show
+    markets where the model exceeds the market."""
+    rows = load_model_market_disagreements(db, threshold_pp=threshold_pp, limit=limit)
+    return [ModelMarketDisagreementRead(**r) for r in rows]
+
+
+@router.get("/elite-disposal-diagnostic", response_model=list[EliteDisposalBucketRead] | None)
+def get_elite_disposal_diagnostic(db: Session = Depends(get_db)) -> list[EliteDisposalBucketRead] | None:
+    """Section 19 — a read-only RESEARCH diagnostic over the promoted
+    disposal model's historical (2016-2025 backtest) evaluation
+    predictions, bucketed by each player's own historical average actual
+    disposals (ground truth, not reputation). Reports whether the model
+    is systematically biased for high-volume players. Returns null if no
+    promoted disposal model / evaluation predictions exist. This endpoint
+    never changes the promoted model — it is diagnostic only, and Section
+    19 explicitly forbids retuning based on current-round observations."""
+    buckets = load_elite_disposal_diagnostic(db)
+    if buckets is None:
+        return None
+    return [EliteDisposalBucketRead(**bucket_diagnostic_as_dict(b)) for b in buckets]

@@ -6,10 +6,35 @@ details inline in a match response without that shape leaking back into the
 ORM layer.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+from typing import Annotated
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PlainSerializer, model_validator
+
+
+def _serialize_as_utc(dt: datetime) -> str:
+    """Every timestamp this app stores is genuinely UTC (see
+    app/models/base.py's _utcnow and the DateTime(timezone=True) columns
+    throughout), but SQLite has no native tz-aware datetime type — SQLAlchemy's
+    SQLite dialect silently drops the tzinfo on round-trip (a real, previously
+    -hit bug pattern in this codebase; see e.g. prop_odds_ingestion.py's
+    _same_instant() docstring). A naive datetime serialized via plain
+    .isoformat() produces a string with no "Z"/offset suffix (e.g.
+    "2026-08-22T03:15:00"), which every major JS engine's `Date` constructor
+    then parses as LOCAL time, not UTC — corrupting every timestamp the
+    frontend displays by the browser's own UTC offset. This serializer is the
+    single, global fix: attach UTC explicitly before serializing, so every API
+    response's timestamps are unambiguous regardless of what the DB round-trip
+    did to their tzinfo."""
+    aware = dt if dt.tzinfo is not None else dt.replace(tzinfo=timezone.utc)
+    return aware.isoformat()
+
+
+# Used in place of a bare `datetime` type annotation on every response-model
+# field below that represents an application timestamp (all of which are
+# genuinely UTC) — see _serialize_as_utc's docstring for why this exists.
+UtcDatetime = Annotated[datetime, PlainSerializer(_serialize_as_utc, return_type=str)]
 
 
 class TeamSummary(BaseModel):
@@ -42,7 +67,7 @@ class MatchSummary(BaseModel):
     season_year: int
     round_number: int
     status: str
-    scheduled_start: datetime
+    scheduled_start: UtcDatetime
     home_team: TeamSummary
     away_team: TeamSummary
     venue: VenueSummary | None
@@ -62,7 +87,7 @@ class OddsQuoteCreate(BaseModel):
     selection: str = Field(..., min_length=1, max_length=64)
     line_value: float | None = None
     price_decimal: float = Field(..., gt=1.0, le=1000.0)
-    recorded_at: datetime | None = None
+    recorded_at: UtcDatetime | None = None
     is_closing_line: bool = False
 
     @model_validator(mode="after")
@@ -84,7 +109,7 @@ class OddsQuoteRead(BaseModel):
     selection: str
     line_value: float | None
     price_decimal: float
-    recorded_at: datetime
+    recorded_at: UtcDatetime
     source: str
     is_closing_line: bool
 
@@ -262,7 +287,7 @@ class ScoringEvaluationRead(BaseModel):
 class BacktestSummaryRead(BaseModel):
     id: str
     model_name: str
-    run_at: datetime
+    run_at: UtcDatetime
     tune_end_year: int
     evaluation_start_year: int
     n_evaluation: int
@@ -274,7 +299,7 @@ class BacktestDetailRead(BaseModel):
     model_name: str
     config: dict
     tune_end_year: int
-    run_at: datetime
+    run_at: UtcDatetime
     win_prob: WinProbEvaluationRead
     scoring: ScoringEvaluationRead | None
 
@@ -594,7 +619,7 @@ class PlayerGameStatRead(BaseModel):
     player_display_name: str
     season_year: int
     round_number: int
-    scheduled_start: datetime
+    scheduled_start: UtcDatetime
     team: TeamSummary
     opponent_team: TeamSummary | None
     jumper_number: int | None
@@ -670,7 +695,7 @@ class PlayerModelRunSummaryRead(BaseModel):
     tune_end_year: int
     evaluation_start_year: int
     evaluation_end_year: int
-    run_at: datetime
+    run_at: UtcDatetime
     overall_mae: float | None
     overall_rmse: float | None
     overall_bias: float | None
@@ -775,7 +800,7 @@ class GoalModelRunSummaryRead(BaseModel):
     tune_end_year: int
     evaluation_start_year: int
     evaluation_end_year: int
-    run_at: datetime
+    run_at: UtcDatetime
     overall_mae: float | None
     overall_rmse: float | None
     overall_bias: float | None
@@ -890,9 +915,9 @@ class ExpectedLineupRead(BaseModel):
     status: str
     selection_status: str
     is_confirmed: bool
-    recorded_at: datetime
+    recorded_at: UtcDatetime
     source: str
-    source_timestamp: datetime | None
+    source_timestamp: UtcDatetime | None
     source_reference: str | None
     is_manual_override: bool
     note: str | None
@@ -906,7 +931,7 @@ class RosterSuggestionRead(BaseModel):
     player_id: int
     display_name: str
     last_match_id: int
-    last_played_at: datetime
+    last_played_at: UtcDatetime
 
 
 class BulkApplyEntry(BaseModel):
@@ -951,12 +976,154 @@ class LineupSummaryRead(BaseModel):
     n_uncertain: int
     n_placeholder: int
     n_manual_overrides: int
-    last_updated: datetime | None
+    last_updated: UtcDatetime | None
 
 
 class ThresholdProbabilityRead(BaseModel):
     probability: float
     warning: str | None
+
+
+# --- Current Context + Team News Intelligence stage --------------------
+
+
+class ContextTypeEnum(str, Enum):
+    CONFIRMED_IN = "confirmed_in"
+    CONFIRMED_OUT = "confirmed_out"
+    INJURY = "injury"
+    LATE_WITHDRAWAL = "late_withdrawal"
+    NAMED_SUBSTITUTE = "named_substitute"
+    EMERGENCY = "emergency"
+    RETURNING_PLAYER = "returning_player"
+    LIMITED_GAME_TIME_CONCERN = "limited_game_time_concern"
+    WEATHER = "weather"
+    VENUE_CONDITION = "venue_condition"
+    MAJOR_ROLE_CHANGE = "major_role_change"
+    OTHER = "other"
+
+
+class ContextConfidenceEnum(str, Enum):
+    OFFICIAL = "official"
+    REPUTABLE_SOURCE = "reputable_source"
+    UNVERIFIED = "unverified"
+
+
+class MatchContextItemCreate(BaseModel):
+    context_type: ContextTypeEnum
+    source: str = Field(max_length=64)
+    summary: str = Field(max_length=500)
+    confidence: ContextConfidenceEnum = ContextConfidenceEnum.UNVERIFIED
+    team_id: int | None = None
+    player_id: int | None = None
+    source_timestamp: UtcDatetime | None = None
+    source_reference: str | None = Field(default=None, max_length=300)
+    # Section 7: when true AND context_type maps onto a lineup selection
+    # status (confirmed_in/out, named_substitute, emergency, late_withdrawal)
+    # AND player_id is set, also updates the existing ExpectedLineup row via
+    # the same team_selection_ingestion.py machinery the bulk lineup workflow
+    # uses - never a second, separate write path.
+    apply_to_lineup: bool = False
+
+
+class MatchContextItemRead(BaseModel):
+    id: int
+    match_id: int
+    team_id: int | None
+    player_id: int | None
+    player_name: str | None
+    context_type: str
+    context_type_label: str
+    confidence: str
+    confidence_label: str
+    source: str
+    source_reference: str | None
+    source_timestamp: UtcDatetime | None
+    recorded_at: UtcDatetime
+    summary: str
+    freshness: str
+    is_current: bool
+
+
+class MatchContextApplyResult(BaseModel):
+    item: MatchContextItemRead
+    lineup_updated: bool
+    lineup_apply_note: str | None = None
+
+
+class WeatherSnapshotRead(BaseModel):
+    match_id: int
+    venue_id: int
+    fetched_at: UtcDatetime
+    forecast_for: UtcDatetime
+    temperature_c: float | None
+    rain_probability_pct: float | None
+    expected_rainfall_mm: float | None
+    wind_speed_kph: float | None
+    wind_gust_kph: float | None
+    severe_weather_warning: bool
+    severe_weather_note: str | None
+    source: str
+
+
+class WeatherRefreshResult(BaseModel):
+    matches_considered: int
+    snapshots_created: int
+    skipped_no_venue: list[int]
+    skipped_no_coordinates: list[int]
+    skipped_too_far_out: list[int]
+    errors: list[str]
+
+
+class WeatherDiagnosticRead(BaseModel):
+    match_id: int
+    weather_available: bool
+    rain_probability_pct: float | None
+    wind_gust_kph: float | None
+    is_wet: bool
+    is_windy: bool
+    projected_total_points: float | None
+    historical_sample_overall: int
+    historical_mae_overall: float | None
+    historical_sample_similar_condition: int
+    historical_mae_similar_condition: float | None
+    has_sufficient_data: bool
+    note: str
+
+
+class ContextConflictRead(BaseModel):
+    codes: list[str]
+    labels: list[str]
+    latest_context_at: UtcDatetime | None
+    model_generated_at: UtcDatetime | None
+
+
+class MatchContextPanelRead(BaseModel):
+    match_id: int
+    current_context: list[MatchContextItemRead]
+    weather: WeatherSnapshotRead | None
+    last_updated: UtcDatetime | None
+
+
+class RoundContextMatchRead(BaseModel):
+    match_id: int
+    round_number: int
+    season_year: int
+    scheduled_start: UtcDatetime
+    home_team_name: str
+    away_team_name: str
+    lineup_announcement_state: str
+    n_confirmed_in: int
+    n_confirmed_out: int
+    n_substitutes: int
+    n_other_context_items: int
+    weather: WeatherSnapshotRead | None
+    n_stale_projections: int
+
+
+class RoundContextDashboardRead(BaseModel):
+    round_number: int | None
+    season_year: int | None
+    matches: list[RoundContextMatchRead]
 
 
 class DisposalProjectionRead(BaseModel):
@@ -968,11 +1135,11 @@ class DisposalProjectionRead(BaseModel):
     team_name: str
     round_number: int
     season_year: int
-    scheduled_start: datetime
+    scheduled_start: UtcDatetime
     model_name: str
     model_version: str
-    generated_at: datetime
-    data_cutoff: datetime
+    generated_at: UtcDatetime
+    data_cutoff: UtcDatetime
     lineup_status: str
     selection_status: str
     is_confirmed: bool
@@ -999,11 +1166,11 @@ class GoalProjectionRead(BaseModel):
     team_name: str
     round_number: int
     season_year: int
-    scheduled_start: datetime
+    scheduled_start: UtcDatetime
     model_name: str
     model_version: str
-    generated_at: datetime
-    data_cutoff: datetime
+    generated_at: UtcDatetime
+    data_cutoff: UtcDatetime
     lineup_status: str
     selection_status: str
     is_confirmed: bool
@@ -1027,6 +1194,14 @@ class MatchProjectionsRead(BaseModel):
 class PlayerProjectionRead(BaseModel):
     disposals: DisposalProjectionRead | None
     goals: GoalProjectionRead | None
+    # Section 10 of the Current Context stage: selection status/injury/
+    # returning context/substitute risk/TOG stability/role note alongside
+    # the projection itself, not a separate lookup.
+    current_context: list[MatchContextItemRead] = []
+    tog_volatile: bool | None = None
+    substitute_risk: bool | None = None
+    returning_from_injury: bool | None = None
+    role_note: str | None = None
 
 
 class PlayerPropMarketCreate(BaseModel):
@@ -1036,7 +1211,7 @@ class PlayerPropMarketCreate(BaseModel):
     line_type: str = Field(..., description="'over_under' | 'multi_plus'")
     threshold: float
     price_decimal: float = Field(..., gt=1.0, le=1000.0)
-    recorded_at: datetime | None = None
+    recorded_at: UtcDatetime | None = None
 
     @model_validator(mode="after")
     def _validate_shape(self) -> "PlayerPropMarketCreate":
@@ -1057,7 +1232,7 @@ class PlayerPropMarketRead(BaseModel):
     line_type: str
     threshold: float
     price_decimal: float
-    recorded_at: datetime
+    recorded_at: UtcDatetime
     source: str
 
 
@@ -1072,7 +1247,7 @@ class PropInsightRead(BaseModel):
     market_type: str
     line_type: str
     threshold: float
-    recorded_at: datetime
+    recorded_at: UtcDatetime
     source: str
     model_probability: float
     model_fair_odds: float
@@ -1092,9 +1267,11 @@ class PropInsightRead(BaseModel):
 class BookmakerQuoteRead(BaseModel):
     bookmaker_name: str
     price_decimal: float
-    recorded_at: datetime
+    recorded_at: UtcDatetime
     freshness: str  # "fresh" | "aging" | "stale"
     source: str
+    is_exchange: bool
+    eligibility: str  # "included" | "excluded" | "informational_only"
 
 
 class PriceMovementRead(BaseModel):
@@ -1102,7 +1279,18 @@ class PriceMovementRead(BaseModel):
     current_price: float
     highest_price: float
     lowest_price: float
-    last_movement_at: datetime
+    last_movement_at: UtcDatetime
+
+
+class CalibrationMetricsRead(BaseModel):
+    """Numeric ECE/threshold/n behind a market's historical calibration
+    context (Section 12 of the best-bets stage brief) - the structured
+    counterpart to the pre-formatted note string, for rendering a
+    per-threshold calibration display rather than parsing prose."""
+
+    evaluated_threshold: float
+    ece: float
+    n: int
 
 
 class OpportunityComponentsRead(BaseModel):
@@ -1114,6 +1302,41 @@ class OpportunityComponentsRead(BaseModel):
     calibration: float
     penalty_multiplier: float
     penalty_reasons: list[str]
+
+
+class PriceIntegrityCheckRead(BaseModel):
+    price_advantage_pct: float
+    band_pct: float
+    best_bookmaker: str
+    best_price: float
+    best_price_freshness: str
+    next_best_bookmaker: str
+    next_best_price: float
+    next_best_price_freshness: str
+    recorded_at_gap_seconds: float
+    passes_integrity: bool
+    checks: dict[str, bool]
+    issues: list[str]
+
+
+class MarketMaturityRead(BaseModel):
+    tier: str  # "early_market" | "developing_market" | "mature_market"
+    label: str
+    n_bookmakers: int
+    snapshot_count: int | None
+    hours_until_kickoff: float | None
+
+
+class QualityTierRead(BaseModel):
+    tier: str  # "strong_candidate" | "worth_reviewing" | "speculative" | "do_not_headline"
+    label: str
+    caveats: list[str]
+
+
+class PriceShoppingRead(BaseModel):
+    best_enabled: BookmakerQuoteRead | None
+    next_best_enabled: BookmakerQuoteRead | None
+    worst_enabled: BookmakerQuoteRead | None
 
 
 class NormalizedPropInsightRead(BaseModel):
@@ -1130,10 +1353,17 @@ class NormalizedPropInsightRead(BaseModel):
     market_type: str
     line_type: str
     threshold: float
+    team_id: int | None = None
     model_probability: float
     model_fair_odds: float
     best_price: float
     best_bookmaker: str
+    best_price_is_exchange: bool = False
+    eligible_price_available: bool = True
+    best_price_all_bookmakers: float | None = None
+    best_bookmaker_all_bookmakers: str | None = None
+    best_price_all_differs_from_enabled: bool = False
+    price_shopping: PriceShoppingRead | None = None
     raw_implied_probability: float
     devigged_probability: float | None
     overround_removed: bool
@@ -1146,10 +1376,470 @@ class NormalizedPropInsightRead(BaseModel):
     warnings: list[str]
     n_bookmakers: int
     bookmakers: list[BookmakerQuoteRead]
+    snapshot_count: int | None = None
     odds_freshness: str
     price_movement: PriceMovementRead
+    why_model_likes_it: str
+    calibration: CalibrationMetricsRead | None
     opportunity_score: float
     opportunity_components: OpportunityComponentsRead
+
+
+class BestOpportunityRead(BaseModel):
+    """One entry in the round-wide Best Opportunities list (Sections 6-11,
+    17-18 of the best-bets stage brief) - a player-market or team-market
+    row using the SAME transparent opportunity_score/opportunity_components
+    as NormalizedPropInsightRead, so both can be ranked and rendered
+    together without a second, unexplained ranking formula."""
+
+    opportunity_type: str  # "player" | "team"
+    match_id: int
+    round_number: int
+    season_year: int
+    label: str
+    market_type: str
+    player_id: int | None
+    player_name: str | None
+    team_id: int | None = None
+    line_type: str | None
+    threshold: float | None
+    selection: str | None
+    line_value: float | None
+    model_probability: float
+    model_fair_odds: float
+    best_price: float
+    best_bookmaker: str
+    best_price_is_exchange: bool = False
+    eligible_price_available: bool = True
+    best_price_all_bookmakers: float | None = None
+    best_bookmaker_all_bookmakers: str | None = None
+    best_price_all_differs_from_enabled: bool = False
+    price_shopping: PriceShoppingRead | None = None
+    quote_source: str | None = None  # team markets only: "the_odds_api" (live) | "manual" (not current)
+    market_implied_probability: float
+    devigged_probability: float | None
+    overround_removed: bool
+    difference_pp: float
+    expected_value: float
+    edge_category: str | None = None
+    confidence_tier: str
+    selection_status: str | None
+    is_confirmed: bool | None
+    n_bookmakers: int
+    bookmakers: list[BookmakerQuoteRead]
+    snapshot_count: int | None = None
+    odds_freshness: str
+    why_model_likes_it: str
+    calibration: CalibrationMetricsRead | None
+    warnings: list[str]
+    opportunity_score: float
+    opportunity_components: OpportunityComponentsRead
+    price_integrity: PriceIntegrityCheckRead | None = None
+    market_maturity: MarketMaturityRead | None = None
+    quality_tier: QualityTierRead | None = None
+
+
+class OpportunityAlternateLineRead(BaseModel):
+    """One alternate line within an opportunity_family, shown under a
+    diversified headline (Section 3) rather than as its own Top-10 row."""
+
+    threshold: float | None
+    line_type: str | None
+    label: str
+    model_probability: float
+    best_price: float
+    best_bookmaker: str
+    difference_pp: float
+    expected_value: float
+    n_bookmakers: int
+
+
+class RecentFormRead(BaseModel):
+    stat_field: str
+    last5: list[int]
+    last10: list[int]
+    last5_avg: float | None
+    last10_avg: float | None
+    predicted_mean: float | None
+    hit_rate_description: str
+    form_disagreement_label: str | None
+    conservative_model_flag: str | None
+
+
+class DiversifiedOpportunityRead(BestOpportunityRead):
+    """A headline opportunity within a diversified view (Sections 2-6, 12-16
+    of the Weekly Opportunity Discovery stage) — everything a
+    BestOpportunityRead already has, plus family/diversification context.
+    Never a second ranking formula: opportunity_score/opportunity_components
+    are the SAME numbers as the raw ranking; representative_score is that
+    same score with one documented, visible multiplier applied (see
+    opportunity_families.py)."""
+
+    family_label: str
+    alternate_lines: list[OpportunityAlternateLineRead]
+    correlation_labels: list[str]
+    price_advantage_pct: float | None
+    recent_form: RecentFormRead | None
+    reason_codes: list[str]
+    reason_labels: list[str]
+    representative_score: float
+
+
+class WeeklySummaryRead(BaseModel):
+    round_number: int | None
+    n_opportunities_passing_gates: int
+    n_unique_players: int
+    n_unique_matches: int
+    n_bookmakers: int
+    best_difference_pp: float | None
+    best_price_advantage_pct: float | None
+
+
+class BookmakerCoverageRead(BaseModel):
+    bookmaker_name: str
+    n_active_player_markets: int
+    n_matches_covered: int
+
+
+class DiversifiedOpportunitiesResponseRead(BaseModel):
+    opportunities: list[DiversifiedOpportunityRead]
+    summary: WeeklySummaryRead
+    bookmaker_coverage: list[BookmakerCoverageRead]
+
+
+# --- Market Integrity + Final Weekly Picks stage ---------------------------
+
+
+class BookmakerRead(BaseModel):
+    id: int
+    name: str
+    provider_key: str | None
+    region: str | None
+    is_exchange: bool
+    eligibility: str  # "included" | "excluded" | "informational_only"
+
+
+class BookmakerEligibilityUpdate(BaseModel):
+    eligibility: str  # "included" | "excluded" | "informational_only"
+
+
+class FinalShortlistOpportunityRead(BestOpportunityRead):
+    """One entry in the Final Weekly Shortlist (Sections 7-11) — more
+    selective than DiversifiedOpportunityRead: only quality_tier
+    strong_candidate/worth_reviewing opportunities ever appear here, at
+    most one per strong-correlation group (see market_correlation.py),
+    and Top N is a maximum never a manufactured target."""
+
+    family_label: str
+    alternate_lines: list[OpportunityAlternateLineRead]
+    correlation_labels: list[str]
+    reason_codes: list[str]
+    why_it_ranks_here: list[str]
+    caveats: list[str]
+
+
+class ExcludedOpportunityRead(BaseModel):
+    label: str
+    opportunity_type: str
+    reason: str
+
+
+class FinalShortlistResponseRead(BaseModel):
+    opportunities: list[FinalShortlistOpportunityRead]
+    excluded: list[ExcludedOpportunityRead]
+    empty_state_reason: str | None
+    any_confirmed_player_lineups: bool
+
+
+class ModelMarketDisagreementRead(BaseModel):
+    """Section 18 — 'Model vs Market Disagreements', explicitly NOT an
+    opportunity list and never labelled 'Best Bets'. Surfaces the largest
+    model/market gaps in EITHER direction, including cases where the
+    market is far more confident than the model (invisible everywhere
+    else in this app, since Best Opportunities/Final Shortlist only ever
+    show markets where the model exceeds the market)."""
+
+    opportunity_type: str  # "player" | "team"
+    match_id: int
+    label: str
+    market_type: str
+    player_id: int | None
+    player_name: str | None
+    threshold: float | None
+    line_type: str | None
+    model_probability: float
+    model_predicted_mean: float | None
+    market_probability: float
+    overround_removed: bool
+    difference_pp: float
+    direction: str  # "model_above_market" | "market_above_model"
+    confidence_tier: str
+    best_price: float
+    best_bookmaker: str
+    bookmakers: list[BookmakerQuoteRead]
+    n_bookmakers: int
+    recent_form: dict | None
+    calibration: CalibrationMetricsRead | None
+    odds_freshness: str
+    warnings: list[str]
+
+
+class PlayerBiasEntryRead(BaseModel):
+    player_id: int
+    player_name: str
+    n_predictions: int
+    avg_actual: float
+    avg_predicted: float
+    bias: float
+
+
+class EliteDisposalBucketRead(BaseModel):
+    bucket: str
+    label: str
+    n_players: int
+    n_predictions: int
+    avg_actual: float
+    avg_predicted: float
+    bias: float
+    mae: float
+    most_under_predicted_players: list[PlayerBiasEntryRead]
+
+
+# --- Weekly Bet Review + Decision Support stage -----------------------------
+
+
+class ModelStrengthRead(BaseModel):
+    market_type: str
+    model_name: str
+    metrics: dict
+    evaluation_sample: int
+    caveats: list[str]
+
+
+class CalibrationBandRead(BaseModel):
+    band_label: str
+    avg_predicted: float | None
+    actual_rate: float | None
+    n: int
+    meets_min_sample: bool
+
+
+class DirectionAgreementRead(BaseModel):
+    classification: str
+    model_favours_selection: bool
+    market_favours_selection: bool
+    description: str
+
+
+class ProjectionLineDistanceRead(BaseModel):
+    market_type: str
+    model_projection: float
+    line_value: float
+    distance: float
+    unit: str
+
+
+class PricePointRead(BaseModel):
+    bookmaker_name: str | None
+    price_decimal: float
+    model_estimated_ev: float
+
+
+class PriceSensitivityRead(BaseModel):
+    model_fair_price: float
+    price_points: list[PricePointRead]
+
+
+class MarketMovementRead(BaseModel):
+    first_price: float
+    first_observed_at: UtcDatetime
+    latest_price: float
+    latest_observed_at: UtcDatetime
+    best_current_price: float
+    model_fair_odds: float
+    direction: str
+    description: str
+
+
+class BookmakerProbabilityRead(BaseModel):
+    bookmaker_name: str
+    price_decimal: float
+    probability: float
+    overround_removed: bool
+
+
+class ConsensusRead(BaseModel):
+    consensus_probability: float
+    n_bookmakers: int
+    n_devigged: int
+    spread: float
+    methodology: str
+    per_bookmaker: list[BookmakerProbabilityRead]
+
+
+class OutlierCheckRead(BaseModel):
+    is_outlier: bool
+    best_price: float
+    median_eligible_price: float
+    pct_difference: float
+    message: str | None
+
+
+class EvidenceSummaryRead(BaseModel):
+    evidence_codes: list[str]
+    evidence_labels: list[str]
+    caution_codes: list[str]
+    caution_labels: list[str]
+
+
+class WeeklyReviewOpportunityRead(BestOpportunityRead):
+    """One opportunity anywhere on the Weekly Review page - every Best
+    Opportunities field plus this stage's full context. Family/reason-code
+    fields are optional since "Markets Waiting on Team Confirmation" draws
+    from the raw (non-diversified) ranking, which doesn't compute them."""
+
+    family_label: str | None = None
+    alternate_lines: list[OpportunityAlternateLineRead] = []
+    correlation_labels: list[str] = []
+    reason_codes: list[str] = []
+    why_it_ranks_here: list[str] = []
+    caveats: list[str] = []
+
+    model_strength: ModelStrengthRead | None = None
+    calibration_band: CalibrationBandRead | None = None
+    direction_agreement: DirectionAgreementRead
+    projection_line_distance: ProjectionLineDistanceRead | None = None
+    price_sensitivity: PriceSensitivityRead
+    market_movement: MarketMovementRead | None = None
+    consensus: ConsensusRead | None = None
+    outlier_check: OutlierCheckRead | None = None
+    evidence_summary: EvidenceSummaryRead
+    current_context: list[MatchContextItemRead] = []
+    context_conflict: ContextConflictRead | None = None
+
+
+class WeeklyReviewPageRead(BaseModel):
+    final_shortlist: list[WeeklyReviewOpportunityRead]
+    strongest_player_opportunities: list[WeeklyReviewOpportunityRead]
+    strongest_team_opportunities: list[WeeklyReviewOpportunityRead]
+    model_vs_market_disagreements_count: int
+    markets_waiting_on_team_confirmation: list[WeeklyReviewOpportunityRead]
+    bookmaker_coverage: list[BookmakerCoverageRead]
+    weekly_summary: WeeklySummaryRead
+    any_confirmed_player_lineups: bool
+
+
+class ShortlistSnapshotItemRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    rank: int
+    opportunity_type: str
+    label: str
+    match_id: int
+    market_type: str
+    player_id: int | None
+    selection: str | None
+    threshold: float | None
+    line_value: float | None
+    line_type: str | None
+    best_price: float
+    best_bookmaker: str
+    recorded_at: UtcDatetime
+    model_probability: float
+    model_fair_odds: float
+    market_implied_probability: float
+    devigged_probability: float | None
+    overround_removed: bool
+    difference_pp: float
+    expected_value: float
+    confidence_tier: str
+    quality_tier: str
+    market_maturity_tier: str | None
+    is_confirmed: bool | None
+    model_name: str | None
+    model_version: str | None
+    n_bookmakers: int
+    reasons_json: dict
+    actual_stat_value: float | None
+    match_result: str | None
+    settled_at: UtcDatetime | None
+
+
+class ShortlistSnapshotRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    created_at: UtcDatetime
+    round_number: int | None
+    season_year: int | None
+    limit_requested: int | None
+    include_unconfirmed_players: bool
+    n_items: int
+    label: str | None
+    items: list[ShortlistSnapshotItemRead]
+
+
+class ShortlistSnapshotSummaryRead(BaseModel):
+    """The lightweight row shown in the snapshot history list - full item
+    detail is only fetched when one snapshot is opened/replayed."""
+
+    id: int
+    created_at: UtcDatetime
+    round_number: int | None
+    season_year: int | None
+    n_items: int
+    label: str | None
+
+
+class CreateSnapshotRequest(BaseModel):
+    limit: int | None = None
+    include_unconfirmed_players: bool = False
+    label: str | None = None
+
+
+class SettleSnapshotResult(BaseModel):
+    snapshot_id: int
+    settled_count: int
+
+
+class ShortlistRoundSummaryItemRead(BaseModel):
+    label: str
+    opportunity_type: str
+    best_price: float
+    best_bookmaker: str
+    model_probability: float
+    market_implied_probability: float
+    match_result: str | None
+    actual_stat_value: float | None
+    flat_stake_pl: float | None
+
+
+class ShortlistRoundSummaryRead(BaseModel):
+    """The Weekly Review Shortlist's own post-round summary (Weekly Bet
+    Review stage, Section 17) — settled outcomes against a frozen
+    snapshot. Named distinctly from the pre-existing RoundSummaryRead
+    (Live Status stage's DATA-COVERAGE round summary — matches/
+    projections/quotes counts, an unrelated concept) to avoid clashing
+    with that class name."""
+
+    snapshot_id: int
+    round_number: int | None
+    season_year: int | None
+    n_items: int
+    n_settled: int
+    n_unresolved: int
+    n_won: int
+    n_lost: int
+    n_push: int
+    hypothetical_flat_stake_pl: float | None
+    n_unique_matches: int
+    n_team: int
+    n_player: int
+    confidence_tier_breakdown: dict[str, int]
+    quality_tier_breakdown: dict[str, int]
+    small_sample_warning: bool
+    items: list[ShortlistRoundSummaryItemRead]
 
 
 class GoalTeamDiagnosticRead(BaseModel):
@@ -1172,8 +1862,8 @@ class DatasetSummaryRead(BaseModel):
     unique_matches: int
     unique_market_lines: int
     bookmakers: list[str]
-    earliest_observed_at: datetime | None
-    latest_observed_at: datetime | None
+    earliest_observed_at: UtcDatetime | None
+    latest_observed_at: UtcDatetime | None
 
 
 class ModelVsMarketRead(BaseModel):
@@ -1232,9 +1922,9 @@ class MarketOpenTimingRead(BaseModel):
     market_type: str
     line_type: str
     threshold: float
-    first_observed_at: datetime
+    first_observed_at: UtcDatetime
     first_hours_before_kickoff: float
-    latest_observed_at: datetime
+    latest_observed_at: UtcDatetime
     latest_hours_before_kickoff: float
     n_price_changes: int
     n_observations: int
@@ -1257,7 +1947,7 @@ class RealMarketTrackingReportRead(BaseModel):
 
 
 class QuoteHistoryEntryRead(BaseModel):
-    observed_at: datetime
+    observed_at: UtcDatetime
     bookmaker_name: str
     offered_odds: float
     raw_implied_probability: float
@@ -1305,7 +1995,7 @@ class PlayerAliasRead(BaseModel):
     alias_name: str
     source: str | None
     note: str | None
-    created_at: datetime
+    created_at: UtcDatetime
 
 
 class MatchMarketDiagnosisRead(BaseModel):
@@ -1314,13 +2004,16 @@ class MatchMarketDiagnosisRead(BaseModel):
     detail: str
     would_be_skipped_this_cycle: bool
     hours_to_kickoff: float
+    disposals_available: bool
+    goals_available: bool
+    unique_player_count: int
 
 
 class MatchCoverageStatusRead(BaseModel):
     match_id: int
     home_team_name: str
     away_team_name: str
-    scheduled_start: datetime
+    scheduled_start: UtcDatetime
     match_status: str
     simple_status: str
     lineup_announcement_state: str
@@ -1329,10 +2022,13 @@ class MatchCoverageStatusRead(BaseModel):
     bookmaker_props_observed: bool
     bookmakers_observed: list[str]
     n_quotes: int
-    last_odds_refresh: datetime | None
+    last_odds_refresh: UtcDatetime | None
     n_observations: int
     n_observations_settled: int
     n_observations_awaiting_settlement: int
+    disposals_available: bool
+    goals_available: bool
+    unique_player_count: int
     diagnosis: MatchMarketDiagnosisRead
 
 
@@ -1356,8 +2052,8 @@ class LiveCycleStepRead(BaseModel):
 
 class LiveCycleRunRead(BaseModel):
     id: int
-    run_at: datetime
-    finished_at: datetime | None
+    run_at: UtcDatetime
+    finished_at: UtcDatetime | None
     overall_status: str
     steps: list[LiveCycleStepRead]
     odds_credits_consumed: int | None
@@ -1389,6 +2085,6 @@ class MarketMovementRead(BaseModel):
     lowest_odds: float
     first_difference_pp: float
     latest_difference_pp: float
-    first_observed_at: datetime
-    latest_observed_at: datetime
+    first_observed_at: UtcDatetime
+    latest_observed_at: UtcDatetime
     n_observations: int

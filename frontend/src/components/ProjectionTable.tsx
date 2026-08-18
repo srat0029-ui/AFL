@@ -2,6 +2,7 @@ import { Fragment, useState } from "react";
 import { Link } from "react-router-dom";
 import "./ProjectionTable.css";
 import type { ConfidenceTierLive, DisposalProjection, GoalProjection, SelectionStatus } from "../api/client";
+import { formatCompactDateTime, formatShortDate } from "../lib/datetime";
 
 const CONFIDENCE_LABELS: Record<ConfidenceTierLive, string> = {
   higher_confidence: "Higher",
@@ -88,8 +89,8 @@ function TransparencyDrawer({ row, labels }: { row: DisposalProjection | GoalPro
             ))}
           </div>
           <p className="hint">
-            Model {row.model_name} · generated {new Date(row.generated_at).toLocaleString()} · data as of{" "}
-            {new Date(row.data_cutoff).toLocaleDateString()}
+            Model {row.model_name} · generated {formatCompactDateTime(row.generated_at)} · data as of{" "}
+            {formatShortDate(row.data_cutoff)}
           </p>
         </div>
       </td>

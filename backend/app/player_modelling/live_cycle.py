@@ -257,6 +257,9 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     except Exception as exc:  # noqa: BLE001
         report.add("refresh_prop_odds", STEP_RECOVERABLE_FAILURE, f"odds refresh failed: {exc}")
 
+    from app.player_modelling.request_cache import clear_ttl_cache
+
+    clear_ttl_cache()
     return _persist_run(db, report, now)
 
 

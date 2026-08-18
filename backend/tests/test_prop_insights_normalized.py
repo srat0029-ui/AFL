@@ -11,6 +11,7 @@ from app.models import (
     Player,
     PlayerDisposalProjection,
     PlayerModelRun,
+    PlayerModelValidationMetric,
     PlayerPropMarket,
     Round,
     Season,
@@ -184,6 +185,32 @@ def test_opportunities_only_filters_out_non_positive_difference(db_session):
     assert len(rows_all) == 1
     assert rows_all[0]["difference_pp"] < 0
     assert rows_opportunities == []
+
+
+def test_calibration_metrics_populated_when_promoted_model_has_sufficient_sample(db_session):
+    match, home, away, player = _seed(db_session)
+    _add_quote(db_session, match, player, "Sportsbet", 1.90, threshold=29.0)
+    run = db_session.scalar(select(PlayerModelRun).where(PlayerModelRun.model_name == "disposals_ridge"))
+    db_session.add(
+        PlayerModelValidationMetric(model_run_id=run.id, segment="threshold_30", metric_name="ece", n=64282, value=0.005)
+    )
+    db_session.commit()
+
+    rows = load_normalized_prop_insights(db_session)
+    calibration = rows[0]["calibration"]
+    assert calibration is not None
+    assert calibration["evaluated_threshold"] == 30.0
+    assert calibration["ece"] == 0.005
+    assert calibration["n"] == 64282
+    assert any("calibration error (ECE)" in w for w in rows[0]["warnings"])
+
+
+def test_calibration_metrics_none_when_no_validation_metric_exists(db_session):
+    match, home, away, player = _seed(db_session)
+    _add_quote(db_session, match, player, "Sportsbet", 1.90)
+
+    rows = load_normalized_prop_insights(db_session)
+    assert rows[0]["calibration"] is None
 
 
 def test_manual_and_automated_quotes_both_considered_for_best_price(db_session):

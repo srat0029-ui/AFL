@@ -225,3 +225,19 @@
   color: #7dd3fc;
   font-size: 0.85rem;
 }
+
+.market-flag {
+  display: inline-block;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+}
+
+.market-flag--yes {
+  background: #14532d;
+  color: #86efac;
+}
+
+.market-flag--no {
+  color: #4b5563;
+}

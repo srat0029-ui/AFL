@@ -19,6 +19,15 @@
                        for each new/changed quote against the model's
                        current belief. Idempotent and quota-aware (see
                        prop_odds_quota.py) — safe to run on a schedule.
+  refresh-team-odds  — Section 23 of the Weekly Opportunity Discovery
+                       stage brief: fetches standard AFL match odds
+                       (h2h/spreads/totals) from The Odds API's
+                       non-event-specific endpoint — one call covers
+                       every upcoming event, so this is considerably
+                       cheaper than refresh-prop-odds — and persists
+                       real automated OddsQuote snapshots
+                       (source="the_odds_api") so Best Opportunities can
+                       show genuine current team-market prices.
   settle-props       — Section 16 of the market-logging stage brief:
                        finds completed matches with unsettled real prop
                        observations, settles each against real
@@ -46,6 +55,7 @@ Usage:
     python -m app.player_modelling.cli project-upcoming
     python -m app.player_modelling.cli refresh-live
     python -m app.player_modelling.cli refresh-prop-odds [--force] [--min-interval-minutes N]
+    python -m app.player_modelling.cli refresh-team-odds
     python -m app.player_modelling.cli settle-props
     python -m app.player_modelling.cli run-live-cycle
 """
@@ -67,8 +77,11 @@ from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, 
 from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
 from app.player_modelling.prop_settlement import settle_all_completed_matches
+from app.player_modelling.request_cache import clear_ttl_cache
+from app.player_modelling.team_odds_ingestion import ingest_team_odds
 from app.player_modelling.upcoming_features import count_missing_lineup_candidates, load_all_lineup_player_ids, load_next_upcoming_round
-from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiProvider
+from app.player_modelling.weather_ingestion import refresh_weather_for_matches
+from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiError, TheOddsApiProvider
 
 
 def _report_confidence_distributions(run) -> None:
@@ -154,6 +167,7 @@ def _project_upcoming() -> int:
         _report_confidence_distributions(run)
         _report_sanity_checks(db, run)
 
+        clear_ttl_cache()
         return 0
     finally:
         db.close()
@@ -205,6 +219,7 @@ def _refresh_live() -> int:
         print(f"  Matches regenerated: {sorted(changed_match_ids)}")
         print(f"  Matches unchanged (skipped): {sorted(set(m.match_id for m in upcoming_matches) - changed_match_ids)}")
 
+        clear_ttl_cache()
         return 0
     finally:
         db.close()
@@ -299,6 +314,59 @@ def _refresh_prop_odds(force: bool = False, min_interval_minutes: float | None =
         if obs_report.skipped_no_projection:
             print(f"  {obs_report.skipped_no_projection} quote(s) skipped — no live projection for this player yet")
 
+        clear_ttl_cache()
+        return 0
+    finally:
+        db.close()
+
+
+def _refresh_team_odds() -> int:
+    """Section 23 of the Weekly Opportunity Discovery stage: fetches
+    standard AFL match odds (h2h/spreads/totals) in ONE call — cheaper
+    than player props since it's not event-specific — and persists real
+    automated OddsQuote snapshots (source="the_odds_api"), so Best
+    Opportunities can show genuine current team-market prices instead of
+    stale manual entries (Section 22)."""
+    db = SessionLocal()
+    try:
+        settings = get_settings()
+        provider = TheOddsApiProvider(api_key=settings.the_odds_api_key)
+        if not provider.is_available:
+            print(
+                "Provider unavailable: THE_ODDS_API_KEY is not configured. Manual odds entry is unaffected — "
+                "see .env.example for setup. Nothing was fetched."
+            )
+            return 0
+
+        print("Fetching standard AFL match odds (h2h/spreads/totals) — one call, not event-specific...")
+        try:
+            result = provider.get_standard_match_odds("AFL")
+        except TheOddsApiError as exc:
+            print(f"Request failed: {exc}")
+            return 1
+
+        print(f"  {len(result.events)} AFL event(s) returned, markets returned: {result.markets_returned}")
+        report = ingest_team_odds(db, result)
+
+        print(f"\nMatches resolved: {report.matches_resolved} of {report.events_seen} events")
+        if report.matches_unresolved:
+            print(f"  {len(report.matches_unresolved)} event(s) could not be resolved to a match:")
+            for msg in report.matches_unresolved[:10]:
+                print(f"    {msg}")
+
+        print(f"\nQuotes: {report.quotes_seen} seen, {report.quotes_created} new snapshots, {report.quotes_unchanged} unchanged (idempotent)")
+        if report.unsupported_markets:
+            print(f"  unsupported market keys skipped: {report.unsupported_markets}")
+        if report.unresolved_selections:
+            print(f"  {len(report.unresolved_selections)} quote(s) skipped — team name unresolved:")
+            for msg in report.unresolved_selections[:10]:
+                print(f"    {msg}")
+
+        print(
+            f"\nAPI quota usage: requests_used={result.quota.requests_used} "
+            f"requests_remaining={result.quota.requests_remaining} last_request_cost={result.quota.last_request_cost}"
+        )
+        clear_ttl_cache()
         return 0
     finally:
         db.close()
@@ -352,22 +420,57 @@ def _run_live_cycle() -> int:
         db.close()
 
 
+def _refresh_weather() -> int:
+    db = SessionLocal()
+    try:
+        print("Step 1: identifying upcoming AFL matches...")
+        upcoming_matches = load_next_upcoming_round(db)
+        if not upcoming_matches:
+            print("No upcoming (scheduled) AFL matches found — nothing to refresh.")
+            return 0
+        for m in upcoming_matches:
+            print(f"  match {m.match_id}: round {m.round_number}, {m.season_year}, kickoff {m.scheduled_start.isoformat()}")
+
+        print("\nStep 2: fetching venue-local forecasts from Open-Meteo (free, keyless)...")
+        report = refresh_weather_for_matches(db, upcoming_matches)
+        print(f"  {report.snapshots_created} snapshot(s) created of {report.matches_considered} match(es) considered")
+        if report.skipped_no_venue:
+            print(f"  skipped (no venue set): {report.skipped_no_venue}")
+        if report.skipped_no_coordinates:
+            print(f"  skipped (venue has no lat/lon on record): {report.skipped_no_coordinates}")
+        if report.skipped_too_far_out:
+            print(f"  skipped (kickoff beyond Open-Meteo's ~16-day forecast window): {report.skipped_too_far_out}")
+        if report.errors:
+            print(f"  errors: {report.errors}")
+        return 0
+    finally:
+        db.close()
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
-    if not argv or argv[0] not in ("project-upcoming", "refresh-live", "refresh-prop-odds", "settle-props", "run-live-cycle"):
+    if not argv or argv[0] not in (
+        "project-upcoming", "refresh-live", "refresh-prop-odds", "refresh-team-odds", "settle-props", "run-live-cycle",
+        "refresh-weather",
+    ):
         print(
             "Usage: python -m app.player_modelling.cli "
-            "project-upcoming|refresh-live|refresh-prop-odds [--force] [--min-interval-minutes N]|settle-props|run-live-cycle"
+            "project-upcoming|refresh-live|refresh-prop-odds [--force] [--min-interval-minutes N]|"
+            "refresh-team-odds|settle-props|run-live-cycle|refresh-weather"
         )
         return 2
     if argv[0] == "project-upcoming":
         return _project_upcoming()
     if argv[0] == "refresh-live":
         return _refresh_live()
+    if argv[0] == "refresh-team-odds":
+        return _refresh_team_odds()
     if argv[0] == "settle-props":
         return _settle_props()
     if argv[0] == "run-live-cycle":
         return _run_live_cycle()
+    if argv[0] == "refresh-weather":
+        return _refresh_weather()
 
     force = "--force" in argv
     min_interval_minutes: float | None = None

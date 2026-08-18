@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import "./MatchDetailPage.css";
 import Disclaimer from "../components/Disclaimer";
 import ExpectedLineupPanel from "../components/ExpectedLineupPanel";
+import MatchContextPanel from "../components/MatchContextPanel";
 import OddsPanel from "../components/OddsPanel";
 import PlayerPropPanel from "../components/PlayerPropPanel";
 import PlayerStatsTable, { type Column } from "../components/PlayerStatsTable";
@@ -17,6 +18,7 @@ import {
   type MatchProjections,
   type MatchSummary,
 } from "../api/client";
+import { formatCountdown, formatFullDateTime } from "../lib/datetime";
 
 // Round/opponent are redundant on a page already scoped to one match.
 const MATCH_PLAYER_COLUMNS: Column[] = [
@@ -29,15 +31,7 @@ const MATCH_PLAYER_COLUMNS: Column[] = [
   { key: "behinds", label: "BH" },
 ];
 
-function formatKickoff(iso: string): string {
-  return new Date(iso).toLocaleString(undefined, {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+const formatKickoff = formatFullDateTime;
 
 function MatchDetailPage() {
   const { matchId } = useParams<{ matchId: string }>();
@@ -105,6 +99,7 @@ function MatchDetailPage() {
         </div>
         <p className="hint">
           {formatKickoff(match.scheduled_start)}
+          {match.status === "scheduled" && ` (${formatCountdown(match.scheduled_start)})`}
           {match.venue ? ` · ${match.venue.name}` : ""} · Round {match.round_number}, {match.season_year}
         </p>
         {match.status === "completed" && (
@@ -169,6 +164,14 @@ function MatchDetailPage() {
 
       {match.status === "scheduled" && (
         <>
+          <MatchContextPanel
+            matchId={match.id}
+            homeTeamId={match.home_team.id}
+            awayTeamId={match.away_team.id}
+            homeTeamName={match.home_team.name}
+            awayTeamName={match.away_team.name}
+          />
+
           <ExpectedLineupPanel
             matchId={match.id}
             homeTeamId={match.home_team.id}

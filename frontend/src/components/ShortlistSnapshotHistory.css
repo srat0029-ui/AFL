@@ -1,0 +1,79 @@
+.snapshot-history {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.snapshot-history__controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.snapshot-history__freeze-btn {
+  align-self: flex-start;
+  background: #1e3a2f;
+  border: 1px solid #2f6b4f;
+  color: #86efac;
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.snapshot-history__freeze-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.snapshot-history__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  font-size: 0.85rem;
+}
+
+.snapshot-history__table th,
+.snapshot-history__table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #1c212b;
+  text-align: left;
+}
+
+.snapshot-history__open-btn {
+  background: transparent;
+  border: 1px solid #2a2f3a;
+  color: #7dd3fc;
+  border-radius: 6px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  margin-right: 0.4rem;
+}
+
+.snapshot-history__detail {
+  background: #161a22;
+  border: 1px solid #2a2f3a;
+  border-radius: 12px;
+  padding: 1rem 1.25rem;
+}
+
+.snapshot-history__detail h3 {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  color: #f3f4f6;
+}
+
+.snapshot-history__warning {
+  color: #fdba74;
+}
+
+.snapshot-history__summary-stats {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  margin-bottom: 0.75rem;
+}

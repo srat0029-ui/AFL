@@ -92,6 +92,7 @@ def test_match_status_ready_when_lineup_confirmed_odds_fresh_and_projected(db_se
     from app.models import Bookmaker, PlayerDisposalProjection
 
     match, home, away = _seed_match(db_session)
+    match.external_ids = {"the_odds_api": "evt1"}
     player = Player(sport_id=match.sport_id, display_name="Nick Daicos", source="afltables", source_player_id="p1", current_team_id=home.id)
     bookmaker = Bookmaker(name="SportsBet")
     db_session.add_all([player, bookmaker])
@@ -118,6 +119,9 @@ def test_match_status_ready_when_lineup_confirmed_odds_fresh_and_projected(db_se
     assert report.matches[0].projections_generated is True
     assert report.round_summary.n_matches_with_projections == 1
     assert report.round_summary.n_matches_with_prop_markets == 1
+    assert report.matches[0].disposals_available is True
+    assert report.matches[0].goals_available is False
+    assert report.matches[0].unique_player_count == 1
 
 
 def test_completed_match_with_unsettled_observation_is_awaiting_stats(db_session):

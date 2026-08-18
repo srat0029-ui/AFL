@@ -43,6 +43,21 @@ from sqlalchemy import select
 
 router = APIRouter(prefix="/api/backtests", tags=["backtests"])
 
+# Process-level cache for the three comparison endpoints that recompute a
+# full walk-forward backtest (poisson-revision: a hyperparameter grid
+# search plus two complete 2016-2025 replays) or a comparably expensive
+# model comparison live on every request — observed to take 3-33s each,
+# which dominated the Backtesting page's load time since the frontend
+# fires all backtest endpoints in parallel on mount. These results only
+# change when the underlying training data or a promoted model config
+# changes (i.e. after a CLI retrain), so caching for the life of the
+# server process is safe; restart the server (or, later, add an explicit
+# invalidation hook if a retrain-while-running workflow is ever needed) to
+# pick up a change.
+_logistic_comparison_cache: LogisticComparisonOverviewRead | None = None
+_boosting_comparison_cache: BoostingComparisonOverviewRead | None = None
+_poisson_revision_cache: PoissonRevisionComparisonRead | None = None
+
 _UNAVAILABLE = (
     EvaluationModelsUnavailableError,
     ComparisonModelsUnavailableError,
@@ -108,6 +123,10 @@ def get_comparison(db: Session = Depends(get_db)) -> ModelComparisonRead:
 
 @router.get("/logistic-comparison", response_model=LogisticComparisonOverviewRead)
 def get_logistic_comparison(db: Session = Depends(get_db)) -> LogisticComparisonOverviewRead:
+    global _logistic_comparison_cache
+    if _logistic_comparison_cache is not None:
+        return _logistic_comparison_cache
+
     stats_only_run = db.scalar(select(ModelRun).where(ModelRun.model_name == "logistic_stats_only"))
     stats_plus_elo_run = db.scalar(select(ModelRun).where(ModelRun.model_name == "logistic_stats_plus_elo"))
     if stats_only_run is None or stats_plus_elo_run is None:
@@ -120,25 +139,38 @@ def get_logistic_comparison(db: Session = Depends(get_db)) -> LogisticComparison
     except _UNAVAILABLE as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
-    return LogisticComparisonOverviewRead.model_validate(overview)
+    _logistic_comparison_cache = LogisticComparisonOverviewRead.model_validate(overview)
+    return _logistic_comparison_cache
 
 
 @router.get("/boosting-comparison", response_model=BoostingComparisonOverviewRead)
 def get_boosting_comparison(db: Session = Depends(get_db)) -> BoostingComparisonOverviewRead:
+    global _boosting_comparison_cache
+    if _boosting_comparison_cache is not None:
+        return _boosting_comparison_cache
+
     try:
         overview = build_boosting_comparison(db)
     except _UNAVAILABLE as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return BoostingComparisonOverviewRead.model_validate(overview)
+
+    _boosting_comparison_cache = BoostingComparisonOverviewRead.model_validate(overview)
+    return _boosting_comparison_cache
 
 
 @router.get("/poisson-revision", response_model=PoissonRevisionComparisonRead)
 def get_poisson_revision(db: Session = Depends(get_db)) -> PoissonRevisionComparisonRead:
+    global _poisson_revision_cache
+    if _poisson_revision_cache is not None:
+        return _poisson_revision_cache
+
     try:
         comparison = build_poisson_revision_comparison(db)
     except _UNAVAILABLE as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    return PoissonRevisionComparisonRead.model_validate(comparison)
+
+    _poisson_revision_cache = PoissonRevisionComparisonRead.model_validate(comparison)
+    return _poisson_revision_cache
 
 
 @router.get("/{model_id}", response_model=BacktestDetailRead)

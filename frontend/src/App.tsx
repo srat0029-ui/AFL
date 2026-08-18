@@ -8,7 +8,9 @@ import PlayerProfilePage from "./pages/PlayerProfilePage";
 import LiveStatusPage from "./pages/LiveStatusPage";
 import PropInsightsPage from "./pages/PropInsightsPage";
 import RealMarketTrackingPage from "./pages/RealMarketTrackingPage";
+import RoundContextDashboardPage from "./pages/RoundContextDashboardPage";
 import StatusPage from "./pages/StatusPage";
+import WeeklyReviewPage from "./pages/WeeklyReviewPage";
 
 function App() {
   return (
@@ -17,6 +19,12 @@ function App() {
         <span className="app-nav__brand">AFL Analytics</span>
         <NavLink to="/" end className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Dashboard
+        </NavLink>
+        <NavLink to="/weekly-review" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          Weekly Review
+        </NavLink>
+        <NavLink to="/round-context" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          Round Context
         </NavLink>
         <NavLink to="/player-insights" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Player Insights
@@ -39,6 +47,8 @@ function App() {
       </nav>
       <Routes>
         <Route path="/" element={<DashboardPage />} />
+        <Route path="/weekly-review" element={<WeeklyReviewPage />} />
+        <Route path="/round-context" element={<RoundContextDashboardPage />} />
         <Route path="/matches/:matchId" element={<MatchDetailPage />} />
         <Route path="/players/:playerId" element={<PlayerProfilePage />} />
         <Route path="/player-insights" element={<PlayerInsightsPage />} />
