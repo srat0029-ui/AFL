@@ -9,8 +9,8 @@
 }
 
 .final-shortlist__empty {
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.5rem;
   text-align: center;
@@ -23,8 +23,8 @@
 }
 
 .final-shortlist__card {
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.25rem;
 }
@@ -37,7 +37,7 @@
 }
 
 .final-shortlist__rank {
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
 }
@@ -52,7 +52,7 @@
 
 .final-shortlist__label {
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .final-shortlist__price {
@@ -69,8 +69,8 @@
 }
 
 .final-shortlist__tier-badge--strong_candidate {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .final-shortlist__tier-badge--worth_reviewing {
@@ -79,13 +79,13 @@
 }
 
 .final-shortlist__tier-badge--speculative {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .final-shortlist__tier-badge--do_not_headline {
   background: #3a1c1c;
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .final-shortlist__card-meta {
@@ -93,16 +93,16 @@
   gap: 0.9rem;
   flex-wrap: wrap;
   font-size: 0.8rem;
-  color: #cbd2db;
+  color: var(--text);
   margin-top: 0.5rem;
 }
 
 .final-shortlist__confirmed {
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .final-shortlist__unconfirmed {
-  color: #fde68a;
+  color: var(--warning-text);
 }
 
 .final-shortlist__reasons {
@@ -129,13 +129,13 @@
 
 .final-shortlist__drawer {
   margin-top: 0.75rem;
-  border-top: 1px solid #1c212b;
+  border-top: 1px solid var(--bg-inset);
   padding-top: 0.75rem;
 }
 
 .final-shortlist__excluded {
-  background: #12151c;
-  border: 1px solid #2a2f3a;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.75rem 1rem;
 }
@@ -143,7 +143,7 @@
 .final-shortlist__excluded-toggle {
   background: transparent;
   border: none;
-  color: #7dd3fc;
+  color: var(--accent-light);
   font: inherit;
   font-size: 0.82rem;
   cursor: pointer;
@@ -154,7 +154,7 @@
   margin: 0.6rem 0 0;
   padding-left: 1.1rem;
   font-size: 0.8rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
   max-height: 260px;
   overflow-y: auto;
 }

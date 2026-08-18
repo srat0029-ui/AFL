@@ -8,8 +8,8 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem 1.2rem;
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.8rem 1.1rem;
   font-size: 0.85rem;
@@ -33,11 +33,11 @@
   align-items: center;
   gap: 0.5rem 1rem;
   font-size: 0.8rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .diversified-view__coverage-label {
-  color: #cbd2db;
+  color: var(--text);
   font-weight: 600;
 }
 
@@ -51,7 +51,7 @@
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
   background: #1e2a3a;
-  color: #7dd3fc;
+  color: var(--accent-light);
   cursor: default;
 }
 
@@ -68,6 +68,6 @@
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
   background: #3a1c1c;
-  color: #fca5a5;
+  color: var(--danger-text);
   white-space: normal;
 }

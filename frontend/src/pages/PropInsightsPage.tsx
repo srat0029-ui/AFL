@@ -190,11 +190,11 @@ function PropInsightsPage() {
         </p>
       </header>
 
-      <nav className="prop-insights-page__tabs">
+      <nav className="tab-bar">
         {TABS.map((t) => (
           <button
             key={t.key}
-            className={`prop-insights-page__tab${tab === t.key ? " prop-insights-page__tab--active" : ""}`}
+            className={`tab-bar__tab${tab === t.key ? " tab-bar__tab--active" : ""}`}
             onClick={() => setTab(t.key)}
           >
             {t.label}
@@ -225,11 +225,11 @@ function PropInsightsPage() {
           </section>
           <p className="hint">The raw, ungrouped ranking — every supported market individually, with no family grouping or diversification.</p>
 
-          {loading && <p className="hint">Loading…</p>}
-          {error && <div className="prop-insights-page__error">{error}</div>}
+          {loading && <p className="loading-state">Loading…</p>}
+          {error && <div className="error-banner">{error}</div>}
 
           {!loading && !error && allMarketsOpportunities.length === 0 && (
-            <p className="hint">No markets currently pass the quality gates — check back once bookmaker markets open.</p>
+            <p className="empty-state">No markets currently pass the quality gates — check back once bookmaker markets open.</p>
           )}
 
           {!loading && !error && allMarketsOpportunities.length > 0 && (
@@ -389,8 +389,8 @@ function PropInsightsPage() {
       )}
       {!isSelfManagedTab && <p className="hint">Confirmed-out players are never shown here, regardless of any setting above.</p>}
 
-      {isNormalizedTab && loading && <p className="hint">Loading…</p>}
-      {isNormalizedTab && error && <div className="prop-insights-page__error">{error}</div>}
+      {isNormalizedTab && loading && <p className="loading-state">Loading…</p>}
+      {isNormalizedTab && error && <div className="error-banner">{error}</div>}
 
       {!loading && !error && isNormalizedTab && filtered.length === 0 && (
         <p className="hint">
@@ -481,7 +481,7 @@ function PropInsightsPage() {
       )}
 
       {!loading && !error && tab === "manual_log" && manualRows.length === 0 && (
-        <p className="hint">No player prop quotes recorded yet — add some from a match's detail page.</p>
+        <p className="empty-state">No player prop quotes recorded yet — add some from a match's detail page.</p>
       )}
 
       {!loading && !error && tab === "manual_log" && manualRows.length > 0 && (

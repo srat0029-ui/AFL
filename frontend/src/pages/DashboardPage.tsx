@@ -99,9 +99,9 @@ function BestOpportunitiesSection({
           {summary.best_price_advantage_pct !== null && ` · best price-shopping improvement: +${summary.best_price_advantage_pct.toFixed(1)}%`}
         </p>
       )}
-      {loading && <p className="hint">Loading…</p>}
+      {loading && <p className="loading-state">Loading…</p>}
       {!loading && opportunities.length === 0 && (
-        <p className="hint">
+        <p className="empty-state">
           No opportunities currently pass the default quality gates — check Prop Insights directly to include
           uncertain participation, stale odds, or low-history markets.
         </p>
@@ -147,7 +147,7 @@ function MarketCoverageSection({ status, loading }: { status: LiveStatusReport |
     return (
       <section className="dashboard-section">
         <h2>Market Coverage</h2>
-        <p className="hint">Loading…</p>
+        <p className="loading-state">Loading…</p>
       </section>
     );
   }
@@ -284,15 +284,15 @@ function DashboardPage() {
       <h1>Dashboard</h1>
       <p className="subtitle">Model probabilities, best-priced opportunities, and market coverage for the current AFL round.</p>
 
-      {error && <div className="dashboard-page__error">{error}</div>}
+      {error && <div className="error-banner">{error}</div>}
 
       <BestOpportunitiesSection opportunities={opportunities} summary={weeklySummary} loading={opportunitiesLoading} />
 
       <section className="dashboard-section">
         <h2>Upcoming Matches</h2>
-        {loading && <p className="hint">Loading…</p>}
+        {loading && <p className="loading-state">Loading…</p>}
         {!loading && !error && entries.length === 0 && (
-          <p className="hint">No upcoming AFL fixtures found. Make sure you've run the data ingestion (see the README).</p>
+          <p className="empty-state">No upcoming AFL fixtures found. Make sure you've run the data ingestion (see the README).</p>
         )}
 
         {groupedByDay.map(([key, group]) => (

@@ -1,29 +1,21 @@
 .odds-panel {
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.5rem;
-  background: #161a22;
+  background: var(--card-bg);
 }
 
 .odds-panel h3 {
   margin: 0 0 0.75rem;
   font-size: 1.1rem;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .odds-panel h4 {
   margin-top: 2rem;
   margin-bottom: 0.75rem;
   font-size: 0.95rem;
-  color: #cbd2db;
-}
-
-.odds-panel__error {
-  background: #1f1414;
-  border: 1px solid #7f1d1d;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  color: #fca5a5;
+  color: var(--text);
 }
 
 .odds-form {
@@ -43,24 +35,24 @@
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.85rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
   flex: 1;
   min-width: 140px;
 }
 
 .odds-form input,
 .odds-form select {
-  background: #0d0f14;
-  border: 1px solid #2a2f3a;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.5rem 0.6rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font: inherit;
 }
 
 .odds-form input:focus,
 .odds-form select:focus {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
 
@@ -69,7 +61,7 @@
   align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .odds-form__checkbox input {
@@ -78,7 +70,7 @@
 
 .odds-form button[type="submit"] {
   align-self: flex-start;
-  background: #3b82f6;
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 6px;
@@ -104,32 +96,32 @@
 
 .odds-table th {
   text-align: left;
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-weight: 500;
   padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid #2a2f3a;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .odds-table td {
   padding: 0.5rem 0.6rem;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
   white-space: nowrap;
 }
 
 .odds-table__badge {
   margin-left: 0.5rem;
   font-size: 0.7rem;
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
   border-radius: 4px;
   padding: 0.1rem 0.4rem;
 }
 
 .odds-table__delete {
   background: transparent;
-  border: 1px solid #7f1d1d;
-  color: #fca5a5;
+  border: 1px solid var(--danger-border);
+  color: var(--danger-text);
   border-radius: 6px;
   padding: 0.25rem 0.6rem;
   cursor: pointer;
@@ -137,7 +129,7 @@
 }
 
 .odds-table__delete:hover {
-  background: #1f1414;
+  background: var(--danger-bg);
 }
 
 .edge-badge,
@@ -151,8 +143,8 @@
 }
 
 .edge-badge--strong {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .edge-badge--moderate {
@@ -161,13 +153,13 @@
 }
 
 .edge-badge--weak {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .edge-badge--none {
-  background: #1c212b;
-  color: #9aa4b2;
+  background: var(--bg-inset);
+  color: var(--text-muted);
 }
 
 .confidence-badge--higher {
@@ -176,8 +168,8 @@
 }
 
 .confidence-badge--moderate {
-  background: #1c212b;
-  color: #cbd2db;
+  background: var(--bg-inset);
+  color: var(--text);
 }
 
 .confidence-badge--lower {
@@ -186,6 +178,6 @@
 }
 
 .confidence-badge--insufficient_data {
-  background: #1f1414;
-  color: #fca5a5;
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }

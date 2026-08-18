@@ -37,7 +37,7 @@ function BookmakerSettingsPanel() {
       .finally(() => setSavingId(null));
   }
 
-  if (loading) return <p className="hint">Loading…</p>;
+  if (loading) return <p className="loading-state">Loading…</p>;
 
   return (
     <div className="bookmaker-settings">

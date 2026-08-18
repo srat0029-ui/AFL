@@ -10,45 +10,15 @@
 .prop-insights-page__header h1 {
   margin: 0 0 0.5rem;
   font-size: 1.6rem;
-  color: #f3f4f6;
-}
-
-.prop-insights-page__tabs {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  border-bottom: 1px solid #2a2f3a;
-  padding-bottom: 0.5rem;
-}
-
-.prop-insights-page__tab {
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 8px;
-  padding: 0.45rem 0.9rem;
-  color: #9aa4b2;
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-
-.prop-insights-page__tab:hover {
-  color: #f3f4f6;
-  background: #161a22;
-}
-
-.prop-insights-page__tab--active {
-  background: #1e3a2f;
-  border-color: #2f6b4f;
-  color: #86efac;
+  color: var(--text-h);
 }
 
 .prop-insights-page__filters {
   display: flex;
   gap: 1rem;
   flex-wrap: wrap;
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.25rem;
 }
@@ -58,7 +28,7 @@
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.8rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
   min-width: 160px;
 }
 
@@ -79,20 +49,12 @@
 }
 
 .prop-insights-page__filters select {
-  background: #0d0f14;
-  border: 1px solid #2a2f3a;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.45rem 0.6rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font: inherit;
-}
-
-.prop-insights-page__error {
-  background: #1f1414;
-  border: 1px solid #7f1d1d;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  color: #fca5a5;
 }
 
 .prop-insights-table-scroll {
@@ -103,32 +65,32 @@
   width: 100%;
   border-collapse: collapse;
   font-size: 0.87rem;
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
 }
 
 .prop-insights-table th {
   text-align: left;
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-weight: 500;
   padding: 0.5rem 0.7rem;
-  border-bottom: 1px solid #2a2f3a;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .prop-insights-table td {
   padding: 0.55rem 0.7rem;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
   white-space: nowrap;
 }
 
 .prop-insights-table__diff-pos {
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .prop-insights-table__diff-neg {
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .prop-insights-table__raw-flag {
@@ -160,13 +122,13 @@
 }
 
 .edge-category-badge--no_meaningful_difference {
-  background: #1c212b;
-  color: #9aa4b2;
+  background: var(--bg-inset);
+  color: var(--text-muted);
 }
 
 .edge-category-badge--small_difference {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .edge-category-badge--moderate_difference {
@@ -175,8 +137,8 @@
 }
 
 .edge-category-badge--larger_difference {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .prop-insights-table__freshness {
@@ -188,18 +150,18 @@
 }
 
 .prop-insights-table__freshness--fresh {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .prop-insights-table__freshness--aging {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .prop-insights-table__freshness--stale {
   background: #3a1c1c;
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .prop-insights-table__source {
@@ -211,13 +173,13 @@
 }
 
 .prop-insights-table__source--manual {
-  background: #1c212b;
-  color: #9aa4b2;
+  background: var(--bg-inset);
+  color: var(--text-muted);
 }
 
 .prop-insights-table__source--automated {
   background: #1e2a3a;
-  color: #7dd3fc;
+  color: var(--accent-light);
 }
 
 .prop-insights-table__row-clickable {
@@ -225,12 +187,12 @@
 }
 
 .prop-insights-table__row-clickable:hover {
-  background: #1c212b;
+  background: var(--bg-inset);
 }
 
 .prop-insights-table__drawer-row td {
   white-space: normal;
-  background: #0d0f14;
+  background: var(--bg);
   padding: 0;
 }
 
@@ -244,7 +206,7 @@
 
 .prop-insights-table__type-badge--player {
   background: #1e2a3a;
-  color: #7dd3fc;
+  color: var(--accent-light);
 }
 
 .prop-insights-table__type-badge--team {

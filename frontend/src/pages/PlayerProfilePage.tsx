@@ -51,7 +51,7 @@ function PlayerProfilePage() {
   if (loading) {
     return (
       <main className="player-profile-page">
-        <p className="hint">Loading…</p>
+        <p className="loading-state">Loading…</p>
       </main>
     );
   }
@@ -59,7 +59,7 @@ function PlayerProfilePage() {
   if (error || !form) {
     return (
       <main className="player-profile-page">
-        <div className="player-profile-page__error">{error ?? "Player not found."}</div>
+        <div className="error-banner">{error ?? "Player not found."}</div>
         <Link to="/" className="back-link">
           &larr; Back to dashboard
         </Link>

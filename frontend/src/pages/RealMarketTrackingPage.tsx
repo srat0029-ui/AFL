@@ -102,8 +102,8 @@ function QuoteHistoryDrawer({ movement, onClose }: { movement: MarketMovement; o
           </h3>
           <button type="button" className="rmt-drawer__close" onClick={onClose} aria-label="Close">×</button>
         </div>
-        {error && <div className="rmt-page__error">{error}</div>}
-        {!error && entries === null && <p className="hint">Loading…</p>}
+        {error && <div className="error-banner">{error}</div>}
+        {!error && entries === null && <p className="loading-state">Loading…</p>}
         {entries !== null && (
           <div className="rmt-table-scroll">
             <table className="rmt-table">
@@ -265,8 +265,8 @@ function RealMarketTrackingPage() {
         </p>
       </header>
 
-      {loading && <p className="hint">Loading…</p>}
-      {error && <div className="rmt-page__error">{error}</div>}
+      {loading && <p className="loading-state">Loading…</p>}
+      {error && <div className="error-banner">{error}</div>}
 
       {!loading && !error && report && (
         <>

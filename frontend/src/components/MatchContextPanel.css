@@ -1,8 +1,8 @@
 .context-panel {
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.5rem;
-  background: #161a22;
+  background: var(--card-bg);
   margin-bottom: 1.5rem;
 }
 
@@ -16,14 +16,14 @@
 .context-panel__header h2 {
   margin: 0;
   font-size: 1.1rem;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .context-panel__toggle {
-  background: #1c212b;
-  border: 1px solid #2a2f3a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #f3f4f6;
+  color: var(--text-h);
   padding: 0.3rem 0.7rem;
   font-size: 0.8rem;
   cursor: pointer;
@@ -36,9 +36,9 @@
   padding: 0.5rem 0.75rem;
   margin: 0.6rem 0;
   border-radius: 8px;
-  background: #0d0f14;
+  background: var(--bg);
   font-size: 0.85rem;
-  color: #cbd2db;
+  color: var(--text);
   align-items: center;
 }
 
@@ -52,10 +52,10 @@
 }
 
 .context-panel__refresh {
-  background: #1c212b;
-  border: 1px solid #2a2f3a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #f3f4f6;
+  color: var(--text-h);
   padding: 0.25rem 0.6rem;
   font-size: 0.75rem;
   cursor: pointer;
@@ -77,7 +77,7 @@
   align-items: baseline;
   padding: 0.45rem 0.6rem;
   border-radius: 8px;
-  background: #0d0f14;
+  background: var(--bg);
   border-left: 3px solid #4b5563;
   font-size: 0.85rem;
 }
@@ -91,13 +91,13 @@
 }
 
 .context-panel__item--stale {
-  border-left-color: #6b7280;
+  border-left-color: var(--text-dim);
   opacity: 0.75;
 }
 
 .context-panel__type {
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .context-panel__player {
@@ -105,14 +105,14 @@
 }
 
 .context-panel__summary {
-  color: #cbd2db;
+  color: var(--text);
   flex: 1;
   min-width: 200px;
 }
 
 .context-panel__meta {
   font-size: 0.72rem;
-  color: #6b7280;
+  color: var(--text-dim);
   width: 100%;
 }
 
@@ -122,7 +122,7 @@
   gap: 0.6rem;
   margin-top: 0.9rem;
   padding-top: 0.9rem;
-  border-top: 1px solid #2a2f3a;
+  border-top: 1px solid var(--border);
 }
 
 .context-panel__form-row {
@@ -136,7 +136,7 @@
   flex-direction: column;
   gap: 0.25rem;
   font-size: 0.78rem;
-  color: #cbd2db;
+  color: var(--text);
   flex: 1;
   min-width: 140px;
 }
@@ -144,11 +144,11 @@
 .context-panel__form select,
 .context-panel__form input,
 .context-panel__form textarea {
-  background: #0d0f14;
-  border: 1px solid #2a2f3a;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.35rem 0.5rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font-size: 0.85rem;
   font-family: inherit;
 }
@@ -163,8 +163,8 @@
   top: 100%;
   left: 0;
   right: 0;
-  background: #1c212b;
-  border: 1px solid #2a2f3a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
   border-radius: 6px;
   margin: 0.2rem 0 0;
   padding: 0.2rem;
@@ -178,7 +178,7 @@
   text-align: left;
   background: none;
   border: none;
-  color: #f3f4f6;
+  color: var(--text-h);
   padding: 0.3rem 0.4rem;
   font-size: 0.82rem;
   cursor: pointer;
@@ -186,7 +186,7 @@
 }
 
 .context-panel__search-results button:hover {
-  background: #2a2f3a;
+  background: var(--border);
 }
 
 .context-panel__checkbox {

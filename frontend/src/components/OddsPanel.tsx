@@ -208,7 +208,7 @@ function OddsPanel({ matchId, homeTeamName, awayTeamName }: OddsPanelProps) {
           This is the closing line
         </label>
 
-        {formError && <p className="odds-panel__error">{formError}</p>}
+        {formError && <p className="error-banner">{formError}</p>}
 
         <button type="submit" disabled={submitting}>
           {submitting ? "Saving…" : "Add odds quote"}
@@ -216,7 +216,7 @@ function OddsPanel({ matchId, homeTeamName, awayTeamName }: OddsPanelProps) {
       </form>
 
       <h4>Recorded quotes</h4>
-      {oddsLoading && <p className="hint">Loading…</p>}
+      {oddsLoading && <p className="loading-state">Loading…</p>}
       {!oddsLoading && odds.length === 0 && <p className="hint">No odds recorded for this match yet.</p>}
       {!oddsLoading && odds.length > 0 && (
         <div className="odds-table-scroll">

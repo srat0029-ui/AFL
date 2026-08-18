@@ -162,8 +162,8 @@ function PlayerInsightsPage() {
         </label>
       </section>
 
-      {loading && <p className="hint">Loading…</p>}
-      {error && <div className="player-insights-page__error">{error}</div>}
+      {loading && <p className="loading-state">Loading…</p>}
+      {error && <div className="error-banner">{error}</div>}
 
       {!loading && !error && (
         <section className="backtest-panel">

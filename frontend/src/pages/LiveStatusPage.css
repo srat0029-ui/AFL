@@ -10,20 +10,12 @@
 .live-status-page__header h1 {
   margin: 0 0 0.5rem;
   font-size: 1.6rem;
-  color: #f3f4f6;
-}
-
-.live-status-page__error {
-  background: #1f1414;
-  border: 1px solid #7f1d1d;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  color: #fca5a5;
+  color: var(--text-h);
 }
 
 .live-status-card {
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.1rem 1.25rem;
 }
@@ -31,7 +23,7 @@
 .live-status-card h3 {
   margin: 0 0 0.6rem;
   font-size: 1.05rem;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .live-status-grid {
@@ -43,13 +35,13 @@
 .live-status-grid__label {
   display: block;
   font-size: 0.75rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .live-status-grid__value {
   display: block;
   font-size: 1.15rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font-weight: 600;
 }
 
@@ -65,16 +57,16 @@
 
 .live-status-table th {
   text-align: left;
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-weight: 500;
   padding: 0.45rem 0.6rem;
-  border-bottom: 1px solid #2a2f3a;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .live-status-table td {
   padding: 0.5rem 0.6rem;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
   white-space: nowrap;
   color: #d1d5db;
 }
@@ -84,13 +76,13 @@
 }
 
 .live-status-table__row:hover {
-  background: #1c212b;
+  background: var(--bg-inset);
 }
 
 .live-status-table__detail-row td {
   white-space: normal;
   background: #12151b;
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-size: 0.82rem;
 }
 
@@ -104,8 +96,8 @@
 
 .live-status-badge--waiting_for_teams,
 .live-status-badge--waiting_for_bookmaker_markets {
-  background: #1c212b;
-  color: #9aa4b2;
+  background: var(--bg-inset);
+  color: var(--text-muted);
 }
 
 .live-status-badge--stale {
@@ -115,38 +107,38 @@
 
 .live-status-badge--odds_available {
   background: #1e2a3a;
-  color: #7dd3fc;
+  color: var(--accent-light);
 }
 
 .live-status-badge--ready {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .live-status-badge--completed_awaiting_player_stats,
 .live-status-badge--completed_no_market_data {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .live-status-badge--settled {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .live-status-badge--run-ok {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .live-status-badge--run-partial {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .live-status-badge--run-blocked {
   background: #3a1c1c;
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .live-status-runs {
@@ -168,7 +160,7 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  border-top: 1px solid #2a2f3a;
+  border-top: 1px solid var(--border);
   padding-top: 0.6rem;
 }
 
@@ -185,11 +177,11 @@
 }
 
 .live-status-run__step--success .live-status-run__step-status {
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .live-status-run__step--warning .live-status-run__step-status {
-  color: #fde68a;
+  color: var(--warning-text);
 }
 
 .live-status-run__step--recoverable_failure .live-status-run__step-status {
@@ -197,7 +189,7 @@
 }
 
 .live-status-run__step--blocking_failure .live-status-run__step-status {
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .live-status-run__step-name {
@@ -215,14 +207,14 @@
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
-  background: #0d0f14;
-  border: 1px solid #2a2f3a;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.6rem 0.8rem;
 }
 
 .live-status-command code {
-  color: #7dd3fc;
+  color: var(--accent-light);
   font-size: 0.85rem;
 }
 
@@ -234,8 +226,8 @@
 }
 
 .market-flag--yes {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .market-flag--no {

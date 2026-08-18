@@ -135,8 +135,8 @@ function LiveStatusPage() {
         </p>
       </header>
 
-      {loading && <p className="hint">Loading…</p>}
-      {error && <div className="live-status-page__error">{error}</div>}
+      {loading && <p className="loading-state">Loading…</p>}
+      {error && <div className="error-banner">{error}</div>}
 
       {!loading && !error && report && (
         <>

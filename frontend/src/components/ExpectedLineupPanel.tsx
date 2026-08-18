@@ -263,7 +263,7 @@ function ExpectedLineupPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, aw
       )}
 
       {loading ? (
-        <p className="hint">Loading…</p>
+        <p className="loading-state">Loading…</p>
       ) : (
         <div className="lineup-panel__teams">
           {renderTeamList(homeLineup, homeTeamName)}

@@ -1,8 +1,8 @@
 .disclaimer {
   margin-top: 2.5rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #2a2f3a;
-  color: #6b7280;
+  border-top: 1px solid var(--border);
+  color: var(--text-dim);
   font-size: 0.78rem;
   line-height: 1.5;
 }
@@ -12,18 +12,21 @@
   align-items: center;
   gap: 1.5rem;
   padding: 0.9rem 1.5rem;
-  border-bottom: 1px solid #2a2f3a;
-  background: #10131a;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-nav);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
 .app-nav__brand {
   font-weight: 700;
-  color: #f3f4f6;
+  color: var(--text-h);
   margin-right: 0.5rem;
 }
 
 .app-nav__link {
-  color: #9aa4b2;
+  color: var(--text-muted);
   text-decoration: none;
   font-size: 0.9rem;
   padding: 0.3rem 0;
@@ -31,12 +34,131 @@
 }
 
 .app-nav__link:hover {
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .app-nav__link--active {
-  color: #f3f4f6;
-  border-bottom-color: #3b82f6;
+  color: var(--text-h);
+  border-bottom-color: var(--accent);
+}
+
+/* Shared primitives reused across pages: cards, tabs, error/empty/loading states, buttons. */
+
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+}
+
+.tab-bar {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.tab-bar__tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tab-bar__tab:hover {
+  color: var(--text-h);
+  background: var(--card-bg);
+}
+
+.tab-bar__tab--active {
+  background: #1e3a2f;
+  border-color: #2f6b4f;
+  color: var(--success-text);
+}
+
+.error-banner {
+  background: var(--danger-bg);
+  border: 1px solid var(--danger-border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  color: var(--danger-text);
+  font-size: 0.9rem;
+}
+
+.empty-state {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+  padding: var(--space-5) var(--space-4);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-subtle);
+}
+
+.loading-state {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: var(--space-2) 0;
+  position: relative;
+}
+
+@keyframes loading-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.loading-state::after {
+  content: "";
+  display: inline-block;
+  width: 0.4em;
+  text-align: left;
+}
+
+.loading-state {
+  animation: loading-pulse 1.4s ease-in-out infinite;
+}
+
+.btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--accent-light);
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--accent);
+  color: var(--text-h);
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+@media (max-width: 640px) {
+  .app-nav {
+    gap: 1rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .card {
+    padding: var(--space-3) var(--space-4);
+  }
 }
 
 .status-page {
@@ -52,7 +174,7 @@
 }
 
 .subtitle {
-  color: #9aa4b2;
+  color: var(--text-muted);
   margin-top: 0;
   margin-bottom: 2rem;
 }
@@ -60,17 +182,17 @@
 .status-card {
   border-radius: 12px;
   padding: 1.5rem;
-  border: 1px solid #2a2f3a;
-  background: #161a22;
+  border: 1px solid var(--border);
+  background: var(--card-bg);
 }
 
 .status-card--error {
-  border-color: #7f1d1d;
-  background: #1f1414;
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
 }
 
 .status-card--success {
-  border-color: #14532d;
+  border-color: var(--success-bg);
   background: #101c14;
 }
 
@@ -88,7 +210,7 @@
 }
 
 .status-card dt {
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .status-card dd {
@@ -97,7 +219,7 @@
 }
 
 .hint {
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
@@ -107,10 +229,10 @@
 }
 
 .player-stats-table__sortable:hover {
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .player-stats-table__sub-flag {
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-size: 0.8rem;
 }

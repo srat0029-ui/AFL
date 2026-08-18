@@ -70,7 +70,7 @@ function FinalShortlistView() {
         </label>
       </section>
 
-      {loading && <p className="hint">Loading…</p>}
+      {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="prop-insights-page__error">{error}</div>}
 
       {!loading && !error && data && data.opportunities.length === 0 && (

@@ -67,7 +67,7 @@ function MatchDetailPage() {
   if (loading) {
     return (
       <main className="match-detail-page">
-        <p className="hint">Loading…</p>
+        <p className="loading-state">Loading…</p>
       </main>
     );
   }
@@ -75,7 +75,7 @@ function MatchDetailPage() {
   if (error || !match) {
     return (
       <main className="match-detail-page">
-        <div className="match-detail-page__error">{error ?? "Match not found."}</div>
+        <div className="error-banner">{error ?? "Match not found."}</div>
         <Link to="/" className="back-link">
           &larr; Back to dashboard
         </Link>

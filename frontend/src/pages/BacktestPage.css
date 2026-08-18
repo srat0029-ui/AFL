@@ -13,24 +13,16 @@
 }
 
 .backtest-page .subtitle {
-  color: #9aa4b2;
+  color: var(--text-muted);
   margin-top: 0;
   line-height: 1.5;
 }
 
-.backtest-page__error {
-  background: #1f1414;
-  border: 1px solid #7f1d1d;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  color: #fca5a5;
-}
-
 .backtest-panel {
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.5rem;
-  background: #161a22;
+  background: var(--card-bg);
 }
 
 .backtest-panel h2 {
@@ -42,7 +34,7 @@
   margin-top: 1.75rem;
   margin-bottom: 0.6rem;
   font-size: 0.95rem;
-  color: #cbd2db;
+  color: var(--text);
 }
 
 .backtest-panel .hint {
@@ -63,13 +55,13 @@
 
 .backtest-stat__label {
   font-size: 0.75rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .backtest-stat__value {
   font-size: 1.2rem;
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--text-h);
   font-variant-numeric: tabular-nums;
 }
 
@@ -85,16 +77,16 @@
 
 .segment-table th {
   text-align: left;
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-weight: 500;
   padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid #2a2f3a;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .segment-table td {
   padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
@@ -105,7 +97,7 @@
 
 .segment-table__highlight td:first-child {
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .backtest-callout {
@@ -147,17 +139,17 @@
 }
 
 .calibration-chart__tick-label {
-  fill: #9aa4b2;
+  fill: var(--text-muted);
   font-size: 10px;
 }
 
 .calibration-chart__axis-label {
-  fill: #9aa4b2;
+  fill: var(--text-muted);
   font-size: 11px;
 }
 
 .calibration-chart__point {
-  fill: #3b82f6;
+  fill: var(--accent);
   fill-opacity: 0.75;
   stroke: #93c5fd;
   stroke-width: 1;
@@ -166,7 +158,7 @@
 .logistic-variant {
   margin-top: 2rem;
   padding-top: 1.5rem;
-  border-top: 1px solid #2a2f3a;
+  border-top: 1px solid var(--border);
 }
 
 .logistic-variant h3 {
@@ -178,7 +170,7 @@
   margin-top: 1.5rem;
   margin-bottom: 0.5rem;
   font-size: 0.88rem;
-  color: #cbd2db;
+  color: var(--text);
 }
 
 .promotion-badge {
@@ -191,13 +183,13 @@
 }
 
 .promotion-badge--promote {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .promotion-badge--keep {
-  background: #1f1414;
-  color: #fca5a5;
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 .promotion-reasons {
@@ -212,19 +204,19 @@
 }
 
 .promotion-reason--pass {
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .promotion-reason--fail {
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .delta-positive {
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .delta-negative {
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .coef-bars {
@@ -242,7 +234,7 @@
 }
 
 .coef-bar-label {
-  color: #9aa4b2;
+  color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -251,7 +243,7 @@
 .coef-bar-track {
   position: relative;
   height: 14px;
-  background: #0d0f14;
+  background: var(--bg);
   border-radius: 3px;
 }
 
@@ -272,7 +264,7 @@
 }
 
 .coef-bar-fill--positive {
-  background: #3b82f6;
+  background: var(--accent);
 }
 
 .coef-bar-fill--negative {
@@ -281,6 +273,6 @@
 
 .coef-bar-value {
   text-align: right;
-  color: #cbd2db;
+  color: var(--text);
   font-variant-numeric: tabular-nums;
 }

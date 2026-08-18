@@ -10,15 +10,7 @@
 .weekly-review-page__header h1 {
   margin: 0 0 0.5rem;
   font-size: 1.6rem;
-  color: #f3f4f6;
-}
-
-.weekly-review-page__tabs {
-  display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  border-bottom: 1px solid #2a2f3a;
-  padding-bottom: 0.5rem;
+  color: var(--text-h);
 }
 
 .weekly-review-page__rows {
@@ -31,8 +23,8 @@
   display: flex;
   align-items: flex-start;
   gap: 0.75rem;
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.75rem 1rem;
 }
@@ -57,7 +49,7 @@
 
 .weekly-review-row__label {
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .weekly-review-row__price {
@@ -72,7 +64,7 @@
   gap: 0.9rem;
   flex-wrap: wrap;
   font-size: 0.8rem;
-  color: #cbd2db;
+  color: var(--text);
 }
 
 .weekly-review-row__caution {
@@ -94,5 +86,20 @@
 .weekly-review-page__comparison-header h2 {
   margin: 0;
   font-size: 1.1rem;
-  color: #f3f4f6;
+  color: var(--text-h);
+}
+
+@media (max-width: 640px) {
+  .weekly-review-page {
+    padding: 1rem;
+    gap: 1.25rem;
+  }
+
+  .weekly-review-row {
+    flex-wrap: wrap;
+  }
+
+  .weekly-review-row__price {
+    margin-left: 0;
+  }
 }

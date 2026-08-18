@@ -19,7 +19,7 @@
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .opportunity-drawer__book-table-scroll {
@@ -34,22 +34,22 @@
 
 .opportunity-drawer__book-table th {
   text-align: left;
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-weight: 500;
   padding: 0.35rem 0.6rem;
-  border-bottom: 1px solid #2a2f3a;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .opportunity-drawer__book-table td {
   padding: 0.4rem 0.6rem;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
   color: #d1d5db;
   white-space: nowrap;
 }
 
 .opportunity-drawer__book-row--best {
-  background: #14532d22;
+  background: var(--success-bg)22;
 }
 
 .opportunity-drawer__best-flag {
@@ -57,8 +57,8 @@
   font-size: 0.62rem;
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .opportunity-drawer__freshness {
@@ -69,18 +69,18 @@
 }
 
 .opportunity-drawer__freshness--fresh {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .opportunity-drawer__freshness--aging {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .opportunity-drawer__freshness--stale {
   background: #3a1c1c;
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .opportunity-drawer__calibration {
@@ -113,12 +113,12 @@
 
 .opportunity-drawer__badge--correlation {
   background: #3a1c1c;
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .opportunity-drawer__badge--reason {
   background: #1e2a3a;
-  color: #7dd3fc;
+  color: var(--accent-light);
 }
 
 .opportunity-drawer__grid-section {
@@ -136,19 +136,19 @@
 .opportunity-drawer__stat-label {
   display: block;
   font-size: 0.68rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .opportunity-drawer__stat-value {
   display: block;
   font-size: 0.95rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font-weight: 600;
 }
 
 .opportunity-drawer__price-advantage {
   margin: 0;
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .opportunity-drawer__recent-form {
@@ -172,9 +172,9 @@
 }
 
 .prop-insights-table__diff-pos {
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .prop-insights-table__diff-neg {
-  color: #fca5a5;
+  color: var(--danger-text);
 }

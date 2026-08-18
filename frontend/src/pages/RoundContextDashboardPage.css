@@ -15,14 +15,14 @@
 .round-context-page__header h1 {
   margin: 0 0 0.3rem;
   font-size: 1.4rem;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .round-context-page__refresh {
-  background: #1c212b;
-  border: 1px solid #2a2f3a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #f3f4f6;
+  color: var(--text-h);
   padding: 0.4rem 0.8rem;
   font-size: 0.85rem;
   cursor: pointer;
@@ -39,7 +39,7 @@
 
 .round-context-table-scroll {
   overflow-x: auto;
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border);
   border-radius: 12px;
 }
 
@@ -52,17 +52,17 @@
 .round-context-table th {
   text-align: left;
   padding: 0.6rem 0.75rem;
-  background: #161a22;
-  color: #cbd2db;
+  background: var(--card-bg);
+  color: var(--text);
   font-weight: 600;
-  border-bottom: 1px solid #2a2f3a;
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .round-context-table td {
   padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid #1c212b;
-  color: #f3f4f6;
+  border-bottom: 1px solid var(--bg-inset);
+  color: var(--text-h);
 }
 
 .round-context-table__row--flagged {

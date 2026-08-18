@@ -14,7 +14,7 @@
   align-self: flex-start;
   background: #1e3a2f;
   border: 1px solid #2f6b4f;
-  color: #86efac;
+  color: var(--success-text);
   border-radius: 8px;
   padding: 0.5rem 1rem;
   font: inherit;
@@ -29,8 +29,8 @@
 .snapshot-history__table {
   width: 100%;
   border-collapse: collapse;
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   font-size: 0.85rem;
 }
@@ -38,14 +38,14 @@
 .snapshot-history__table th,
 .snapshot-history__table td {
   padding: 0.5rem 0.75rem;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
   text-align: left;
 }
 
 .snapshot-history__open-btn {
   background: transparent;
-  border: 1px solid #2a2f3a;
-  color: #7dd3fc;
+  border: 1px solid var(--border);
+  color: var(--accent-light);
   border-radius: 6px;
   padding: 0.25rem 0.6rem;
   font-size: 0.78rem;
@@ -54,8 +54,8 @@
 }
 
 .snapshot-history__detail {
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.25rem;
 }
@@ -63,7 +63,7 @@
 .snapshot-history__detail h3 {
   margin: 0 0 0.75rem;
   font-size: 1rem;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .snapshot-history__warning {

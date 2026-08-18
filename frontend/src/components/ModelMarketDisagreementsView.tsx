@@ -37,7 +37,7 @@ function ModelMarketDisagreementsView() {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <p className="hint">Loading…</p>;
+  if (loading) return <p className="loading-state">Loading…</p>;
   if (error) return <div className="prop-insights-page__error">{error}</div>;
 
   return (

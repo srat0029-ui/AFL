@@ -7,7 +7,7 @@
 .disagreements-view__section h2 {
   font-size: 1.15rem;
   margin: 0 0 0.4rem;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .disagreements-view__direction {
@@ -25,7 +25,7 @@
 
 .disagreements-view__direction--market_above_model {
   background: #3a1c1c;
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .disagreements-view__buckets {
@@ -35,8 +35,8 @@
 }
 
 .disagreements-view__bucket-card {
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.25rem;
 }
@@ -50,7 +50,7 @@
 
 .disagreements-view__bucket-label {
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .disagreements-view__bucket-stats {
@@ -58,7 +58,7 @@
   gap: 1.2rem;
   flex-wrap: wrap;
   font-size: 0.85rem;
-  color: #cbd2db;
+  color: var(--text);
   margin-bottom: 0.6rem;
 }
 
@@ -70,13 +70,13 @@
 
 .disagreements-view__player-table th {
   text-align: left;
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-weight: 500;
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid #2a2f3a;
+  border-bottom: 1px solid var(--border);
 }
 
 .disagreements-view__player-table td {
   padding: 0.25rem 0.5rem;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
 }

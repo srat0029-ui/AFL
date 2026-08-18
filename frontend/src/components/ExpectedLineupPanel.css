@@ -1,20 +1,20 @@
 .lineup-panel {
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.5rem;
-  background: #161a22;
+  background: var(--card-bg);
 }
 
 .lineup-panel h3 {
   margin: 0 0 0.4rem;
   font-size: 1.1rem;
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .lineup-panel h4 {
   margin: 0 0 0.5rem;
   font-size: 0.9rem;
-  color: #cbd2db;
+  color: var(--text);
 }
 
 .lineup-panel__teams {
@@ -35,7 +35,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 0;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
   flex-wrap: wrap;
 }
 
@@ -46,11 +46,11 @@
 }
 
 .lineup-panel__entry select {
-  background: #0d0f14;
-  border: 1px solid #2a2f3a;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.25rem 0.4rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font-size: 0.8rem;
 }
 
@@ -65,7 +65,7 @@
 .lineup-panel__remove {
   background: none;
   border: 1px solid #3a2020;
-  color: #fca5a5;
+  color: var(--danger-text);
   border-radius: 6px;
   padding: 0.2rem 0.5rem;
   font-size: 0.75rem;
@@ -77,7 +77,7 @@
   gap: 1rem;
   align-items: flex-end;
   flex-wrap: wrap;
-  border-top: 1px solid #2a2f3a;
+  border-top: 1px solid var(--border);
   padding-top: 1rem;
 }
 
@@ -86,17 +86,17 @@
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.85rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
   position: relative;
 }
 
 .lineup-panel__add-form input,
 .lineup-panel__add-form select {
-  background: #0d0f14;
-  border: 1px solid #2a2f3a;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.5rem 0.6rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font: inherit;
 }
 
@@ -111,8 +111,8 @@
   left: 0;
   right: 0;
   z-index: 10;
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   margin: 0.2rem 0 0;
   padding: 0.2rem 0;
@@ -128,11 +128,11 @@
 }
 
 .lineup-panel__search-results li:hover {
-  background: #1c212b;
+  background: var(--bg-inset);
 }
 
 .lineup-panel__add-form button {
-  background: #3b82f6;
+  background: var(--accent);
   border: none;
   border-radius: 6px;
   padding: 0.55rem 1rem;
@@ -143,7 +143,7 @@
 
 .lineup-panel__error {
   margin-top: 0.75rem;
-  color: #fca5a5;
+  color: var(--danger-text);
   font-size: 0.85rem;
 }
 
@@ -152,15 +152,15 @@
   padding: 0.6rem 0.9rem;
   border-radius: 8px;
   font-size: 0.85rem;
-  border: 1px solid #2a2f3a;
-  background: #1c212b;
-  color: #cbd2db;
+  border: 1px solid var(--border);
+  background: var(--bg-inset);
+  color: var(--text);
 }
 
 .lineup-panel__announcement--teams_not_announced {
   border-color: #3a3020;
   background: #1f1a10;
-  color: #fde68a;
+  color: var(--warning-text);
 }
 
 .lineup-panel__announcement--squad_announced {
@@ -170,9 +170,9 @@
 }
 
 .lineup-panel__announcement--final_team_confirmed {
-  border-color: #14532d;
+  border-color: var(--success-bg);
   background: #10201a;
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .lineup-panel__entry--confirmed_out {
@@ -190,7 +190,7 @@
 }
 
 .lineup-panel__bulk {
-  border-top: 1px solid #2a2f3a;
+  border-top: 1px solid var(--border);
   padding-top: 1rem;
   margin-top: 1rem;
 }
@@ -208,33 +208,33 @@
   flex-direction: column;
   gap: 0.3rem;
   font-size: 0.85rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .lineup-panel__bulk-controls select,
 .lineup-panel__bulk-apply select {
-  background: #0d0f14;
-  border: 1px solid #2a2f3a;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.5rem 0.6rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font: inherit;
 }
 
 .lineup-panel__bulk-controls button,
 .lineup-panel__bulk-list-header button,
 .lineup-panel__bulk-apply button {
-  background: #1c212b;
-  border: 1px solid #2a2f3a;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
   border-radius: 6px;
   padding: 0.5rem 0.9rem;
-  color: #cbd2db;
+  color: var(--text);
   cursor: pointer;
   font-size: 0.85rem;
 }
 
 .lineup-panel__bulk-apply button {
-  background: #3b82f6;
+  background: var(--accent);
   border: none;
   color: white;
   font-weight: 500;
@@ -246,7 +246,7 @@
 }
 
 .lineup-panel__bulk-list {
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.6rem 0.8rem;
   max-height: 220px;
@@ -278,7 +278,7 @@
 .lineup-panel__diff {
   margin-top: 0.85rem;
   border: 1px solid #3a2020;
-  background: #1f1414;
+  background: var(--danger-bg);
   border-radius: 8px;
   padding: 0.7rem 0.9rem;
 }
@@ -287,11 +287,11 @@
   margin: 0.4rem 0 0.6rem;
   padding-left: 1.2rem;
   font-size: 0.85rem;
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .lineup-panel__diff button {
-  background: #7f1d1d;
+  background: var(--danger-border);
   border: none;
   border-radius: 6px;
   padding: 0.45rem 0.8rem;

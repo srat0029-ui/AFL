@@ -415,8 +415,8 @@ function BacktestPage() {
         available before each game (walk-forward, no data leakage).
       </p>
 
-      {error && <div className="backtest-page__error">{error}</div>}
-      {loading && <p className="hint">Loading…</p>}
+      {error && <div className="error-banner">{error}</div>}
+      {loading && <p className="loading-state">Loading…</p>}
 
       {!loading && !error && !modelsAvailable && (
         <p className="hint">

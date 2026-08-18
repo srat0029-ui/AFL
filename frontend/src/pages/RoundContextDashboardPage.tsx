@@ -84,7 +84,7 @@ function RoundContextDashboardPage() {
         </button>
       </header>
 
-      {loading && <p className="hint">Loading…</p>}
+      {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="round-context-page__error">{error}</div>}
 
       {data && data.matches.length === 0 && <p className="hint">No upcoming matches found.</p>}

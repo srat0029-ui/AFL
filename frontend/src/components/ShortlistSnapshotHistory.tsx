@@ -69,7 +69,7 @@ function ShortlistSnapshotHistory() {
       </div>
 
       {error && <div className="prop-insights-page__error">{error}</div>}
-      {loading && <p className="hint">Loading…</p>}
+      {loading && <p className="loading-state">Loading…</p>}
 
       {!loading && snapshots.length === 0 && <p className="hint">No snapshots yet.</p>}
 

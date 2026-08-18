@@ -10,18 +10,9 @@
 }
 
 .dashboard-page .subtitle {
-  color: #9aa4b2;
+  color: var(--text-muted);
   margin-top: 0;
   margin-bottom: 2rem;
-}
-
-.dashboard-page__error {
-  background: #1f1414;
-  border: 1px solid #7f1d1d;
-  border-radius: 8px;
-  padding: 0.75rem 1rem;
-  margin-bottom: 1rem;
-  color: #fca5a5;
 }
 
 .match-card-grid {
@@ -32,22 +23,22 @@
 
 .match-card {
   display: block;
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1.1rem;
-  background: #161a22;
+  background: var(--card-bg);
   text-decoration: none;
   color: inherit;
   transition: border-color 0.15s ease;
 }
 
 .match-card:hover {
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 .match-card__meta {
   font-size: 0.78rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
   margin-bottom: 0.6rem;
 }
 
@@ -68,12 +59,12 @@
 
 .match-card__team-name {
   font-weight: 600;
-  color: #f3f4f6;
+  color: var(--text-h);
   font-size: 0.95rem;
 }
 
 .match-card__vs {
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-size: 0.8rem;
 }
 
@@ -82,7 +73,7 @@
   height: 8px;
   border-radius: 4px;
   overflow: hidden;
-  background: #0d0f14;
+  background: var(--bg);
 }
 
 .match-card__prob-bar-home,
@@ -94,7 +85,7 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
   margin-top: 0.3rem;
   margin-bottom: 0.9rem;
 }
@@ -108,11 +99,11 @@
 }
 
 .match-card__edge--none {
-  color: #6b7280;
+  color: var(--text-dim);
 }
 
 .match-card__edge-selection {
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .edge-badge,
@@ -125,8 +116,8 @@
 }
 
 .edge-badge--strong {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .edge-badge--moderate {
@@ -135,13 +126,13 @@
 }
 
 .edge-badge--weak {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .edge-badge--none {
-  background: #1c212b;
-  color: #9aa4b2;
+  background: var(--bg-inset);
+  color: var(--text-muted);
 }
 
 .confidence-badge--higher {
@@ -150,8 +141,8 @@
 }
 
 .confidence-badge--moderate {
-  background: #1c212b;
-  color: #cbd2db;
+  background: var(--bg-inset);
+  color: var(--text);
 }
 
 .confidence-badge--lower {
@@ -160,8 +151,8 @@
 }
 
 .confidence-badge--insufficient_data {
-  background: #1f1414;
-  color: #fca5a5;
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 .dashboard-section {
@@ -191,7 +182,7 @@
 
 .dashboard-section__link {
   font-size: 0.85rem;
-  color: #7dd3fc;
+  color: var(--accent-light);
   text-decoration: none;
   white-space: nowrap;
 }
@@ -214,18 +205,18 @@
 
 .dashboard-day-group__label {
   font-size: 0.95rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
   margin: 0 0 0.6rem;
   padding-bottom: 0.4rem;
-  border-bottom: 1px solid #2a2f3a;
+  border-bottom: 1px solid var(--border);
 }
 
 .opportunity-list {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.75rem 1rem;
 }
@@ -236,7 +227,7 @@
   align-items: center;
   gap: 0.75rem;
   padding: 0.4rem 0;
-  border-bottom: 1px solid #1c212b;
+  border-bottom: 1px solid var(--bg-inset);
   font-size: 0.85rem;
 }
 
@@ -245,12 +236,12 @@
 }
 
 .opportunity-list__rank {
-  color: #9aa4b2;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .opportunity-list__label {
-  color: #f3f4f6;
+  color: var(--text-h);
 }
 
 .opportunity-list__price {
@@ -268,7 +259,7 @@
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
   background: #1e2a3a;
-  color: #7dd3fc;
+  color: var(--accent-light);
   cursor: default;
 }
 
@@ -282,7 +273,7 @@
 
 .prop-insights-table__type-badge--player {
   background: #1e2a3a;
-  color: #7dd3fc;
+  color: var(--accent-light);
 }
 
 .prop-insights-table__type-badge--team {
@@ -291,11 +282,11 @@
 }
 
 .prop-insights-table__diff-pos {
-  color: #86efac;
+  color: var(--success-text);
 }
 
 .prop-insights-table__diff-neg {
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .live-status-badge {
@@ -307,26 +298,26 @@
 }
 
 .live-status-badge--run-ok {
-  background: #14532d;
-  color: #86efac;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .live-status-badge--run-partial {
-  background: #3f3a1c;
-  color: #fde68a;
+  background: var(--warning-bg);
+  color: var(--warning-text);
 }
 
 .live-status-badge--run-blocked {
   background: #3a1c1c;
-  color: #fca5a5;
+  color: var(--danger-text);
 }
 
 .market-coverage-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.9rem;
-  background: #161a22;
-  border: 1px solid #2a2f3a;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.25rem;
 }
@@ -334,13 +325,13 @@
 .market-coverage-grid__label {
   display: block;
   font-size: 0.75rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
 }
 
 .market-coverage-grid__value {
   display: block;
   font-size: 1.15rem;
-  color: #f3f4f6;
+  color: var(--text-h);
   font-weight: 600;
 }
 
@@ -361,22 +352,22 @@
 
 .result-card {
   display: block;
-  border: 1px solid #2a2f3a;
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.85rem 1rem;
-  background: #12151c;
+  background: var(--bg-subtle);
   text-decoration: none;
   color: inherit;
   transition: border-color 0.15s ease;
 }
 
 .result-card:hover {
-  border-color: #3b82f6;
+  border-color: var(--accent);
 }
 
 .result-card__meta {
   font-size: 0.72rem;
-  color: #9aa4b2;
+  color: var(--text-muted);
   margin-bottom: 0.5rem;
 }
 
@@ -389,17 +380,41 @@
 }
 
 .result-card__team {
-  color: #cbd2db;
+  color: var(--text);
 }
 
 .result-card__team--winner {
-  color: #f3f4f6;
+  color: var(--text-h);
   font-weight: 600;
 }
 
 .result-card__score {
   font-variant-numeric: tabular-nums;
-  color: #cbd2db;
+  color: var(--text);
   font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .dashboard-page {
+    margin: 1.5rem auto;
+    padding: 0 1rem;
+  }
+
+  .dashboard-section__header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.35rem;
+  }
+
+  .opportunity-list__row {
+    grid-template-columns: 1.25rem auto 1fr;
+    row-gap: 0.3rem;
+  }
+
+  .opportunity-list__row > *:nth-child(4),
+  .opportunity-list__row > *:nth-child(5),
+  .opportunity-list__row > *:nth-child(6) {
+    grid-column: 1 / -1;
+  }
 }
 
