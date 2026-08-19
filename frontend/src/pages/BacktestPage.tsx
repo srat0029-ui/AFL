@@ -552,7 +552,7 @@ function BacktestPage() {
                 </div>
 
                 {overview.logged_odds.n_total === 0 ? (
-                  <p className="hint">No resolved tracked selections yet.</p>
+                  <p className="empty-state">No resolved tracked selections yet.</p>
                 ) : (
                   <>
                     <div className="backtest-overall">

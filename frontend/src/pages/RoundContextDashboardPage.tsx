@@ -87,7 +87,7 @@ function RoundContextDashboardPage() {
       {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="round-context-page__error">{error}</div>}
 
-      {data && data.matches.length === 0 && <p className="hint">No upcoming matches found.</p>}
+      {data && data.matches.length === 0 && <p className="empty-state">No upcoming matches found.</p>}
 
       {data && data.matches.length > 0 && (
         <>

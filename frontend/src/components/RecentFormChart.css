@@ -5,7 +5,7 @@
 }
 
 .recent-form-chart__bar {
-  fill: #4b5563;
+  fill: var(--text-faint);
 }
 
 .recent-form-chart__bar--hit {

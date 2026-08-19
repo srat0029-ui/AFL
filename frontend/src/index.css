@@ -19,6 +19,9 @@
   --success-text: #86efac;
   --warning-bg: #3f3a1c;
   --warning-text: #fde68a;
+  --danger-badge-bg: #3a1c1c;
+  --table-text: #d1d5db;
+  --text-faint: #4b5563;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;

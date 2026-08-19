@@ -276,7 +276,14 @@ function RealMarketTrackingPage() {
       {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="error-banner">{error}</div>}
 
-      {!loading && !error && report && (
+      {!loading && !error && report && report.summary.total_observations === 0 && (
+        <p className="empty-state">
+          No real market observations logged yet — this dataset grows automatically as live odds are captured each
+          round. Check back after the next data refresh.
+        </p>
+      )}
+
+      {!loading && !error && report && report.summary.total_observations > 0 && (
         <>
           <div className="rmt-card rmt-card--warning">
             <strong>Sample size: {report.overall_sample_level.replace("_", " ")}.</strong> {SAMPLE_LABELS[report.overall_sample_level]}{" "}
@@ -325,7 +332,13 @@ function RealMarketTrackingPage() {
             <p className="hint">Market probability source: {report.model_vs_market.market_probability_source}. Lower Brier/log-loss is better.</p>
             <div className="rmt-table-scroll">
               <table className="rmt-table">
-                <thead><tr><th></th><th>Brier score</th><th>Log loss</th></tr></thead>
+                <thead>
+                  <tr>
+                    <th></th>
+                    <th title="Mean squared error between predicted probability and actual outcome (0-1). Lower is better.">Brier score</th>
+                    <th title="Penalises confident-and-wrong predictions more heavily than Brier score. Lower is better.">Log loss</th>
+                  </tr>
+                </thead>
                 <tbody>
                   <tr><td>Model</td><td>{num(report.model_vs_market.model_brier)}</td><td>{num(report.model_vs_market.model_log_loss)}</td></tr>
                   <tr><td>Market</td><td>{num(report.model_vs_market.market_brier)}</td><td>{num(report.model_vs_market.market_log_loss)}</td></tr>
@@ -336,7 +349,14 @@ function RealMarketTrackingPage() {
               <div>
                 <h4>Model calibration</h4>
                 <table className="rmt-table">
-                  <thead><tr><th>Predicted range</th><th>n</th><th>Mean predicted</th><th>Mean actual</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>Predicted range</th>
+                      <th>n</th>
+                      <th title="Average predicted probability of buckets in this range">Mean predicted</th>
+                      <th title="Actual observed win rate for buckets in this range — should track Mean predicted if well-calibrated">Mean actual</th>
+                    </tr>
+                  </thead>
                   <tbody>{report.model_calibration.map((c) => (
                     <tr key={c.probability_range}><td>{c.probability_range}</td><td>{c.n}</td><td>{pct(c.mean_predicted)}</td><td>{pct(c.mean_actual)}</td></tr>
                   ))}</tbody>
@@ -345,7 +365,14 @@ function RealMarketTrackingPage() {
               <div>
                 <h4>Market calibration</h4>
                 <table className="rmt-table">
-                  <thead><tr><th>Predicted range</th><th>n</th><th>Mean predicted</th><th>Mean actual</th></tr></thead>
+                  <thead>
+                    <tr>
+                      <th>Predicted range</th>
+                      <th>n</th>
+                      <th title="Average predicted probability of buckets in this range">Mean predicted</th>
+                      <th title="Actual observed win rate for buckets in this range — should track Mean predicted if well-calibrated">Mean actual</th>
+                    </tr>
+                  </thead>
                   <tbody>{report.market_calibration.map((c) => (
                     <tr key={c.probability_range}><td>{c.probability_range}</td><td>{c.n}</td><td>{pct(c.mean_predicted)}</td><td>{pct(c.mean_actual)}</td></tr>
                   ))}</tbody>
@@ -362,7 +389,7 @@ function RealMarketTrackingPage() {
               <div><span className="rmt-grid__label">Win rate</span><span className="rmt-grid__value">{pct(report.overall_return.win_rate)}</span></div>
               <div><span className="rmt-grid__label">Average odds</span><span className="rmt-grid__value">{report.overall_return.average_odds ? `$${report.overall_return.average_odds.toFixed(2)}` : "—"}</span></div>
               <div><span className="rmt-grid__label">Flat $1 P/L</span><span className={`rmt-grid__value ${report.overall_return.total_profit_flat_stake >= 0 ? "rmt-pos" : "rmt-neg"}`}>${report.overall_return.total_profit_flat_stake.toFixed(2)}</span></div>
-              <div><span className="rmt-grid__label">ROI</span><span className={`rmt-grid__value ${(report.overall_return.roi ?? 0) >= 0 ? "rmt-pos" : "rmt-neg"}`}>{pct(report.overall_return.roi)}</span></div>
+              <div><span className="rmt-grid__label" title="Return on investment: total profit divided by total staked, at flat $1 stakes">ROI</span><span className={`rmt-grid__value ${(report.overall_return.roi ?? 0) >= 0 ? "rmt-pos" : "rmt-neg"}`}>{pct(report.overall_return.roi)}</span></div>
             </div>
           </div>
 

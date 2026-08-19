@@ -148,7 +148,7 @@ export function DisposalProjectionTable({ rows, thresholds = ["20", "25", "30", 
   const { sorted, sortKey, sortDir, toggleSort } = useSort(rows, "expected", getValue);
 
   if (rows.length === 0) {
-    return <p className="hint">No disposal projections available for this selection.</p>;
+    return <p className="empty-state">No disposal projections available for this selection.</p>;
   }
 
   return (
@@ -228,7 +228,7 @@ export function GoalProjectionTable({ rows, thresholds = ["1", "2", "3", "4"], s
   const { sorted, sortKey, sortDir, toggleSort } = useSort(rows, "expected", getValue);
 
   if (rows.length === 0) {
-    return <p className="hint">No goal projections available for this selection.</p>;
+    return <p className="empty-state">No goal projections available for this selection.</p>;
   }
 
   return (

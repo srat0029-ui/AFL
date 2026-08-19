@@ -142,7 +142,7 @@ function MatchContextPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, away
   if (loading) {
     return (
       <section className="context-panel">
-        <p className="hint">Loading current context…</p>
+        <p className="loading-state">Loading current context…</p>
       </section>
     );
   }
@@ -184,7 +184,7 @@ function MatchContextPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, away
       )}
 
       {panel.current_context.length === 0 ? (
-        <p className="hint">No team news recorded for this match yet.</p>
+        <p className="empty-state">No team news recorded for this match yet.</p>
       ) : (
         <ul className="context-panel__list">
           {panel.current_context.map((item) => (

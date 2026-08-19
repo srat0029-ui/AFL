@@ -81,7 +81,7 @@
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--bg-inset);
   white-space: nowrap;
-  color: #d1d5db;
+  color: var(--table-text);
 }
 
 .rmt-table--clickable tbody tr {
@@ -117,7 +117,7 @@
 }
 
 .rmt-sample--exploratory {
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
 }
 
@@ -184,4 +184,19 @@
 .rmt-drawer__close:hover {
   color: var(--text-h);
   background: var(--bg-inset);
+}
+
+@media (max-width: 640px) {
+  .rmt-page {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .rmt-card {
+    padding: 0.9rem 1rem;
+  }
+
+  .rmt-drawer__backdrop {
+    padding: 0.75rem;
+  }
 }

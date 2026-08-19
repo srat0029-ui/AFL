@@ -78,7 +78,7 @@
   padding: 0.45rem 0.6rem;
   border-radius: 8px;
   background: var(--bg);
-  border-left: 3px solid #4b5563;
+  border-left: 3px solid var(--text-faint);
   font-size: 0.85rem;
 }
 

@@ -64,7 +64,7 @@
 }
 
 .freshness-badge--stale {
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
 }
 
@@ -107,7 +107,7 @@
 }
 
 .freshness-panel__run-badge--blocked {
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
 }
 

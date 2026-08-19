@@ -213,7 +213,7 @@ function LiveDataStatusSection({ status, loading }: { status: LiveStatusReport |
           {formatCompactDateTime(lastRun.run_at)} · {lastRun.quotes_added} quotes · {lastRun.observations_added} observations
         </p>
       ) : (
-        <p className="hint">No run-live-cycle runs recorded yet.</p>
+        <p className="empty-state">No run-live-cycle runs recorded yet.</p>
       )}
     </section>
   );

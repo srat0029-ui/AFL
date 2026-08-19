@@ -217,7 +217,7 @@ function OddsPanel({ matchId, homeTeamName, awayTeamName }: OddsPanelProps) {
 
       <h4>Recorded quotes</h4>
       {oddsLoading && <p className="loading-state">Loading…</p>}
-      {!oddsLoading && odds.length === 0 && <p className="hint">No odds recorded for this match yet.</p>}
+      {!oddsLoading && odds.length === 0 && <p className="empty-state">No odds recorded for this match yet.</p>}
       {!oddsLoading && odds.length > 0 && (
         <div className="odds-table-scroll">
           <table className="odds-table">

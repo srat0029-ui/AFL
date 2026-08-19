@@ -214,7 +214,7 @@ function ExpectedLineupPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, aw
     return (
       <div className="lineup-panel__team">
         <h4>{teamName}</h4>
-        {teamLineup.length === 0 && <p className="hint">No expected-lineup entries yet.</p>}
+        {teamLineup.length === 0 && <p className="empty-state">No expected-lineup entries yet.</p>}
         {teamLineup.map((entry) => (
           <div key={entry.id} className={`lineup-panel__entry lineup-panel__entry--${entry.selection_status}`}>
             <span className="lineup-panel__entry-name">

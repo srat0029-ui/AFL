@@ -22,7 +22,7 @@ function FormChart({ games }: { games: PlayerForm["recent_games"] }) {
           <span className="form-chart__label">R{g.round_number}</span>
         </div>
       ))}
-      {chronological.length === 0 && <p className="hint">No recent games.</p>}
+      {chronological.length === 0 && <p className="empty-state">No recent games.</p>}
     </div>
   );
 }

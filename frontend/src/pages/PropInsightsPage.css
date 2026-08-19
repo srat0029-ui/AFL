@@ -160,7 +160,7 @@
 }
 
 .prop-insights-table__freshness--stale {
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
 }
 

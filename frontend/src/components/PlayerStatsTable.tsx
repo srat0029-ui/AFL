@@ -113,7 +113,7 @@ function PlayerStatsTable({
           ))}
         </tbody>
       </table>
-      {games.length === 0 && <p className="hint">No games recorded.</p>}
+      {games.length === 0 && <p className="empty-state">No games recorded.</p>}
     </div>
   );
 }

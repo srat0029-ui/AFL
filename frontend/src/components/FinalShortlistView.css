@@ -84,7 +84,7 @@
 }
 
 .final-shortlist__tier-badge--do_not_headline {
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
 }
 
@@ -109,7 +109,7 @@
   margin: 0.6rem 0 0;
   padding-left: 1.1rem;
   font-size: 0.82rem;
-  color: #d1d5db;
+  color: var(--table-text);
 }
 
 .final-shortlist__caveats {

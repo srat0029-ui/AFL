@@ -187,7 +187,7 @@ function LiveStatusPage() {
 
           <div className="live-status-card">
             <h3>Recent operational runs</h3>
-            {report.recent_runs.length === 0 && <p className="hint">No run-live-cycle runs recorded yet.</p>}
+            {report.recent_runs.length === 0 && <p className="empty-state">No run-live-cycle runs recorded yet.</p>}
             <div className="live-status-runs">
               {report.recent_runs.map((r) => (
                 <RunCard key={r.id} run={r} />

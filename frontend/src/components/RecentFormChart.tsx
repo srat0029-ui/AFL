@@ -12,7 +12,7 @@ interface RecentFormChartProps {
  * own forecast — never presented as proof of anything, just context. */
 function RecentFormChart({ values, threshold, predictedMean, lineType }: RecentFormChartProps) {
   if (values.length === 0) {
-    return <p className="hint">No recent history available.</p>;
+    return <p className="empty-state">No recent history available.</p>;
   }
 
   const width = 320;

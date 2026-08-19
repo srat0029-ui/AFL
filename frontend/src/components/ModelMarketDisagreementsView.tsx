@@ -50,7 +50,7 @@ function ModelMarketDisagreementsView() {
           signal worth investigating, not a reason to headline it as an opportunity.
         </p>
         {disagreements.length === 0 ? (
-          <p className="hint">No large model/market disagreements currently flagged this round.</p>
+          <p className="empty-state">No large model/market disagreements currently flagged this round.</p>
         ) : (
           <div className="prop-insights-table-scroll">
             <table className="prop-insights-table">
@@ -111,7 +111,7 @@ function ModelMarketDisagreementsView() {
           promoted disposal model's 2016-2025 backtest evaluation predictions.
         </p>
         {buckets === null ? (
-          <p className="hint">No promoted disposal model evaluation data available.</p>
+          <p className="empty-state">No promoted disposal model evaluation data available.</p>
         ) : (
           <div className="disagreements-view__buckets">
             {buckets.map((b) => (

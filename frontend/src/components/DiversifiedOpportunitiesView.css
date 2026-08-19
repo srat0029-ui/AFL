@@ -13,13 +13,13 @@
   border-radius: 12px;
   padding: 0.8rem 1.1rem;
   font-size: 0.85rem;
-  color: #d1d5db;
+  color: var(--table-text);
 }
 
 .diversified-view__summary-item::after {
   content: "·";
   margin-left: 1.2rem;
-  color: #4b5563;
+  color: var(--text-faint);
 }
 
 .diversified-view__summary-item:last-child::after {
@@ -67,7 +67,7 @@
   font-size: 0.62rem;
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
   white-space: normal;
 }

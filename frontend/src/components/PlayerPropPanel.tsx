@@ -164,7 +164,7 @@ function PlayerPropPanel({ matchId }: PlayerPropPanelProps) {
 
       <h4>Recorded prop quotes</h4>
       {loading && <p className="loading-state">Loading…</p>}
-      {!loading && props.length === 0 && <p className="hint">No player prop quotes recorded for this match yet.</p>}
+      {!loading && props.length === 0 && <p className="empty-state">No player prop quotes recorded for this match yet.</p>}
       {!loading && props.length > 0 && (
         <div className="prop-table-scroll">
           <table className="prop-table">

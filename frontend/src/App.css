@@ -150,6 +150,59 @@
   cursor: default;
 }
 
+/* Edge/confidence tier badges — shared across Dashboard, Match Centre
+   (OddsPanel), Prop Insights, and Weekly Review so the same tier always
+   reads as the same colour everywhere. */
+
+.edge-badge,
+.confidence-badge {
+  display: inline-block;
+  font-size: 0.72rem;
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+  white-space: nowrap;
+}
+
+.edge-badge--strong {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.edge-badge--moderate {
+  background: #1e3a2f;
+  color: #6ee7b7;
+}
+
+.edge-badge--weak {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.edge-badge--none {
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.confidence-badge--higher {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+.confidence-badge--moderate {
+  background: var(--bg-inset);
+  color: var(--text);
+}
+
+.confidence-badge--lower {
+  background: #3f2e1c;
+  color: #fdba74;
+}
+
+.confidence-badge--insufficient_data {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
 @media (max-width: 640px) {
   .app-nav {
     gap: 1rem;

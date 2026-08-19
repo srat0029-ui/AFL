@@ -68,7 +68,7 @@
   padding: 0.5rem 0.6rem;
   border-bottom: 1px solid var(--bg-inset);
   white-space: nowrap;
-  color: #d1d5db;
+  color: var(--table-text);
 }
 
 .live-status-table__row {
@@ -81,7 +81,7 @@
 
 .live-status-table__detail-row td {
   white-space: normal;
-  background: #12151b;
+  background: var(--bg-subtle);
   color: var(--text-muted);
   font-size: 0.82rem;
 }
@@ -137,7 +137,7 @@
 }
 
 .live-status-badge--run-blocked {
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
 }
 
@@ -193,7 +193,7 @@
 }
 
 .live-status-run__step-name {
-  color: #d1d5db;
+  color: var(--table-text);
   min-width: 180px;
 }
 
@@ -231,5 +231,26 @@
 }
 
 .market-flag--no {
-  color: #4b5563;
+  color: var(--text-faint);
+}
+
+@media (max-width: 640px) {
+  .live-status-page {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .live-status-card {
+    padding: 0.9rem 1rem;
+  }
+
+  .live-status-run__step {
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .live-status-run__step-status,
+  .live-status-run__step-name {
+    min-width: 0;
+  }
 }

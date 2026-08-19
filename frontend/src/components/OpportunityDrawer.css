@@ -1,6 +1,6 @@
 .opportunity-drawer {
   padding: 0.9rem 1rem 1rem;
-  background: #12151b;
+  background: var(--bg-subtle);
   border-radius: 8px;
   display: flex;
   flex-direction: column;
@@ -9,7 +9,7 @@
 
 .opportunity-drawer__why {
   margin: 0;
-  color: #d1d5db;
+  color: var(--table-text);
   font-size: 0.85rem;
   line-height: 1.5;
 }
@@ -44,7 +44,7 @@
 .opportunity-drawer__book-table td {
   padding: 0.4rem 0.6rem;
   border-bottom: 1px solid var(--bg-inset);
-  color: #d1d5db;
+  color: var(--table-text);
   white-space: nowrap;
 }
 
@@ -79,7 +79,7 @@
 }
 
 .opportunity-drawer__freshness--stale {
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
 }
 
@@ -112,7 +112,7 @@
 }
 
 .opportunity-drawer__badge--correlation {
-  background: #3a1c1c;
+  background: var(--danger-badge-bg);
   color: var(--danger-text);
 }
 

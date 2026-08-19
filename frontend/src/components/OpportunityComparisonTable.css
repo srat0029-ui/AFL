@@ -40,7 +40,7 @@
 .comparison-table__remove {
   margin-left: 0.5rem;
   background: transparent;
-  border: 1px solid #3a1c1c;
+  border: 1px solid var(--danger-badge-bg);
   color: var(--danger-text);
   border-radius: 4px;
   width: 20px;
