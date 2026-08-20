@@ -142,6 +142,7 @@ def _player_opportunities(db: Session, match_ids: set[int], *, include_uncertain
                 "overround_removed": r["overround_removed"],
                 "difference_pp": r["difference_pp"],
                 "expected_value": r["expected_value"],
+                "edge_category": r["edge_category"],
                 "confidence_tier": r["confidence_tier"],
                 "selection_status": r["selection_status"],
                 "is_confirmed": r["is_confirmed"],

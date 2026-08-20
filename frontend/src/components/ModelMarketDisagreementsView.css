@@ -10,6 +10,47 @@
   color: var(--text-h);
 }
 
+.disagreements-view__bucket-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.disagreements-view__bucket-toggle-row h2 {
+  margin: 0;
+}
+
+.disagreements-view__bucket-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.disagreements-view__bucket-toggle-row .tab-bar {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.disagreements-view__min-n {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.disagreements-view__min-n select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  color: var(--text-h);
+  font: inherit;
+}
+
 .disagreements-view__direction {
   display: inline-block;
   font-size: 0.72rem;

@@ -382,7 +382,16 @@ function RealMarketTrackingPage() {
           </div>
 
           <div className="rmt-card">
-            <h3>Real-world return (illustrative $1 flat stake — not a recommendation)</h3>
+            <h3>
+              Real-world return (illustrative $1 flat stake — not a recommendation){" "}
+              <span className={`rmt-sample rmt-sample--${report.overall_sample_level}`} title={SAMPLE_LABELS[report.overall_sample_level]}>
+                {report.overall_sample_level.replace("_", " ")}
+              </span>
+            </h3>
+            <p className="hint">
+              Based on {report.overall_return.n_settled_binary} settled observation(s) — not all independent (see the
+              note above about alternate-line observations from the same player-match).
+            </p>
             <div className="rmt-grid">
               <div><span className="rmt-grid__label">Settled (W/L)</span><span className="rmt-grid__value">{report.overall_return.n_settled_binary}</span></div>
               <div><span className="rmt-grid__label">Pushed / Voided</span><span className="rmt-grid__value">{report.overall_return.n_pushed} / {report.overall_return.n_voided}</span></div>

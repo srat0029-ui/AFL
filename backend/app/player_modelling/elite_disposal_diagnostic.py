@@ -26,6 +26,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Player, PlayerDisposalPrediction, PlayerModelRun
+from app.player_modelling.current_players import current_player_ids
 
 _ELITE_MIN_AVG = 28.0
 _HIGH_MIN_AVG = 22.0
@@ -108,7 +109,25 @@ def player_bucket_lookup(db: Session) -> dict[int, str]:
     return _player_bucket_cache
 
 
-def load_elite_disposal_diagnostic(db: Session, *, top_n_players: int = 5) -> list[BucketDiagnostic] | None:
+def load_elite_disposal_diagnostic(
+    db: Session, *, top_n_players: int = 5, current_only: bool = True, min_n_predictions: int | None = 20
+) -> list[BucketDiagnostic] | None:
+    """`current_only` (default True — product-quality data-scoping fix)
+    restricts which players appear in each bucket's displayed
+    `most_under_predicted_players` list to currently active/relevant
+    players (see current_players.py), so a long-retired player like Jack
+    Watts doesn't show up on this current-facing diagnostic. It does NOT
+    change n_players/n_predictions/avg_actual/avg_predicted/bias/mae —
+    those bucket-level aggregates always reflect the FULL historical
+    evaluation population, exactly as before, since this is a research
+    diagnostic over the promoted model's historical backtest and must never
+    silently change based on which players happen to still be playing.
+
+    `min_n_predictions` (default 20) is a second, independent DISPLAY-ONLY
+    filter on the same player list: a player needs at least this many
+    historical predictions of their own to appear, so a one-game sample
+    doesn't sit next to a 150-prediction veteran. None means no minimum
+    ("All"). Like current_only, this never touches the bucket aggregates."""
     model_run = db.scalar(
         select(PlayerModelRun).where(PlayerModelRun.market == "player_disposals", PlayerModelRun.is_promoted.is_(True))
     )
@@ -136,6 +155,10 @@ def load_elite_disposal_diagnostic(db: Session, *, top_n_players: int = 5) -> li
     for pid in by_player:
         grouped[player_bucket[pid]].append(pid)
 
+    # Computed once, outside the loop — restricts only the DISPLAYED player
+    # list below, never the bucket-level aggregates above/below it.
+    current_ids = current_player_ids(db) if current_only else None
+
     results = []
     for bucket in BUCKET_ORDER:
         player_ids = grouped.get(bucket, [])
@@ -149,8 +172,16 @@ def load_elite_disposal_diagnostic(db: Session, *, top_n_players: int = 5) -> li
         bias = sum(p.predicted_mean - p.actual_disposals for p in bucket_preds) / n_predictions
         mae = sum(abs(p.predicted_mean - p.actual_disposals) for p in bucket_preds) / n_predictions
 
+        # The player LIST is current-scoped (when current_only) and sample-
+        # size-scoped (when min_n_predictions is set); the aggregates above
+        # (n_predictions/avg_actual/avg_predicted/bias/mae) were already
+        # computed from the full, unfiltered player_ids and are untouched.
+        display_ids = player_ids if current_ids is None else [pid for pid in player_ids if pid in current_ids]
+        if min_n_predictions is not None:
+            display_ids = [pid for pid in display_ids if len(by_player[pid]) >= min_n_predictions]
+
         player_entries = []
-        for pid in player_ids:
+        for pid in display_ids:
             preds = by_player[pid]
             p_avg_actual = sum(p.actual_disposals for p in preds) / len(preds)
             p_avg_predicted = sum(p.predicted_mean for p in preds) / len(preds)

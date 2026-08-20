@@ -10,6 +10,17 @@ import {
   type MarketType,
   type OddsQuote,
 } from "../api/client";
+import { formatCompactDateTime } from "../lib/datetime";
+
+// A quote presented without any age indicator can silently read as
+// current — this is a fixed, disclosed threshold for an obvious "Stale"
+// flag, not a re-implementation of the match-time-aware refresh policy
+// used server-side to decide when to actually re-fetch (prop_odds_quota.py).
+const STALE_AFTER_HOURS = 24;
+
+function quoteAgeHours(recordedAt: string): number {
+  return (Date.now() - new Date(recordedAt).getTime()) / 3_600_000;
+}
 
 const MARKET_LABELS: Record<MarketType, string> = {
   h2h: "Match winner (H2H)",
@@ -228,6 +239,7 @@ function OddsPanel({ matchId, homeTeamName, awayTeamName }: OddsPanelProps) {
                 <th>Selection</th>
                 <th>Line</th>
                 <th>Price</th>
+                <th>Recorded</th>
                 <th>Model %</th>
                 <th>Fair odds</th>
                 <th>Edge</th>
@@ -248,6 +260,14 @@ function OddsPanel({ matchId, homeTeamName, awayTeamName }: OddsPanelProps) {
                     </td>
                     <td>{quote.line_value ?? "—"}</td>
                     <td>${quote.price_decimal.toFixed(2)}</td>
+                    <td>
+                      {formatCompactDateTime(quote.recorded_at)}
+                      {quoteAgeHours(quote.recorded_at) >= STALE_AFTER_HOURS && (
+                        <span className="odds-table__stale" title={`Recorded over ${STALE_AFTER_HOURS}h ago — may no longer reflect the current market`}>
+                          Stale
+                        </span>
+                      )}
+                    </td>
                     {edge ? (
                       <>
                         <td

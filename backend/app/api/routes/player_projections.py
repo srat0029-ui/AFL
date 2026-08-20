@@ -33,6 +33,7 @@ from app.api.schemas import (
     MatchProjectionsRead,
     ModelMarketDisagreementRead,
     NormalizedPropInsightRead,
+    OpportunityTiersResponseRead,
     PlayerProjectionRead,
     PlayerPropMarketCreate,
     PlayerPropMarketRead,
@@ -47,6 +48,12 @@ from app.player_modelling.best_opportunities import load_best_opportunities
 from app.player_modelling.diversified_opportunities import load_diversified_opportunities
 from app.player_modelling.elite_disposal_diagnostic import bucket_diagnostic_as_dict, load_elite_disposal_diagnostic
 from app.player_modelling.final_shortlist import DEFAULT_SHORTLIST_LIMIT, load_final_shortlist
+from app.player_modelling.opportunity_tiers import (
+    DEFAULT_ALL_AVAILABLE_LIMIT,
+    DEFAULT_BEST_LIMIT,
+    DEFAULT_WORTH_REVIEWING_LIMIT,
+    load_opportunity_tiers,
+)
 from app.player_modelling.live_report_query import (
     ProjectionFilters,
     load_lineup_summary,
@@ -471,6 +478,37 @@ def get_diversified_opportunities(
     )
 
 
+@router.get("/best-opportunities/tiers", response_model=OpportunityTiersResponseRead)
+def get_opportunity_tiers(
+    market_scope: str = Query(default="all", description="'all' | 'player' | 'team'"),
+    best_limit: int | None = Query(default=DEFAULT_BEST_LIMIT),
+    worth_reviewing_limit: int | None = Query(default=DEFAULT_WORTH_REVIEWING_LIMIT),
+    all_available_limit: int | None = Query(default=DEFAULT_ALL_AVAILABLE_LIMIT),
+    db: Session = Depends(get_db),
+) -> OpportunityTiersResponseRead:
+    """Product-quality stage: the practical DEFAULT Prop Insights view —
+    three visible tiers (Best Opportunities / Worth Reviewing / All
+    Available) computed from the SAME opportunity_score and quality_tier
+    as every other view here, just bucketed differently, so a market never
+    disappears just for having one soft caveat (see opportunity_tiers.py).
+    If `best` comes back empty but `worth_reviewing` doesn't,
+    `fallback_message` is set — the frontend shows Worth Reviewing in
+    Best's place with that message rather than an empty screen."""
+    result = load_opportunity_tiers(
+        db, market_scope=market_scope, best_limit=best_limit,
+        worth_reviewing_limit=worth_reviewing_limit, all_available_limit=all_available_limit,
+    )
+    return OpportunityTiersResponseRead(
+        best=[DiversifiedOpportunityRead(**o) for o in result.best],
+        worth_reviewing=[DiversifiedOpportunityRead(**o) for o in result.worth_reviewing],
+        all_available=[BestOpportunityRead(**o) for o in result.all_available],
+        exclusion_breakdown=result.exclusion_breakdown,
+        n_candidates=result.n_candidates,
+        n_hard_excluded=result.n_hard_excluded,
+        fallback_message=result.fallback_message,
+    )
+
+
 @router.get("/best-opportunities/final-shortlist", response_model=FinalShortlistResponseRead)
 def get_final_shortlist(
     limit: int | None = Query(default=DEFAULT_SHORTLIST_LIMIT, description="Maximum shortlist size (5/10/20) — never padded to reach it"),
@@ -512,7 +550,11 @@ def get_model_market_disagreements(
 
 
 @router.get("/elite-disposal-diagnostic", response_model=list[EliteDisposalBucketRead] | None)
-def get_elite_disposal_diagnostic(db: Session = Depends(get_db)) -> list[EliteDisposalBucketRead] | None:
+def get_elite_disposal_diagnostic(
+    current_only: bool = Query(default=True, description="Restrict the displayed player lists to currently active/relevant players (default) rather than every historical player"),
+    min_n_predictions: int = Query(default=20, ge=0, description="Minimum historical predictions a player needs to be listed (5/10/20/50); 0 means All"),
+    db: Session = Depends(get_db),
+) -> list[EliteDisposalBucketRead] | None:
     """Section 19 — a read-only RESEARCH diagnostic over the promoted
     disposal model's historical (2016-2025 backtest) evaluation
     predictions, bucketed by each player's own historical average actual
@@ -520,8 +562,13 @@ def get_elite_disposal_diagnostic(db: Session = Depends(get_db)) -> list[EliteDi
     is systematically biased for high-volume players. Returns null if no
     promoted disposal model / evaluation predictions exist. This endpoint
     never changes the promoted model — it is diagnostic only, and Section
-    19 explicitly forbids retuning based on current-round observations."""
-    buckets = load_elite_disposal_diagnostic(db)
+    19 explicitly forbids retuning based on current-round observations.
+
+    `current_only` (default True) only affects which players are LISTED —
+    bucket-level aggregate metrics (n_players, n_predictions, avg_actual,
+    avg_predicted, bias, mae) always reflect the full historical evaluation
+    population regardless of this flag (see current_players.py)."""
+    buckets = load_elite_disposal_diagnostic(db, current_only=current_only, min_n_predictions=min_n_predictions or None)
     if buckets is None:
         return None
     return [EliteDisposalBucketRead(**bucket_diagnostic_as_dict(b)) for b in buckets]

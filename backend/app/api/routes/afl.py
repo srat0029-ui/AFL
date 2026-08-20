@@ -135,6 +135,7 @@ def list_players(
     season: int | None = None,
     is_active: bool | None = None,
     name: str | None = Query(default=None, description="Case-insensitive substring search on display name"),
+    current_only: bool = Query(default=True, description="Restrict to currently active/relevant players (default) — set False for historical research search"),
     limit: int = Query(default=50, ge=1, le=_MAX_PAGE_SIZE),
     offset: int = Query(default=0, ge=0),
     sport: str = "AFL",
@@ -142,7 +143,7 @@ def list_players(
 ) -> PlayerListRead:
     players, total = query_players(
         db, sport=sport, team_id=team_id, season_year=season, is_active=is_active,
-        name_search=name, limit=limit, offset=offset,
+        name_search=name, current_only=current_only, limit=limit, offset=offset,
     )
     return PlayerListRead(
         players=[PlayerSummaryRead.model_validate(p) for p in players], total=total, limit=limit, offset=offset,

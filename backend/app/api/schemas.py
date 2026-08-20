@@ -1507,6 +1507,18 @@ class DiversifiedOpportunitiesResponseRead(BaseModel):
     bookmaker_coverage: list[BookmakerCoverageRead]
 
 
+class OpportunityTiersResponseRead(BaseModel):
+    """Best / Worth Reviewing / All Available — see opportunity_tiers.py."""
+
+    best: list[DiversifiedOpportunityRead]
+    worth_reviewing: list[DiversifiedOpportunityRead]
+    all_available: list[BestOpportunityRead]
+    exclusion_breakdown: dict[str, int]
+    n_candidates: int
+    n_hard_excluded: int
+    fallback_message: str | None
+
+
 # --- Market Integrity + Final Weekly Picks stage ---------------------------
 
 

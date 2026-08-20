@@ -6,7 +6,7 @@ reputation. Must never touch the promoted model."""
 
 from datetime import datetime, timezone
 
-from app.models import Player, PlayerDisposalPrediction, PlayerModelRun
+from app.models import Match, MatchStatus, Player, PlayerDisposalPrediction, PlayerMatchStat, PlayerModelRun, Round, Season, Sport, Team
 from app.player_modelling.elite_disposal_diagnostic import (
     BUCKET_ELITE,
     BUCKET_LOW,
@@ -15,6 +15,7 @@ from app.player_modelling.elite_disposal_diagnostic import (
 from app.player_modelling.market import PlayerMarket
 
 NOW = datetime.now(timezone.utc)
+CURRENT_YEAR = NOW.year
 
 
 def _seed_promoted_model_run(db):
@@ -95,7 +96,11 @@ def test_most_under_predicted_players_sorted_most_negative_first(db_session):
         _seed_prediction(db_session, run, better, match_id=500 + i, predicted_mean=28.0, actual=30.0)  # bias -2
     db_session.commit()
 
-    buckets = load_elite_disposal_diagnostic(db_session)
+    # current_only=False, min_n_predictions=None: this test is about bias-
+    # sort ordering, not current-player or sample-size scoping — these
+    # synthetic players have only 3 predictions each and no current-season
+    # signal, so the defaults would (correctly) filter them out entirely.
+    buckets = load_elite_disposal_diagnostic(db_session, current_only=False, min_n_predictions=None)
     bucket = next(b for b in buckets if b.n_players == 2)
     names_in_order = [p.player_name for p in bucket.most_under_predicted_players]
     assert names_in_order[0] == "Worse Bias"
@@ -115,3 +120,90 @@ def test_only_uses_promoted_model_run(db_session):
 
     # No promoted run exists - must not silently fall back to an unpromoted one.
     assert load_elite_disposal_diagnostic(db_session) is None
+
+
+def test_current_only_filters_display_list_but_never_the_bucket_aggregates(db_session):
+    """Data-scoping fix: a retired player (historical predictions only, no
+    current-season match/lineup/projection) must disappear from the
+    displayed player list under the current_only=True default, but the
+    bucket's own historical aggregate metrics — n_players, n_predictions,
+    avg_actual, avg_predicted, bias, mae — must be BYTE-for-byte identical
+    to the current_only=False (full historical population) view."""
+    sport = Sport(code="AFL", name="Australian Football League")
+    db_session.add(sport)
+    db_session.flush()
+    season = Season(sport_id=sport.id, year=CURRENT_YEAR)
+    db_session.add(season)
+    db_session.flush()
+    round_ = Round(season_id=season.id, round_number=1)
+    home = Team(sport_id=sport.id, name="Melbourne", short_name="MEL")
+    away = Team(sport_id=sport.id, name="Carlton", short_name="CAR")
+    db_session.add_all([round_, home, away])
+    db_session.flush()
+    current_match = Match(
+        sport_id=sport.id, season_id=season.id, round_id=round_.id, home_team_id=home.id, away_team_id=away.id,
+        scheduled_start=datetime(CURRENT_YEAR, 4, 1, tzinfo=timezone.utc), status=MatchStatus.SCHEDULED,
+    )
+    db_session.add(current_match)
+    db_session.flush()
+
+    run = _seed_promoted_model_run(db_session)
+    retired = Player(sport_id=sport.id, display_name="Retired Elite", source="afltables", source_player_id="p_retired_elite")
+    current = Player(sport_id=sport.id, display_name="Current Elite", current_team_id=home.id, source="afltables", source_player_id="p_current_elite")
+    db_session.add_all([retired, current])
+    db_session.flush()
+    # `current` actually played in the current season - the retired player never did.
+    db_session.add(PlayerMatchStat(
+        player_id=current.id, match_id=current_match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=30,
+    ))
+    for i, (predicted, actual) in enumerate([(27.0, 30.0), (26.0, 31.0)]):
+        _seed_prediction(db_session, run, retired, match_id=700 + i, predicted_mean=predicted, actual=actual)
+    for i, (predicted, actual) in enumerate([(28.0, 29.0), (29.0, 30.0)]):
+        _seed_prediction(db_session, run, current, match_id=800 + i, predicted_mean=predicted, actual=actual)
+    db_session.commit()
+
+    # min_n_predictions=None: this test isolates current-player scoping —
+    # each player here only has 2 predictions, below the 20+ default.
+    all_buckets = {b.bucket: b for b in load_elite_disposal_diagnostic(db_session, current_only=False, min_n_predictions=None)}
+    current_buckets = {b.bucket: b for b in load_elite_disposal_diagnostic(db_session, current_only=True, min_n_predictions=None)}
+
+    elite_all = all_buckets[BUCKET_ELITE]
+    elite_current = current_buckets[BUCKET_ELITE]
+    assert elite_all.n_players == elite_current.n_players == 2
+    assert elite_all.n_predictions == elite_current.n_predictions == 4
+    assert elite_all.avg_actual == elite_current.avg_actual
+    assert elite_all.avg_predicted == elite_current.avg_predicted
+    assert elite_all.bias == elite_current.bias
+    assert elite_all.mae == elite_current.mae
+
+    names_all = {p.player_name for p in elite_all.most_under_predicted_players}
+    names_current = {p.player_name for p in elite_current.most_under_predicted_players}
+    assert names_all == {"Retired Elite", "Current Elite"}
+    assert names_current == {"Current Elite"}
+
+
+def test_min_n_predictions_filters_display_list_only(db_session):
+    run = _seed_promoted_model_run(db_session)
+    small_sample = _seed_player(db_session, "Small Sample")
+    big_sample = _seed_player(db_session, "Big Sample")
+    for i in range(3):  # below the default 20+ threshold
+        _seed_prediction(db_session, run, small_sample, match_id=900 + i, predicted_mean=27.0, actual=29.0)
+    for i in range(25):  # above it
+        _seed_prediction(db_session, run, big_sample, match_id=1000 + i, predicted_mean=27.0, actual=29.0)
+    db_session.commit()
+
+    unfiltered = {b.bucket: b for b in load_elite_disposal_diagnostic(db_session, current_only=False, min_n_predictions=None)}
+    default_filtered = {b.bucket: b for b in load_elite_disposal_diagnostic(db_session, current_only=False)}  # default min_n_predictions=20
+
+    elite_unfiltered = unfiltered[BUCKET_ELITE]
+    elite_default = default_filtered[BUCKET_ELITE]
+
+    # Bucket aggregates identical regardless of the display-only filter.
+    assert elite_unfiltered.n_players == elite_default.n_players == 2
+    assert elite_unfiltered.n_predictions == elite_default.n_predictions == 28
+    assert elite_unfiltered.avg_actual == elite_default.avg_actual
+    assert elite_unfiltered.bias == elite_default.bias
+    assert elite_unfiltered.mae == elite_default.mae
+
+    assert {p.player_name for p in elite_unfiltered.most_under_predicted_players} == {"Small Sample", "Big Sample"}
+    assert {p.player_name for p in elite_default.most_under_predicted_players} == {"Big Sample"}

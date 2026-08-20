@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   fetchEliteDisposalDiagnostic,
   fetchModelMarketDisagreements,
@@ -12,6 +12,15 @@ const DIRECTION_LABELS: Record<string, string> = {
   market_above_model: "Market above model",
 };
 
+const MIN_N_OPTIONS: { value: number; label: string }[] = [
+  { value: 5, label: "5+" },
+  { value: 10, label: "10+" },
+  { value: 20, label: "20+" },
+  { value: 50, label: "50+" },
+  { value: 0, label: "All" },
+];
+const DEFAULT_MIN_N = 20;
+
 /** Market Integrity + Final Weekly Picks stage, Section 18: "Model vs
  * Market Disagreements" — explicitly NOT an opportunity list, never
  * labelled "Best Bets". Surfaces the largest model/market probability
@@ -23,12 +32,19 @@ const DIRECTION_LABELS: Record<string, string> = {
 function ModelMarketDisagreementsView() {
   const [disagreements, setDisagreements] = useState<ModelMarketDisagreement[]>([]);
   const [buckets, setBuckets] = useState<EliteDisposalBucket[] | null>(null);
+  const [currentOnly, setCurrentOnly] = useState(true);
+  const [minN, setMinN] = useState(DEFAULT_MIN_N);
   const [loading, setLoading] = useState(true);
+  const [bucketsLoading, setBucketsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mounted = useRef(false);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchModelMarketDisagreements({ limit: 30 }), fetchEliteDisposalDiagnostic()])
+    Promise.all([
+      fetchModelMarketDisagreements({ limit: 30 }),
+      fetchEliteDisposalDiagnostic({ currentOnly: true, minNPredictions: DEFAULT_MIN_N }),
+    ])
       .then(([d, b]) => {
         setDisagreements(d);
         setBuckets(b);
@@ -36,6 +52,17 @@ function ModelMarketDisagreementsView() {
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load diagnostics"))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return; // the initial load above already fetched the default (current-only, 20+) view
+    }
+    setBucketsLoading(true);
+    fetchEliteDisposalDiagnostic({ currentOnly, minNPredictions: minN })
+      .then(setBuckets)
+      .finally(() => setBucketsLoading(false));
+  }, [currentOnly, minN]);
 
   if (loading) return <p className="loading-state">Loading…</p>;
   if (error) return <div className="prop-insights-page__error">{error}</div>;
@@ -104,15 +131,41 @@ function ModelMarketDisagreementsView() {
       </section>
 
       <section className="disagreements-view__section">
-        <h2>Elite Disposal Player Monitoring</h2>
+        <div className="disagreements-view__bucket-toggle-row">
+          <h2>Elite Disposal Player Monitoring</h2>
+          <div className="disagreements-view__bucket-controls">
+            <div className="tab-bar">
+              <button type="button" className={`tab-bar__tab${currentOnly ? " tab-bar__tab--active" : ""}`} onClick={() => setCurrentOnly(true)}>
+                Current players
+              </button>
+              <button type="button" className={`tab-bar__tab${!currentOnly ? " tab-bar__tab--active" : ""}`} onClick={() => setCurrentOnly(false)}>
+                All historical players
+              </button>
+            </div>
+            <label className="disagreements-view__min-n">
+              Min. predictions
+              <select value={minN} onChange={(e) => setMinN(Number(e.target.value))}>
+                {MIN_N_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
         <p className="hint">
-          Research diagnostic only — never used to retune the promoted model based on current-round observations. Buckets
-          are based on each player's own historical AVERAGE ACTUAL disposals (ground truth), not reputation, using the
-          promoted disposal model's 2016-2025 backtest evaluation predictions.
+          Research diagnostic only — never used to retune the promoted model based on current-round observations. Bucket
+          averages, bias and MAE are always computed from the full historical evaluation population regardless of the
+          filters below — they only change which players are LISTED. Buckets are based on each player's own historical
+          AVERAGE ACTUAL disposals (ground truth), not reputation, using the promoted disposal model's 2016-2025 backtest
+          evaluation predictions.
         </p>
-        {buckets === null ? (
+        {bucketsLoading && <p className="loading-state">Loading…</p>}
+        {!bucketsLoading && buckets === null && (
           <p className="empty-state">No promoted disposal model evaluation data available.</p>
-        ) : (
+        )}
+        {!bucketsLoading && buckets !== null && (
           <div className="disagreements-view__buckets">
             {buckets.map((b) => (
               <div key={b.bucket} className="disagreements-view__bucket-card">

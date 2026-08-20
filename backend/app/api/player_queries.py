@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models import Match, Player, PlayerMatchStat, Round, Season, Sport
+from app.player_modelling.current_players import current_player_ids
 
 
 def query_players(
@@ -19,9 +20,16 @@ def query_players(
     season_year: int | None = None,
     is_active: bool | None = None,
     name_search: str | None = None,
+    current_only: bool = False,
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[Player], int]:
+    """`current_only` (data-scoping fix, product-quality stage): restricts
+    results to the currently active/relevant player population (see
+    current_players.py) — for current-facing player search/dropdowns, so a
+    long-retired player never shows up. Independent of `season_year`, which
+    is a plain "played in this specific season" filter used by historical
+    research call sites and stays exactly as before."""
     query = select(Player).join(Sport, Player.sport_id == Sport.id).where(Sport.code == sport)
 
     if team_id is not None:
@@ -38,6 +46,8 @@ def query_players(
             .where(Season.year == season_year)
         )
         query = query.where(Player.id.in_(played_in_season))
+    if current_only:
+        query = query.where(Player.id.in_(current_player_ids(db, sport=sport)))
 
     total = db.scalar(select(func.count()).select_from(query.subquery())) or 0
     query = query.order_by(Player.display_name).offset(offset).limit(limit)

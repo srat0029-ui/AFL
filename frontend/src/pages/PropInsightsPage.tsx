@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from "react";
 import "./PropInsightsPage.css";
+import BestAvailableView from "../components/BestAvailableView";
 import BookmakerSettingsPanel from "../components/BookmakerSettingsPanel";
 import Disclaimer from "../components/Disclaimer";
 import DiversifiedOpportunitiesView from "../components/DiversifiedOpportunitiesView";
@@ -47,6 +48,7 @@ const LINEUP_LABELS: Partial<Record<SelectionStatus, string>> = {
 };
 
 type Tab =
+  | "best_available"
   | "final_shortlist"
   | "best_overall"
   | "best_disposals"
@@ -60,6 +62,7 @@ type Tab =
   | "bookmaker_settings";
 
 const TABS: { key: Tab; label: string }[] = [
+  { key: "best_available", label: "Best Available" },
   { key: "final_shortlist", label: "Final Shortlist" },
   { key: "best_overall", label: "Best Overall" },
   { key: "best_disposals", label: "Best Disposals" },
@@ -88,7 +91,7 @@ function marketLabel(marketType: PlayerPropMarketType, lineType: string, thresho
 type TopN = 10 | 25 | 0; // 0 = All
 
 function PropInsightsPage() {
-  const [tab, setTab] = useState<Tab>("best_overall");
+  const [tab, setTab] = useState<Tab>("best_available");
   const [rows, setRows] = useState<NormalizedPropInsight[]>([]);
   const [manualRows, setManualRows] = useState<PropInsight[]>([]);
   const [confidence, setConfidence] = useState<ConfidenceTierLive | "">("");
@@ -202,6 +205,7 @@ function PropInsightsPage() {
         ))}
       </nav>
 
+      {tab === "best_available" && <BestAvailableView />}
       {isDiversifiedTab && <DiversifiedOpportunitiesView view={DIVERSIFIED_TABS[tab]!} />}
       {tab === "final_shortlist" && <FinalShortlistView />}
       {tab === "disagreements" && <ModelMarketDisagreementsView />}

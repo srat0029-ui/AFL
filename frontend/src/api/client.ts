@@ -1672,6 +1672,30 @@ export function fetchDiversifiedOpportunities(
   return request(`/api/afl/best-opportunities/diversified${qs ? `?${qs}` : ""}`);
 }
 
+// --- Opportunity tiers: Best Opportunities / Worth Reviewing / All Available (product-quality stage) ---
+
+export interface OpportunityTiersResponse {
+  best: DiversifiedOpportunity[];
+  worth_reviewing: DiversifiedOpportunity[];
+  all_available: BestOpportunity[];
+  exclusion_breakdown: Record<string, number>;
+  n_candidates: number;
+  n_hard_excluded: number;
+  fallback_message: string | null;
+}
+
+export function fetchOpportunityTiers(
+  params: { marketScope?: "all" | "player" | "team"; bestLimit?: number | null; worthReviewingLimit?: number | null; allAvailableLimit?: number | null } = {}
+): Promise<OpportunityTiersResponse> {
+  const query = new URLSearchParams();
+  if (params.marketScope) query.set("market_scope", params.marketScope);
+  if (params.bestLimit !== undefined && params.bestLimit !== null) query.set("best_limit", String(params.bestLimit));
+  if (params.worthReviewingLimit !== undefined && params.worthReviewingLimit !== null) query.set("worth_reviewing_limit", String(params.worthReviewingLimit));
+  if (params.allAvailableLimit !== undefined && params.allAvailableLimit !== null) query.set("all_available_limit", String(params.allAvailableLimit));
+  const qs = query.toString();
+  return request(`/api/afl/best-opportunities/tiers${qs ? `?${qs}` : ""}`);
+}
+
 // --- Final Weekly Shortlist (Market Integrity stage, Sections 7-11, 22) ---
 
 export interface FinalShortlistOpportunity extends BestOpportunity {
@@ -1767,8 +1791,14 @@ export interface EliteDisposalBucket {
   most_under_predicted_players: PlayerBiasEntry[];
 }
 
-export function fetchEliteDisposalDiagnostic(): Promise<EliteDisposalBucket[] | null> {
-  return request("/api/afl/elite-disposal-diagnostic");
+export function fetchEliteDisposalDiagnostic(
+  params: { currentOnly?: boolean; minNPredictions?: number } = {}
+): Promise<EliteDisposalBucket[] | null> {
+  const query = new URLSearchParams();
+  if (params.currentOnly !== undefined) query.set("current_only", String(params.currentOnly));
+  if (params.minNPredictions !== undefined) query.set("min_n_predictions", String(params.minNPredictions));
+  const qs = query.toString();
+  return request(`/api/afl/elite-disposal-diagnostic${qs ? `?${qs}` : ""}`);
 }
 
 // --- Weekly Bet Review + Decision Support stage ---

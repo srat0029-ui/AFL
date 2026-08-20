@@ -118,6 +118,19 @@
   padding: 0.1rem 0.4rem;
 }
 
+.odds-table__stale {
+  display: inline-block;
+  margin-left: 0.5rem;
+  font-size: 0.68rem;
+  font-weight: 600;
+  background: var(--danger-badge-bg);
+  color: var(--danger-text);
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  white-space: nowrap;
+  cursor: help;
+}
+
 .odds-table__delete {
   background: transparent;
   border: 1px solid var(--danger-border);
