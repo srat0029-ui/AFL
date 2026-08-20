@@ -11,6 +11,7 @@ import PropInsightsPage from "./pages/PropInsightsPage";
 import RealMarketTrackingPage from "./pages/RealMarketTrackingPage";
 import RoundContextDashboardPage from "./pages/RoundContextDashboardPage";
 import StatusPage from "./pages/StatusPage";
+import TeamSelectionPage from "./pages/TeamSelectionPage";
 import WeeklyReviewPage from "./pages/WeeklyReviewPage";
 
 function App() {
@@ -26,6 +27,9 @@ function App() {
         </NavLink>
         <NavLink to="/round-context" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Round Context
+        </NavLink>
+        <NavLink to="/team-selection" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          Team Selection
         </NavLink>
         <NavLink to="/player-insights" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Player Insights
@@ -53,6 +57,7 @@ function App() {
         <Route path="/" element={<DashboardPage />} />
         <Route path="/weekly-review" element={<WeeklyReviewPage />} />
         <Route path="/round-context" element={<RoundContextDashboardPage />} />
+        <Route path="/team-selection" element={<TeamSelectionPage />} />
         <Route path="/matches/:matchId" element={<MatchDetailPage />} />
         <Route path="/players/:playerId" element={<PlayerProfilePage />} />
         <Route path="/player-insights" element={<PlayerInsightsPage />} />
