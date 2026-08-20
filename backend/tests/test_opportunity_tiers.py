@@ -17,15 +17,21 @@ NOW = datetime.now(timezone.utc)
 
 
 def _seed_match(db, *, home_name="Collingwood", away_name="Carlton"):
-    sport = Sport(code="AFL", name="Australian Football League")
-    db.add(sport)
-    db.flush()
-    season = Season(sport_id=sport.id, year=2026)
-    db.add(season)
-    db.flush()
-    round_ = Round(season_id=season.id, round_number=1)
-    db.add(round_)
-    db.flush()
+    sport = db.scalar(select(Sport).where(Sport.code == "AFL"))
+    if sport is None:
+        sport = Sport(code="AFL", name="Australian Football League")
+        db.add(sport)
+        db.flush()
+    season = db.scalar(select(Season).where(Season.sport_id == sport.id, Season.year == 2026))
+    if season is None:
+        season = Season(sport_id=sport.id, year=2026)
+        db.add(season)
+        db.flush()
+    round_ = db.scalar(select(Round).where(Round.season_id == season.id, Round.round_number == 1))
+    if round_ is None:
+        round_ = Round(season_id=season.id, round_number=1)
+        db.add(round_)
+        db.flush()
     home = Team(sport_id=sport.id, name=home_name, short_name=home_name[:3].upper())
     away = Team(sport_id=sport.id, name=away_name, short_name=away_name[:3].upper())
     db.add_all([home, away])
@@ -52,7 +58,10 @@ def _ensure_promoted_disposal_model(db):
     return run
 
 
-def _add_player_opportunity(db, match, home, *, player_name="Nick Daicos", price=8.5, confirmed=True, recorded_at=NOW, games_of_history=40, multi_book=False):
+def _add_player_opportunity(
+    db, match, home, *, player_name="Nick Daicos", price=8.5, confirmed=True, recorded_at=NOW, games_of_history=40,
+    multi_book=False, has_lineup=True, confirmed_out=False,
+):
     player = Player(sport_id=match.sport_id, display_name=player_name, source="afltables", source_player_id=player_name, current_team_id=home.id)
     db.add(player)
     db.flush()
@@ -64,15 +73,25 @@ def _add_player_opportunity(db, match, home, *, player_name="Nick Daicos", price
         confidence_tier="higher_confidence" if games_of_history >= 10 else "insufficient_history",
         warnings=[], input_features={},
     ))
-    db.add(ExpectedLineup(
-        match_id=match.id, player_id=player.id, team_id=home.id, status="expected_in",
-        selection_status="confirmed_selected" if confirmed else "uncertain", is_confirmed=confirmed,
-        recorded_at=NOW, source="manual",
-    ))
+    if confirmed_out:
+        db.add(ExpectedLineup(
+            match_id=match.id, player_id=player.id, team_id=home.id, status="expected_out",
+            selection_status="confirmed_out", is_confirmed=True, recorded_at=NOW, source="manual",
+        ))
+    elif has_lineup:
+        db.add(ExpectedLineup(
+            match_id=match.id, player_id=player.id, team_id=home.id, status="expected_in",
+            selection_status="confirmed_selected" if confirmed else "uncertain", is_confirmed=confirmed,
+            recorded_at=NOW, source="manual",
+        ))
+    # has_lineup=False, confirmed_out=False: deliberately NO ExpectedLineup
+    # row at all - the "projection + market, no lineup row" case.
     for bookmaker_name in (["SportsBet", "TAB"] if multi_book else ["SportsBet"]):
-        bookmaker = Bookmaker(name=bookmaker_name)
-        db.add(bookmaker)
-        db.flush()
+        bookmaker = db.scalar(select(Bookmaker).where(Bookmaker.name == bookmaker_name))
+        if bookmaker is None:
+            bookmaker = Bookmaker(name=bookmaker_name)
+            db.add(bookmaker)
+            db.flush()
         db.add(PlayerPropMarket(
             match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id, market_type=PlayerMarket.DISPOSALS.value,
             line_type="over_under", threshold=27.5, selection="over", price_decimal=price,
@@ -152,6 +171,60 @@ def test_all_available_includes_worth_reviewing_entries(db_session):
 
     assert len(result.all_available) == 1
     assert result.all_available[0]["player_name"] == "Nick Daicos"
+
+
+def test_player_with_projection_and_market_but_no_lineup_row_is_still_returned(db_session):
+    """Core rule under audit: a match needs no ExpectedLineup row at all
+    for its players to be eligible - projection + valid market is enough."""
+    match, home, away = _seed_match(db_session)
+    _add_player_opportunity(db_session, match, home, has_lineup=False)
+
+    result = load_opportunity_tiers(db_session)
+
+    assert result.n_hard_excluded == 0
+    assert result.n_candidates == 1
+    names = {o["player_name"] for o in result.best} | {o["player_name"] for o in result.worth_reviewing}
+    assert "Nick Daicos" in names
+
+
+def test_missing_lineup_downgrades_not_excludes(db_session):
+    match, home, away = _seed_match(db_session)
+    _add_player_opportunity(db_session, match, home, has_lineup=False)
+
+    result = load_opportunity_tiers(db_session)
+
+    assert result.best == []  # no confirmed lineup -> can't reach Best
+    assert len(result.worth_reviewing) == 1
+    assert result.worth_reviewing[0]["is_confirmed"] is False
+
+
+def test_confirmed_out_still_hard_excludes_even_with_no_other_lineup_rows(db_session):
+    match, home, away = _seed_match(db_session)
+    _add_player_opportunity(db_session, match, home, confirmed_out=True)
+
+    result = load_opportunity_tiers(db_session)
+
+    # confirmed_out is filtered at the source (load_normalized_prop_insights)
+    # before it ever becomes a candidate opportunity - never in Best, Worth
+    # Reviewing, or the valid-candidate count.
+    assert result.best == []
+    assert result.worth_reviewing == []
+    assert result.n_candidates == 0
+    assert all(o["player_name"] != "Nick Daicos" for o in result.all_available)
+
+
+def test_multiple_matches_without_lineup_rows_all_appear_simultaneously(db_session):
+    match1, home1, away1 = _seed_match(db_session, home_name="Collingwood", away_name="Brisbane Lions")
+    match2, home2, away2 = _seed_match(db_session, home_name="St Kilda", away_name="Gold Coast")
+    match3, home3, away3 = _seed_match(db_session, home_name="Carlton", away_name="Fremantle")
+    _add_player_opportunity(db_session, match1, home1, player_name="Player One", has_lineup=True, confirmed=True, multi_book=True, price=20.0)
+    _add_player_opportunity(db_session, match2, home2, player_name="Player Two", has_lineup=False)
+    _add_player_opportunity(db_session, match3, home3, player_name="Player Three", has_lineup=False)
+
+    result = load_opportunity_tiers(db_session)
+
+    match_ids_shown = {o["match_id"] for o in result.best} | {o["match_id"] for o in result.worth_reviewing}
+    assert match_ids_shown == {match1.id, match2.id, match3.id}
 
 
 def test_no_upcoming_matches_returns_empty_tiers(db_session):
