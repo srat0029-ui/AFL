@@ -51,6 +51,8 @@ from app.player_modelling.best_opportunities import load_best_opportunities
 from app.player_modelling.diversified_opportunities import load_diversified_opportunities
 from app.player_modelling.elite_disposal_diagnostic import bucket_diagnostic_as_dict, load_elite_disposal_diagnostic
 from app.player_modelling.final_shortlist import DEFAULT_SHORTLIST_LIMIT, load_final_shortlist
+from app.player_modelling.live_engine import ModelsUnavailableError, PromotedModelsUnavailableError, generate_live_projections
+from app.player_modelling.live_persistence import persist_projection_run
 from app.player_modelling.multi_builder import TIER_ORDER as MULTI_TIER_ORDER, build_match_multis, match_multi_tiers_as_dict
 from app.player_modelling.opportunity_tiers import (
     DEFAULT_ALL_AVAILABLE_LIMIT,
@@ -215,6 +217,27 @@ def get_suggested_roster(match_id: int, team_id: int, db: Session = Depends(get_
     return [RosterSuggestionRead(player_id=s.player_id, display_name=s.display_name, last_match_id=s.last_match_id, last_played_at=s.last_played_at) for s in suggestions]
 
 
+def _regenerate_projections_for_match(db: Session, match_id: int) -> None:
+    """A lineup change makes a match's ALREADY-PERSISTED projections stale
+    (they carry a lineup_status_at_generation-derived warning frozen at the
+    moment they were generated — see live_confidence.py's "Expected lineup
+    not confirmed" warning). This regenerates them for just this one match
+    via the existing, unmodified promoted model — no retrain, no new
+    provider, no bookmaker API call (that's a separate concern, gated
+    behind the explicit Refresh Data action) — so a just-confirmed
+    player's projection stops contradicting itself within the same
+    request/response cycle, instead of waiting for the next full
+    live-cycle refresh."""
+    try:
+        run = generate_live_projections(db, target_match_ids={match_id})
+        persist_projection_run(db, run)
+        clear_ttl_cache()
+    except (ModelsUnavailableError, PromotedModelsUnavailableError):
+        pass  # no promoted model yet - nothing to regenerate, not this endpoint's problem
+    except Exception:  # noqa: BLE001 - a lineup write must never fail because regeneration hiccuped
+        pass
+
+
 @router.post("/matches/{match_id}/lineup/bulk-apply", response_model=BulkApplyResult)
 def bulk_apply_lineup(match_id: int, payload: BulkApplyRequest, db: Session = Depends(get_db)) -> BulkApplyResult:
     """Section 13's efficient bulk workflow: apply a selection_status to
@@ -234,6 +257,7 @@ def bulk_apply_lineup(match_id: int, payload: BulkApplyRequest, db: Session = De
         db, match_id, entries, source=payload.source, source_timestamp=None, allow_override_manual=payload.allow_override_manual
     )
     clear_ttl_cache()
+    _regenerate_projections_for_match(db, match_id)
     return BulkApplyResult(
         created=report.created, updated=report.updated, status_changed=report.status_changed,
         skipped_manual_override=report.skipped_manual_override, unresolved=report.unresolved, ambiguous=report.ambiguous,
@@ -261,6 +285,9 @@ def bulk_remove_lineup(match_id: int, payload: BulkRemoveRequest, db: Session = 
         db.delete(lineup)
         removed.append(player_id)
     db.commit()
+    if removed:
+        clear_ttl_cache()
+        _regenerate_projections_for_match(db, match_id)
     return BulkRemoveResult(removed=removed, not_found=not_found)
 
 
@@ -303,6 +330,7 @@ def set_expected_lineup(match_id: int, player_id: int, payload: ExpectedLineupCr
     db.commit()
     db.refresh(lineup)
     clear_ttl_cache()
+    _regenerate_projections_for_match(db, match_id)
     return _lineup_read(lineup)
 
 
@@ -313,6 +341,8 @@ def delete_expected_lineup(match_id: int, player_id: int, db: Session = Depends(
         raise HTTPException(status_code=404, detail="Expected lineup record not found")
     db.delete(lineup)
     db.commit()
+    clear_ttl_cache()
+    _regenerate_projections_for_match(db, match_id)
 
 
 # --- Manual player prop entry (Sections 11-15) ------------------------------

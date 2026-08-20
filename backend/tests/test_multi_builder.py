@@ -236,8 +236,9 @@ def test_alternate_lines_never_duplicated_in_one_multi(db_session):
     _add_player_leg(db_session, match, home, player_name="Player B", prices=[("SportsBet", 2.00)])
 
     result = build_match_multis(db_session, match.id, confirmed_only=True)
-    # Only ONE representative line for Player A ever enters the eligible pool.
-    assert result.n_eligible_legs == 2
+    # Player A's family may contribute up to 2 CANDIDATE lines (a "best value"
+    # and a "safest/highest-probability" pick - see _safest_family_member),
+    # but the real invariant is that no single multi ever uses more than one.
     for opt in _all_options(result):
         player_a_legs = [leg for leg in opt["legs"] if leg["player_name"] == "Player A"]
         assert len(player_a_legs) <= 1
@@ -291,6 +292,32 @@ def test_no_forced_multi_with_insufficient_candidates(db_session):
 
     result = build_match_multis(db_session, match.id, confirmed_only=True)
     assert _all_options(result) == []
+
+
+def test_conservative_tier_prefers_the_safest_alternate_line_over_the_headline_value_pick(db_session):
+    """Real bug report: Conservative multis were starved because the
+    family-representative picker (opportunity_families.representative_score)
+    is tuned for single-bet VALUE and actively discounts short/likely
+    prices - so a genuinely safe ~80-95% probability leg (e.g. a low
+    disposal threshold) never got offered as a multi leg at all. A
+    Conservative-range combo must be able to reach for the SAFEST line in
+    a player's family, not just whichever line scores highest as a
+    standalone opportunity."""
+    match, home, away = _seed_match(db_session)
+    # Same player, two alternate lines: a big-edge "value" line the family
+    # would normally headline, and a much safer, shorter, still-positive-
+    # edge line.
+    _add_player_leg(db_session, match, home, player_name="Player A", threshold=15.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 3.00)])
+    _add_player_leg(db_session, match, home, player_name="Player A", threshold=5.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.30)])
+    _add_player_leg(db_session, match, home, player_name="Player B", threshold=5.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.50)])
+    # safe(1.30) * partner(1.50) = 1.95 -> Conservative; value(3.00) * partner(1.50) = 4.50 -> Balanced, not Conservative.
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    conservative = result.tiers[TIER_CONSERVATIVE]
+    assert conservative, "expected a Conservative option using the safer alternate line"
+    for opt in conservative:
+        player_a_leg = next(leg for leg in opt["legs"] if leg["player_name"] == "Player A")
+        assert player_a_leg["bookmaker_price"] == 1.30, "Conservative must use the SAFE line, not the higher-edge value line"
 
 
 def test_indicative_odds_terminology(db_session):

@@ -72,6 +72,22 @@ def _leg_id(leg: dict) -> tuple:
     return (leg["opportunity_type"], leg.get("player_id"), leg["market_type"], leg.get("selection"), leg.get("line_value"), leg.get("threshold"))
 
 
+def _safest_family_member(fam) -> dict | None:
+    """opportunity_families.representative_score deliberately PENALISES an
+    extreme-short price (see its _price_extremity_multiplier) because for a
+    single standalone bet, a $1.05 favourite is rarely good VALUE even when
+    likely to win. For a Conservative/Balanced MULTI leg the opposite
+    property matters most: a genuinely high probability of winning, not
+    value-for-money on its own. This picks, from the SAME family the
+    representative came from, whichever member has the highest model
+    probability while still keeping a real (positive) model-market edge -
+    never a leg the model doesn't actually favour."""
+    candidates = [m for m in (fam.representative, *fam.alternates) if m["difference_pp"] > 0]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda o: o["model_probability"])
+
+
 def _reasons_for(leg: dict) -> list[str]:
     reasons = []
     if leg["quality_tier"]["tier"] == "strong_candidate":
@@ -101,7 +117,24 @@ def _match_legs(db: Session, match_id: int) -> list[dict]:
     if not match_legs:
         return []
     families = group_into_families(match_legs, {match_id: ""})
-    return [fam.representative for fam in families]
+
+    result: list[dict] = []
+    for fam in families:
+        rep = dict(fam.representative)
+        rep["_family_key"] = fam.key
+        result.append(rep)
+
+        safest = _safest_family_member(fam)
+        if safest is not None and _leg_id(safest) != _leg_id(fam.representative):
+            # A second, distinct candidate from the SAME family - never
+            # allowed to appear alongside the representative in one combo
+            # (enforced via _family_key in _build_one_combo), just an
+            # alternative choice of WHICH line represents this player/team
+            # when a short, high-probability leg is what a tier needs.
+            alt = dict(safest)
+            alt["_family_key"] = fam.key
+            result.append(alt)
+    return result
 
 
 def _legs_by_bookmaker(legs: list[dict]) -> dict[str, list[dict]]:
@@ -121,17 +154,19 @@ def _legs_by_bookmaker(legs: list[dict]) -> dict[str, list[dict]]:
 
 
 def _build_one_combo(
-    legs_sorted: list[dict], lo: float, hi: float | None, *, confirmed_only: bool, exclude_ids: set[tuple], player_counts: dict[int, int],
+    legs_sorted: list[dict], lo: float, hi: float | None, *, confirmed_only: bool, exclude_ids: set[tuple],
+    exclude_family_keys: set[tuple], player_counts: dict[int, int],
 ) -> dict | None:
     chosen: list[dict] = []
     chosen_player_ids: set[int] = set()
+    chosen_family_keys: set[tuple] = set()
     combined = 1.0
     warnings: list[str] = []
 
     for leg in legs_sorted:
         lid = _leg_id(leg)
-        if lid in exclude_ids:
-            continue
+        if lid in exclude_ids or leg["_family_key"] in exclude_family_keys or leg["_family_key"] in chosen_family_keys:
+            continue  # never two lines from the same underlying family (e.g. a "safe" and a "value" line for the same player) in one combo
         if confirmed_only and leg["opportunity_type"] == "player" and not leg.get("is_confirmed"):
             continue
         pid = leg.get("player_id")
@@ -161,6 +196,7 @@ def _build_one_combo(
         chosen.append(leg)
         if pid is not None:
             chosen_player_ids.add(pid)
+        chosen_family_keys.add(leg["_family_key"])
         combined = prospective
         warnings.extend(pair_warnings)
 
@@ -185,21 +221,34 @@ def _build_one_combo(
     }
 
 
+# Conservative/Balanced favour FEWER, higher-probability legs (short
+# prices); Higher Return/Longer Shot favour the existing best-value
+# ranking, which is allowed to reach for a longer, lower-probability leg.
+# Directly implements "Conservative multi should favour higher-probability
+# individual legs... as target odds increase, allow lower-probability legs."
+_PROBABILITY_FIRST_TIERS = {TIER_CONSERVATIVE, TIER_BALANCED}
+
+
 def _options_for_tier(
     legs_by_bookmaker: dict[str, list[dict]], tier_key: str, *, confirmed_only: bool, player_counts: dict[int, int],
 ) -> list[dict]:
     lo, hi = TIER_RANGES[tier_key]
+    sort_key = (lambda o: o["model_probability"]) if tier_key in _PROBABILITY_FIRST_TIERS else representative_score
     # Bookmakers with more usable legs give the greedy builder more room -
     # try them first.
     ranked_bookmakers = sorted(legs_by_bookmaker.items(), key=lambda kv: len(kv[1]), reverse=True)
 
     options: list[dict] = []
     exclude_ids: set[tuple] = set()
+    exclude_family_keys: set[tuple] = set()
     for _ in range(MAX_OPTIONS_PER_TIER):
         found = None
         for bookmaker_name, legs in ranked_bookmakers:
-            legs_sorted = sorted(legs, key=representative_score, reverse=True)
-            combo = _build_one_combo(legs_sorted, lo, hi, confirmed_only=confirmed_only, exclude_ids=exclude_ids, player_counts=player_counts)
+            legs_sorted = sorted(legs, key=sort_key, reverse=True)
+            combo = _build_one_combo(
+                legs_sorted, lo, hi, confirmed_only=confirmed_only, exclude_ids=exclude_ids,
+                exclude_family_keys=exclude_family_keys, player_counts=player_counts,
+            )
             if combo is not None:
                 combo["bookmaker"] = bookmaker_name
                 found = combo
@@ -208,6 +257,7 @@ def _options_for_tier(
             break
         options.append(found)
         exclude_ids |= {_leg_id(leg) for leg in found["legs"]}
+        exclude_family_keys |= {leg["_family_key"] for leg in found["legs"]}
 
     for i, opt in enumerate(options):
         opt["option_label"] = f"Option {chr(65 + i)}"
