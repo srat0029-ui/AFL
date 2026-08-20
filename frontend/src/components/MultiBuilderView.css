@@ -32,9 +32,49 @@
 }
 
 .multi-builder__tier-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.multi-builder__tier-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 0.85rem;
+}
+
+.multi-builder__tier-mode-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.multi-builder__tier-mode-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-right: 0.3rem;
+}
+
+.multi-builder__mode-btn {
+  font-size: 0.72rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.multi-builder__mode-btn--active {
+  background: var(--accent, var(--text-h));
+  color: var(--card-bg);
+  border-color: transparent;
+}
+
+.multi-card__mode-badge {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: normal;
 }
 
 .multi-card {

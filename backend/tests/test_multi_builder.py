@@ -19,7 +19,7 @@ from app.models import (
 from app.player_modelling.market import PlayerMarket
 from app.player_modelling.request_cache import clear_ttl_cache
 from app.player_modelling.multi_builder import (
-    INDICATIVE_ODDS_LABEL, TIER_BALANCED, TIER_CONSERVATIVE, TIER_HIGHER_RETURN, TIER_LONGER_SHOT,
+    INDICATIVE_ODDS_LABEL, MODE_VALUE, TIER_BALANCED, TIER_CONSERVATIVE, TIER_HIGHER_RETURN, TIER_LONGER_SHOT,
     build_match_multis,
 )
 
@@ -219,9 +219,12 @@ def test_confirmed_lineup_preferred_over_unconfirmed(db_session):
     _add_player_leg(db_session, match, home, player_name="Unconfirmed Player", prices=[("SportsBet", 1.60)], confirmed=False)
     # h2h(1.30) + either player(1.60) = 2.08, squarely in Conservative on its
     # own - only ONE of the two interchangeable players is needed, so which
-    # one gets picked for Option A is a genuine preference signal.
-
-    result = build_match_multis(db_session, match.id, confirmed_only=False)
+    # one gets picked for Option A is a genuine preference signal. Value
+    # mode: this synthetic team (no real Elo/Poisson signal) reads as
+    # negative-edge to the model at such a short price, which High-
+    # Probability mode would (correctly) exclude entirely - not what this
+    # test is about.
+    result = build_match_multis(db_session, match.id, confirmed_only=False, mode=MODE_VALUE)
     option_a = next(iter(_all_options(result)), None)
     assert option_a is not None
     names = {leg["player_name"] for leg in option_a["legs"] if leg["player_name"]}
@@ -280,7 +283,11 @@ def test_moderate_correlation_carries_warning(db_session):
     _add_team_quotes(db_session, match, home.name, market_type="h2h", prices=[("SportsBet", 1.40)])
     _add_player_leg(db_session, match, home, player_name="Home Team Player", prices=[("SportsBet", 1.60)])  # 1.40*1.60=2.24 -> Conservative
 
-    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    # Value mode: this synthetic team has no real Elo/Poisson signal, so a
+    # short team price reads as negative-edge to the model - correctly
+    # excluded by High-Probability mode's edge floor, but not what this
+    # correlation-warning test is about.
+    result = build_match_multis(db_session, match.id, confirmed_only=True, mode=MODE_VALUE)
     combo_options = [o for o in _all_options(result) if o["n_legs"] >= 2]
     assert combo_options, "expected a team + same-team-player combo"
     assert any(opt["correlation_warnings"] for opt in combo_options)
@@ -335,3 +342,101 @@ def test_indicative_odds_terminology(db_session):
     assert d["indicative_odds_label"] == INDICATIVE_ODDS_LABEL
     assert "not a real" in d["indicative_odds_explanation"].lower() or "not" in d["indicative_odds_explanation"].lower()
     assert "correlation" in d["indicative_odds_explanation"].lower()
+
+
+# --- High-Probability vs Value mode (product feature refinement) -----------
+
+
+def test_high_probability_mode_excludes_low_probability_high_edge_leg(db_session):
+    """The exact distinction this stage is about: a leg like 'model 82% /
+    $1.25 / modest edge' belongs in High-Probability mode; a leg like
+    'model fair $2.00 / bookmaker $3.90 / huge edge' but with a middling
+    ~55% probability must NOT dominate High-Probability construction, even
+    though Value mode is free to love it."""
+    from app.player_modelling.multi_builder import MIN_LEG_PROBABILITY, MODE_HIGH_PROBABILITY, TIER_BALANCED, _candidate_pool, _match_legs
+
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Safe Player", threshold=10.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.25)])
+    _add_player_leg(db_session, match, home, player_name="Big Edge Player", threshold=15.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 3.90)])
+
+    legs = _match_legs(db_session, match.id)
+    big_edge = next(leg for leg in legs if leg["player_name"] == "Big Edge Player")
+    assert big_edge["model_probability"] < MIN_LEG_PROBABILITY[TIER_BALANCED], "fixture sanity: this leg's probability must sit below the Balanced floor"
+    assert big_edge["difference_pp"] > 0.20, "fixture sanity: this leg must have a genuinely large edge"
+
+    pool_high_prob = _candidate_pool(legs, TIER_BALANCED, MODE_HIGH_PROBABILITY, confirmed_only=False)
+    assert not any(leg["player_name"] == "Big Edge Player" for leg in pool_high_prob), "High-Probability mode must exclude the low-probability, high-edge leg"
+
+    pool_value = _candidate_pool(legs, TIER_BALANCED, MODE_VALUE, confirmed_only=False)
+    assert any(leg["player_name"] == "Big Edge Player" for leg in pool_value), "Value mode must still offer the high-edge leg"
+    # And Value mode ranks it ABOVE the safe leg (edge-led ranking).
+    names_in_order = [leg["player_name"] for leg in pool_value]
+    assert names_in_order.index("Big Edge Player") < names_in_order.index("Safe Player")
+
+
+def test_min_leg_probability_and_leg_count_constants_are_configurable(db_session):
+    from app.player_modelling.multi_builder import MAX_LEGS, MIN_LEGS, MIN_LEG_PROBABILITY, TIER_ORDER
+
+    for tier in TIER_ORDER:
+        assert 0.0 < MIN_LEG_PROBABILITY[tier] <= 1.0
+        assert MIN_LEGS[tier] >= 2
+        assert MAX_LEGS[tier] >= MIN_LEGS[tier]
+    # Conservative demands the highest individual-leg probability, Longer
+    # Shot the lowest - and leg-count ceilings widen as tiers get longer.
+    assert MIN_LEG_PROBABILITY[TIER_CONSERVATIVE] > MIN_LEG_PROBABILITY[TIER_BALANCED] > MIN_LEG_PROBABILITY[TIER_HIGHER_RETURN] > MIN_LEG_PROBABILITY[TIER_LONGER_SHOT]
+    assert MAX_LEGS[TIER_CONSERVATIVE] <= MAX_LEGS[TIER_BALANCED] <= MAX_LEGS[TIER_HIGHER_RETURN] <= MAX_LEGS[TIER_LONGER_SHOT]
+
+
+def test_conservative_can_use_more_than_two_legs_when_that_fits_better(db_session):
+    """Combination search, not greedy top-2: four safe, short, positive-
+    edge legs whose product only lands inside Conservative's 1.80-2.50 band
+    at FOUR legs (2 and 3 both fall short) must still be found."""
+    match, home, away = _seed_match(db_session)
+    for i in range(4):
+        _add_player_leg(db_session, match, home, player_name=f"Safe Player {i}", threshold=5.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.20)])
+    # 1.20^2=1.44, 1.20^3=1.728 (both below 1.80); 1.20^4=2.0736 (inside 1.80-2.50).
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    conservative = result.tiers[TIER_CONSERVATIVE]
+    assert conservative, "expected a 4-leg Conservative combination"
+    assert conservative[0]["n_legs"] == 4
+    assert 1.80 <= conservative[0]["indicative_combined_odds"] <= 2.50
+
+
+def test_option_shows_lowest_and_average_leg_probability_never_a_combined_probability(db_session):
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", threshold=10.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.40)])
+    _add_player_leg(db_session, match, home, player_name="Player B", threshold=5.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.40)])
+    # 1.40 * 1.40 = 1.96 -> Conservative
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    options = _all_options(result)
+    assert options
+    from app.player_modelling.multi_builder import option_as_dict
+    d = option_as_dict(options[0])
+    assert "lowest_leg_probability" in d and "average_leg_probability" in d
+    assert d["lowest_leg_probability"] <= d["average_leg_probability"]
+    assert not any("combined_probability" in k or "joint_probability" in k for k in d)
+    assert d["mode"] in ("high_probability", "value")
+
+
+def test_multi_builder_route_exposes_mode_and_probability_fields(client, db_session):
+    """API-level check: the mode query param reaches build_match_multis and
+    the response schema actually carries mode/lowest/average leg probability
+    (not just the Python dict from option_as_dict, which schema validation
+    would silently strip if MultiOptionRead hadn't been updated to match)."""
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", threshold=10.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.40)])
+    _add_player_leg(db_session, match, home, player_name="Player B", threshold=5.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.40)])
+
+    response = client.get(f"/api/afl/matches/{match.id}/multi-builder", params={"mode": "high_probability"})
+    assert response.status_code == 200
+    body = response.json()
+    options = [opt for tier in body["tiers"] for opt in tier["options"]]
+    assert options
+    for opt in options:
+        assert opt["mode"] == "high_probability"
+        assert "lowest_leg_probability" in opt and "average_leg_probability" in opt
+
+    bad = client.get(f"/api/afl/matches/{match.id}/multi-builder", params={"mode": "not_a_real_mode"})
+    assert bad.status_code == 422

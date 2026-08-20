@@ -1717,9 +1717,12 @@ export interface MultiLeg {
   reasons: string[];
 }
 
+export type MultiMode = "high_probability" | "value";
+
 export interface MultiOption {
   option_label: string;
   bookmaker: string;
+  mode: MultiMode;
   n_legs: number;
   indicative_combined_odds: number;
   indicative_odds_label: string;
@@ -1728,6 +1731,8 @@ export interface MultiOption {
   lineup_ready: boolean;
   correlation_warnings: string[];
   average_confidence_component: number;
+  lowest_leg_probability: number;
+  average_leg_probability: number;
   legs: MultiLeg[];
 }
 
@@ -1746,9 +1751,10 @@ export interface MatchMultiTiers {
   tiers: MultiTier[];
 }
 
-export function fetchMatchMultiBuilder(matchId: number, params: { confirmedOnly?: boolean } = {}): Promise<MatchMultiTiers> {
+export function fetchMatchMultiBuilder(matchId: number, params: { confirmedOnly?: boolean; mode?: MultiMode } = {}): Promise<MatchMultiTiers> {
   const query = new URLSearchParams();
   if (params.confirmedOnly !== undefined) query.set("confirmed_only", String(params.confirmedOnly));
+  if (params.mode !== undefined) query.set("mode", params.mode);
   const qs = query.toString();
   return request(`/api/afl/matches/${matchId}/multi-builder${qs ? `?${qs}` : ""}`);
 }

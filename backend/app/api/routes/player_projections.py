@@ -53,7 +53,7 @@ from app.player_modelling.elite_disposal_diagnostic import bucket_diagnostic_as_
 from app.player_modelling.final_shortlist import DEFAULT_SHORTLIST_LIMIT, load_final_shortlist
 from app.player_modelling.live_engine import ModelsUnavailableError, PromotedModelsUnavailableError, generate_live_projections
 from app.player_modelling.live_persistence import persist_projection_run
-from app.player_modelling.multi_builder import TIER_ORDER as MULTI_TIER_ORDER, build_match_multis, match_multi_tiers_as_dict
+from app.player_modelling.multi_builder import DEFAULT_MODE, MODE_HIGH_PROBABILITY, MODE_VALUE, TIER_ORDER as MULTI_TIER_ORDER, build_match_multis, match_multi_tiers_as_dict
 from app.player_modelling.opportunity_tiers import (
     DEFAULT_ALL_AVAILABLE_LIMIT,
     DEFAULT_BEST_LIMIT,
@@ -544,7 +544,12 @@ def get_opportunity_tiers(
 
 
 @router.get("/matches/{match_id}/multi-builder", response_model=MatchMultiTiersRead)
-def get_match_multi_builder(match_id: int, confirmed_only: bool = Query(default=True), db: Session = Depends(get_db)) -> MatchMultiTiersRead:
+def get_match_multi_builder(
+    match_id: int,
+    confirmed_only: bool = Query(default=True),
+    mode: str = Query(default=DEFAULT_MODE, description="'high_probability' ranks legs by individual landing probability first; 'value' ranks by model-vs-market edge"),
+    db: Session = Depends(get_db),
+) -> MatchMultiTiersRead:
     """Product feature stage: up to 3 model-informed multi combinations per
     tier (Conservative/Balanced/Higher Return/Longer Shot), built entirely
     from already-computed opportunities and already-existing hard/soft
@@ -553,9 +558,11 @@ def get_match_multi_builder(match_id: int, confirmed_only: bool = Query(default=
     any leg whose player selection isn't confirmed; team legs are always
     eligible regardless (Section: "unconfirmed players may appear only in
     a clearly labelled provisional multi")."""
+    if mode not in (MODE_HIGH_PROBABILITY, MODE_VALUE):
+        raise HTTPException(status_code=422, detail=f"mode must be one of: {MODE_HIGH_PROBABILITY}, {MODE_VALUE}")
     if db.get(Match, match_id) is None:
         raise HTTPException(status_code=404, detail="Match not found")
-    result = build_match_multis(db, match_id, confirmed_only=confirmed_only)
+    result = build_match_multis(db, match_id, confirmed_only=confirmed_only, mode=mode)
     return MatchMultiTiersRead(**match_multi_tiers_as_dict(result))
 
 

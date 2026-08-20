@@ -1581,6 +1581,7 @@ class MultiLegRead(BaseModel):
 class MultiOptionRead(BaseModel):
     option_label: str
     bookmaker: str
+    mode: str
     n_legs: int
     indicative_combined_odds: float
     indicative_odds_label: str
@@ -1589,6 +1590,8 @@ class MultiOptionRead(BaseModel):
     lineup_ready: bool
     correlation_warnings: list[str]
     average_confidence_component: float
+    lowest_leg_probability: float
+    average_leg_probability: float
     legs: list[MultiLegRead]
 
 
