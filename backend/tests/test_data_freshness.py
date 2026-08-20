@@ -61,6 +61,29 @@ def test_lineup_status_says_teams_not_yet_announced(db_session):
     assert "not yet announced" in lineup.detail.lower()
 
 
+def test_lineup_status_distinguishes_placeholder_roster_from_nothing_entered(db_session):
+    """A bulk-loaded placeholder roster (e.g. match 2063's real case: 46
+    players, all still 'placeholder') must not read identically to a match
+    with zero ExpectedLineup rows at all - it should say a roster was
+    loaded, while still NOT claiming the teams are confirmed."""
+    match, home, away = _seed_match(db_session)
+    player = Player(sport_id=match.sport_id, display_name="Some Player", source="afltables", source_player_id="p1", current_team_id=home.id)
+    db_session.add(player)
+    db_session.flush()
+    db_session.add(ExpectedLineup(
+        match_id=match.id, player_id=player.id, team_id=home.id,
+        status="expected_in", selection_status=SelectionStatus.PLACEHOLDER.value,
+        is_confirmed=False, recorded_at=NOW, source="manual",
+    ))
+    db_session.commit()
+
+    report = load_data_freshness(db_session)
+    lineup = next(i for i in report.items if i.category == "lineup_status")
+    assert lineup.status == NOT_AVAILABLE
+    assert "roster loaded" in lineup.detail.lower()
+    assert "not confirmed" in lineup.detail.lower()
+
+
 def test_lineup_status_fresh_when_all_teams_confirmed(db_session):
     match, home, away = _seed_match(db_session)
     player = Player(sport_id=match.sport_id, display_name="Nick Daicos", source="afltables", source_player_id="p1", current_team_id=home.id)

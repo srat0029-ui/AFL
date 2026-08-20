@@ -36,6 +36,18 @@ const ANNOUNCEMENT_LABELS: Record<AnnouncementState, string> = {
   final_team_confirmed: "Final team confirmed",
 };
 
+// A bulk-loaded placeholder roster is NOT the same claim as "nothing has
+// happened yet" — derive_announcement_state (backend) correctly keeps both
+// at "teams_not_announced" (a placeholder must never read as confirmed),
+// but the UI headline should still tell them apart so a loaded-but-
+// unreviewed roster doesn't look identical to an empty one.
+function announcementHeadline(summary: LineupSummary): string {
+  if (summary.announcement_state === "teams_not_announced" && summary.n_placeholder > 0) {
+    return "Roster loaded — teams not confirmed";
+  }
+  return ANNOUNCEMENT_LABELS[summary.announcement_state];
+}
+
 // Mirrors app/models/expected_lineup.py's derive_coarse_status — kept in
 // sync manually since this is display/default-picking logic only; the
 // server always recomputes is_confirmed/status itself and never trusts
@@ -253,7 +265,7 @@ function ExpectedLineupPanel({ matchId, homeTeamId, awayTeamId, homeTeamName, aw
 
       {summary && (
         <div className={`lineup-panel__announcement lineup-panel__announcement--${summary.announcement_state}`}>
-          <strong>{ANNOUNCEMENT_LABELS[summary.announcement_state]}</strong>
+          <strong>{announcementHeadline(summary)}</strong>
           {" — "}
           {summary.n_confirmed_selected} confirmed, {summary.n_named_in_squad} named in squad,{" "}
           {summary.n_uncertain + summary.n_placeholder} uncertain/placeholder, {summary.n_confirmed_out} confirmed out

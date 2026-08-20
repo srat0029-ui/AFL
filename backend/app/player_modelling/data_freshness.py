@@ -16,7 +16,7 @@ from app.models import Match, OddsQuote, PlayerDisposalProjection, PlayerGoalPro
 from app.player_modelling.live_report_query import load_lineup_summary
 from app.player_modelling.prop_odds_quota import recommended_refresh_interval
 from app.player_modelling.team_odds_ingestion import PROVIDER_NAME as TEAM_ODDS_PROVIDER_NAME
-from app.player_modelling.team_selection_ingestion import ANNOUNCEMENT_FINAL_CONFIRMED
+from app.player_modelling.team_selection_ingestion import ANNOUNCEMENT_FINAL_CONFIRMED, ANNOUNCEMENT_NOT_ANNOUNCED
 from app.player_modelling.upcoming_features import load_next_upcoming_round
 
 FRESH = "fresh"
@@ -128,10 +128,21 @@ def load_data_freshness(db: Session) -> DataFreshnessReport:
         "Venue-local kickoff forecast.", "No forecast collected yet for these venues.",
     ))
 
-    states = [load_lineup_summary(db, mid)["announcement_state"] for mid in match_ids]
+    summaries = [load_lineup_summary(db, mid) for mid in match_ids]
+    states = [s["announcement_state"] for s in summaries]
     n_confirmed = sum(1 for s in states if s == ANNOUNCEMENT_FINAL_CONFIRMED)
     if n_confirmed == 0:
-        items.append(FreshnessItem("lineup_status", "Team/lineup status", NOT_AVAILABLE, None, "Teams not yet announced."))
+        # A bulk-loaded placeholder roster is not the same claim as "nothing
+        # entered yet" - a placeholder must never read as confirmed, but the
+        # message should still say a roster exists so it isn't mistaken for
+        # a genuinely empty state.
+        n_with_placeholder_roster = sum(1 for s in summaries if s["announcement_state"] == ANNOUNCEMENT_NOT_ANNOUNCED and s["n_placeholder"] > 0)
+        detail = (
+            f"Roster loaded for {n_with_placeholder_roster} match(es) — teams not confirmed."
+            if n_with_placeholder_roster > 0
+            else "Teams not yet announced."
+        )
+        items.append(FreshnessItem("lineup_status", "Team/lineup status", NOT_AVAILABLE, None, detail))
     elif n_confirmed == len(states):
         items.append(FreshnessItem("lineup_status", "Team/lineup status", FRESH, None, "All upcoming matches have confirmed teams."))
     else:

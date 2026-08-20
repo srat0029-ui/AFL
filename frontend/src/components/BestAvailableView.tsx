@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchOpportunityTiers, type BestOpportunity, type DiversifiedOpportunity, type OpportunityTiersResponse } from "../api/client";
+import { fetchOpportunityTiers, triggerRefresh, type BestOpportunity, type DiversifiedOpportunity, type OpportunityTiersResponse } from "../api/client";
 import "./BestAvailableView.css";
 
 const CONFIDENCE_LABELS: Record<string, string> = {
@@ -106,14 +106,27 @@ function BestAvailableView() {
   const [error, setError] = useState<string | null>(null);
   const [showAllAvailable, setShowAllAvailable] = useState(false);
   const [showWhy, setShowWhy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
-  useEffect(() => {
+  function load() {
     setLoading(true);
     fetchOpportunityTiers()
       .then(setData)
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load opportunities"))
       .finally(() => setLoading(false));
-  }, []);
+  }
+
+  useEffect(load, []);
+
+  function handleRefresh() {
+    setRefreshing(true);
+    setRefreshError(null);
+    triggerRefresh()
+      .then(() => load()) // re-fetches the tiers so newly-fresh markets appear without a manual reload
+      .catch((err) => setRefreshError(err instanceof Error ? err.message : "Refresh failed"))
+      .finally(() => setRefreshing(false));
+  }
 
   if (loading) return <p className="loading-state">Loading…</p>;
   if (error) return <div className="error-banner">{error}</div>;
@@ -121,13 +134,28 @@ function BestAvailableView() {
 
   const bestIsEmpty = data.best.length === 0;
   const showFallback = bestIsEmpty && data.fallback_message !== null;
+  const staleCount = data.exclusion_breakdown.stale_odds ?? 0;
+  const otherValid = data.n_candidates - data.best.length - data.worth_reviewing.length;
 
   return (
     <div className="best-available">
-      <p className="hint">
-        {data.n_candidates} valid opportunit{data.n_candidates === 1 ? "y" : "ies"} pass hard integrity checks this
-        round · {data.n_hard_excluded} excluded (see below).
-      </p>
+      <section className="best-available__summary">
+        <span>{data.best.length} Best</span>
+        <span>{data.worth_reviewing.length} Worth Reviewing</span>
+        <span>{otherValid} other valid</span>
+        {staleCount > 0 && <span className="best-available__summary-stale">{staleCount} waiting on fresh odds</span>}
+        {(data.exclusion_breakdown.insufficient_history ?? 0) > 0 && <span>{data.exclusion_breakdown.insufficient_history} insufficient history</span>}
+      </section>
+
+      {staleCount > 0 && (
+        <div className="best-available__stale-banner">
+          <span>{staleCount} opportunities unavailable because bookmaker prices need refreshing.</span>
+          <button type="button" className="btn" onClick={handleRefresh} disabled={refreshing}>
+            {refreshing ? "Refreshing…" : "Refresh Data"}
+          </button>
+        </div>
+      )}
+      {refreshError && <div className="error-banner">{refreshError}</div>}
 
       <section className="best-available__section">
         <h2>Best Opportunities</h2>
