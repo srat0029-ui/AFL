@@ -19,6 +19,7 @@ from app.player_modelling.disposal_backtest import build_dataset as build_dispos
 from app.player_modelling.goal_backtest import build_goal_dataset
 from app.player_modelling.live_confidence import live_disposal_confidence, live_goal_confidence
 from app.player_modelling.live_models import fit_live_disposal_model, fit_live_goal_model
+from app.player_modelling.request_cache import cached_model_fit
 from app.player_modelling.upcoming_features import (
     ExpectedPlayer,
     UpcomingMatchTeams,
@@ -151,12 +152,22 @@ def generate_live_projections(db: Session, target_match_ids: set[int] | None = N
     disposal_feature_by_key = build_upcoming_disposal_features(db, upcoming_matches, expected_players, upcoming_team_context)
     goal_feature_by_key = build_upcoming_goal_features(db, upcoming_matches, expected_players, upcoming_team_context)
 
-    disposal_train_rows = build_disposal_dataset(db).all_rows
-    goal_train_rows = build_goal_dataset(db).all_rows
+    # Cached (not just recomputed): these depend only on historical
+    # PlayerMatchStat rows and the promoted run's config, never on any
+    # match's lineup, so a lineup edit shouldn't pay to refit them - see
+    # request_cache.py's "Live-projection model-fit cache" section.
+    disposal_train_rows = cached_model_fit(db, ("live_disposal_train_rows",), lambda: build_disposal_dataset(db).all_rows)
+    goal_train_rows = cached_model_fit(db, ("live_goal_train_rows",), lambda: build_goal_dataset(db).all_rows)
     data_cutoff = max((r.scheduled_start for r in disposal_train_rows), default=now)
 
-    live_disposal_model = fit_live_disposal_model(disposal_train_rows, disposal_run)
-    live_goal_model = fit_live_goal_model(goal_train_rows, goal_run)
+    live_disposal_model = cached_model_fit(
+        db, ("live_disposal_model", disposal_run.id, disposal_run.run_at),
+        lambda: fit_live_disposal_model(disposal_train_rows, disposal_run),
+    )
+    live_goal_model = cached_model_fit(
+        db, ("live_goal_model", goal_run.id, goal_run.run_at),
+        lambda: fit_live_goal_model(goal_train_rows, goal_run),
+    )
 
     disposal_model_version = f"{disposal_run.model_name}@{disposal_run.run_at.isoformat()}"
     goal_model_version = f"{goal_run.model_name}@{goal_run.run_at.isoformat()}"

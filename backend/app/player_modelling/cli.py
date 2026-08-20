@@ -77,7 +77,7 @@ from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, 
 from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
 from app.player_modelling.prop_settlement import settle_all_completed_matches
-from app.player_modelling.request_cache import clear_ttl_cache
+from app.player_modelling.request_cache import clear_model_fit_cache, clear_ttl_cache
 from app.player_modelling.team_odds_ingestion import ingest_team_odds
 from app.player_modelling.upcoming_features import count_missing_lineup_candidates, load_all_lineup_player_ids, load_next_upcoming_round
 from app.player_modelling.weather_ingestion import refresh_weather_for_matches
@@ -168,6 +168,7 @@ def _project_upcoming() -> int:
         _report_sanity_checks(db, run)
 
         clear_ttl_cache()
+        clear_model_fit_cache()
         return 0
     finally:
         db.close()
@@ -220,6 +221,7 @@ def _refresh_live() -> int:
         print(f"  Matches unchanged (skipped): {sorted(set(m.match_id for m in upcoming_matches) - changed_match_ids)}")
 
         clear_ttl_cache()
+        clear_model_fit_cache()
         return 0
     finally:
         db.close()
@@ -315,6 +317,7 @@ def _refresh_prop_odds(force: bool = False, min_interval_minutes: float | None =
             print(f"  {obs_report.skipped_no_projection} quote(s) skipped — no live projection for this player yet")
 
         clear_ttl_cache()
+        clear_model_fit_cache()
         return 0
     finally:
         db.close()
@@ -367,6 +370,7 @@ def _refresh_team_odds() -> int:
             f"requests_remaining={result.quota.requests_remaining} last_request_cost={result.quota.last_request_cost}"
         )
         clear_ttl_cache()
+        clear_model_fit_cache()
         return 0
     finally:
         db.close()

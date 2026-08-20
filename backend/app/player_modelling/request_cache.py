@@ -78,7 +78,7 @@ def _engine_token(db) -> str:
     return token
 
 
-def cached_with_ttl(db, key: tuple, compute: Callable[[], T], ttl_seconds: float = DEFAULT_TTL_SECONDS) -> T:
+def cached_with_ttl(db, key: tuple, compute: Callable[[], T], ttl_seconds: float = DEFAULT_TTL_SECONDS, *, store: dict | None = None) -> T:
     """Scoped by the Session's underlying Engine, not just `key` — this app
     runs one persistent Engine for the life of the real server process (so
     production correctly gets cross-request caching), but the test suite
@@ -86,16 +86,22 @@ def cached_with_ttl(db, key: tuple, compute: Callable[[], T], ttl_seconds: float
     db_session fixture. Keying on `key` alone let one test's cached result
     leak into a completely different test's assertions the moment both
     called this with identical arguments — caught by a full test-suite run
-    immediately after this cache was introduced."""
+    immediately after this cache was introduced.
+
+    `store` lets a caller use a private dict instead of the shared
+    `_ttl_cache` (see `cached_model_fit` below) so that clearing one cache
+    doesn't also evict entries that a different invalidation policy owns."""
+    if store is None:
+        store = _ttl_cache
     full_key = (_engine_token(db), key)
     now = time.monotonic()
-    entry = _ttl_cache.get(full_key)
+    entry = store.get(full_key)
     if entry is not None:
         expires_at, value = entry
         if now < expires_at:
             return value
     value = compute()
-    _ttl_cache[full_key] = (now + ttl_seconds, value)
+    store[full_key] = (now + ttl_seconds, value)
     return value
 
 
@@ -104,3 +110,30 @@ def clear_ttl_cache() -> None:
     next page load to reflect a just-completed refresh immediately rather
     than waiting out the TTL."""
     _ttl_cache.clear()
+
+
+# --- Live-projection model-fit cache ----------------------------------------
+#
+# `generate_live_projections` (live_engine.py) re-fits the disposal/goal
+# regression models against the full historical PlayerMatchStat dataset
+# (~100k rows) on every call — profiling a single-match lineup confirmation
+# showed this costing ~70-80s, almost none of it actually specific to the
+# match/lineup that changed. The fitted model and its training dataset only
+# depend on historical stats + which model run is promoted, NOT on any
+# match's current lineup, so they're cached separately from `_ttl_cache`
+# here: lineup-edit endpoints call `clear_ttl_cache()` on every save (correct
+# for lineup-dependent caches like prop insights) and must NOT also evict
+# this one, or every save would still pay the full re-fit cost. Invalidated
+# instead at the same points `clear_ttl_cache()` already is for a real data
+# refresh or model promotion (ingestion CLI, live_cycle.py) via
+# `clear_model_fit_cache()`, backed by a generous TTL as a safety net.
+_model_fit_cache: dict[tuple, tuple[float, object]] = {}
+MODEL_FIT_TTL_SECONDS = 900.0
+
+
+def cached_model_fit(db, key: tuple, compute: Callable[[], T], ttl_seconds: float = MODEL_FIT_TTL_SECONDS) -> T:
+    return cached_with_ttl(db, key, compute, ttl_seconds, store=_model_fit_cache)
+
+
+def clear_model_fit_cache() -> None:
+    _model_fit_cache.clear()

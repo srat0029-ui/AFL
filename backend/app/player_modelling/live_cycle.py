@@ -331,9 +331,10 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     except Exception as exc:  # noqa: BLE001
         report.add("refresh_weather", STEP_RECOVERABLE_FAILURE, f"weather refresh failed: {exc}")
 
-    from app.player_modelling.request_cache import clear_ttl_cache
+    from app.player_modelling.request_cache import clear_model_fit_cache, clear_ttl_cache
 
     clear_ttl_cache()
+    clear_model_fit_cache()
     return _persist_run(db, report, now)
 
 

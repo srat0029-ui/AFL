@@ -196,27 +196,42 @@ class RosterSuggestion:
     last_played_at: datetime
 
 
+RECENT_MATCHES_WINDOW = 6
+"""How many of the team's most recent completed matches count as "the
+current squad" for suggestion purposes. A single most-recent match misses
+anyone rested/omitted that week alone (e.g. a fit, first-choice player left
+out for one round) even though they're clearly still selectable - an AFL
+club rotates through roughly a 44-player list, not just the 22 who started
+last week. Six matches (~6 weeks) is generous enough to catch that rotation
+without reaching back so far it starts pulling in players who have since
+been delisted or traded away."""
+
+
 def suggest_roster_from_recent_match(db: Session, team_id: int) -> list[RosterSuggestion]:
     from app.models import Match, MatchStatus
 
-    last_match_id = db.execute(
-        select(PlayerMatchStat.match_id)
-        .join(Match, Match.id == PlayerMatchStat.match_id)
+    recent_match_ids = db.execute(
+        select(Match.id)
+        .join(PlayerMatchStat, PlayerMatchStat.match_id == Match.id)
         .where(PlayerMatchStat.team_id == team_id, Match.status == MatchStatus.COMPLETED)
+        .group_by(Match.id)
         .order_by(Match.scheduled_start.desc())
-        .limit(1)
-    ).scalar_one_or_none()
-    if last_match_id is None:
+        .limit(RECENT_MATCHES_WINDOW)
+    ).scalars().all()
+    if not recent_match_ids:
         return []
 
-    match = db.get(Match, last_match_id)
     rows = db.execute(
-        select(PlayerMatchStat, Player)
+        select(PlayerMatchStat, Player, Match)
         .join(Player, Player.id == PlayerMatchStat.player_id)
-        .where(PlayerMatchStat.team_id == team_id, PlayerMatchStat.match_id == last_match_id)
-        .order_by(Player.display_name)
+        .join(Match, Match.id == PlayerMatchStat.match_id)
+        .where(PlayerMatchStat.team_id == team_id, PlayerMatchStat.match_id.in_(recent_match_ids))
+        .order_by(Match.scheduled_start.desc())
     ).all()
-    return [
-        RosterSuggestion(player_id=p.id, display_name=p.display_name, last_match_id=last_match_id, last_played_at=match.scheduled_start)
-        for _stat, p in rows
-    ]
+
+    best_by_player: dict[int, RosterSuggestion] = {}
+    for _stat, p, m in rows:
+        if p.id in best_by_player:
+            continue  # rows are ordered most-recent-match-first; keep only that
+        best_by_player[p.id] = RosterSuggestion(player_id=p.id, display_name=p.display_name, last_match_id=m.id, last_played_at=m.scheduled_start)
+    return sorted(best_by_player.values(), key=lambda s: s.display_name)

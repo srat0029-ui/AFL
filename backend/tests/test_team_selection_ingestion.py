@@ -269,3 +269,37 @@ def test_suggest_roster_from_recent_match_returns_real_players_only(db_session):
 def test_suggest_roster_empty_when_no_completed_matches(db_session):
     match, home, away = _seed_teams_and_match(db_session)
     assert suggest_roster_from_recent_match(db_session, home.id) == []
+
+
+def test_suggest_roster_includes_player_rested_from_the_single_most_recent_match(db_session):
+    """Real-world bug: a fit, regular player rested/omitted for just ONE
+    week (e.g. a bye-style rest) must still show up as selectable - looking
+    only at the single most recent match drops them entirely, even though
+    they played every other recent week and are clearly still on the list."""
+    match, home, away = _seed_teams_and_match(db_session)
+    regular = _add_player(db_session, home.sport_id, home.id, "Regular Player", "players/R/Regular_Player.html")
+    rested_this_week = _add_player(db_session, home.sport_id, home.id, "Rested Player", "players/R/Rested_Player.html")
+
+    older = Match(
+        sport_id=home.sport_id, season_id=match.season_id, round_id=match.round_id,
+        home_team_id=home.id, away_team_id=away.id, scheduled_start=BASE - timedelta(days=17), status=MatchStatus.COMPLETED,
+    )
+    latest = Match(
+        sport_id=home.sport_id, season_id=match.season_id, round_id=match.round_id,
+        home_team_id=home.id, away_team_id=away.id, scheduled_start=BASE - timedelta(days=10), status=MatchStatus.COMPLETED,
+    )
+    db_session.add_all([older, latest])
+    db_session.flush()
+    for p in (regular, rested_this_week):
+        db_session.add(PlayerMatchStat(
+            player_id=p.id, match_id=older.id, team_id=home.id, opponent_team_id=away.id,
+            source="afltables", recorded_at=older.scheduled_start, disposals=15,
+        ))
+    db_session.add(PlayerMatchStat(
+        player_id=regular.id, match_id=latest.id, team_id=home.id, opponent_team_id=away.id,
+        source="afltables", recorded_at=latest.scheduled_start, disposals=18,
+    ))
+    db_session.commit()
+
+    suggestions = suggest_roster_from_recent_match(db_session, home.id)
+    assert {s.player_id for s in suggestions} == {regular.id, rested_this_week.id}
