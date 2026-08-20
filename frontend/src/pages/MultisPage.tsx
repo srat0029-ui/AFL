@@ -21,13 +21,16 @@ function MatchRow({ row, selected, onSelect }: { row: RoundMultiSummaryRow; sele
       </div>
       <div className="multis-page__tier-badges">
         {row.tiers_available.length === 0 ? (
-          <span className="hint">No tiers currently buildable</span>
+          <span className="hint">No tiers currently buildable, even provisionally</span>
         ) : (
-          row.tiers_available.map((t) => (
-            <span key={t} className="multis-page__tier-badge">
-              {TIER_LABELS[t] ?? t}
-            </span>
-          ))
+          <>
+            {row.tiers_available.map((t) => (
+              <span key={t} className="multis-page__tier-badge">
+                {TIER_LABELS[t] ?? t}
+              </span>
+            ))}
+            <span className="hint multis-page__tier-note">provisional — teams not yet confirmed in this app</span>
+          </>
         )}
       </div>
     </button>

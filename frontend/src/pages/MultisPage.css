@@ -73,6 +73,13 @@
   color: var(--accent-light);
 }
 
+.multis-page__tier-note {
+  display: block;
+  width: 100%;
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+}
+
 .multis-page__detail {
   min-width: 0;
 }
