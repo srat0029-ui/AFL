@@ -45,9 +45,19 @@ def _pair_correlation(a: dict, b: dict) -> str | None:
         return None
 
     if a["opportunity_type"] == "team" and b["opportunity_type"] == "team":
-        a_directional = a["market_type"] in ("h2h", "line") and a.get("team_id") is not None
-        b_directional = b["market_type"] in ("h2h", "line") and b.get("team_id") is not None
-        if a_directional and b_directional and a["team_id"] == b["team_id"] and a["market_type"] != b["market_type"]:
+        a_directional = a["market_type"] in ("h2h", "line")
+        b_directional = b["market_type"] in ("h2h", "line")
+        # h2h and line are each already collapsed to ONE representative per
+        # MATCH regardless of which team they're phrased for (see
+        # opportunity_families.family_key: team legs group by (match_id,
+        # market_type) only) - so an h2h leg and a line leg reaching this
+        # function are always describing the SAME underlying margin
+        # question from whichever team's perspective each happened to be
+        # quoted, e.g. "Gold Coast to win" and "St Kilda -15.5" are not two
+        # independent views, they can be directly CONTRADICTORY (Gold Coast
+        # winning at all means St Kilda did not cover -15.5). Strong,
+        # regardless of team_id.
+        if a_directional and b_directional and a["market_type"] != b["market_type"]:
             return CORRELATION_TEAM_DIRECTIONAL
         if a_directional and b["market_type"] == "total":
             return CORRELATION_TEAM_AND_TOTAL

@@ -255,6 +255,24 @@ def test_strong_correlation_never_combined(db_session):
         assert len(team_legs) <= 1, "H2H and line for the same team must never appear in the same multi"
 
 
+def test_h2h_and_opposite_team_line_never_combined(db_session):
+    """Real bug report: 'Gold Coast to win' + 'St Kilda -15.5' were being
+    proposed together as if independent - they're two phrasings of the
+    SAME underlying margin question (h2h/line are each collapsed to one
+    representative per match regardless of team) and can be directly
+    contradictory (Gold Coast winning at all means St Kilda didn't cover
+    -15.5)."""
+    match, home, away = _seed_match(db_session, home_name="St Kilda", away_name="Gold Coast")
+    _seed_model_runs(db_session)
+    _add_team_quotes(db_session, match, away.name, market_type="h2h", prices=[("SportsBet", 2.88)])  # Gold Coast to win
+    _add_team_quotes(db_session, match, home.name, market_type="line", line_value=-15.5, prices=[("SportsBet", 1.89)])  # St Kilda -15.5
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    for opt in _all_options(result):
+        team_legs = [leg for leg in opt["legs"] if leg["opportunity_type"] == "team"]
+        assert len(team_legs) <= 1, f"h2h and line for opposing teams must never combine, got {[l['label'] for l in team_legs]}"
+
+
 def test_moderate_correlation_carries_warning(db_session):
     match, home, away = _seed_match(db_session)
     _seed_model_runs(db_session)
