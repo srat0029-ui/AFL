@@ -1,0 +1,88 @@
+.multis-page {
+  max-width: 1300px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.multis-page__header h1 {
+  margin: 0 0 0.4rem;
+  font-size: 1.6rem;
+  color: var(--text-h);
+}
+
+.multis-page__layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 320px) 1fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.multis-page__match-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.multis-page__match-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  text-align: left;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.65rem 0.8rem;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.multis-page__match-row:hover {
+  border-color: var(--accent);
+}
+
+.multis-page__match-row--active {
+  border-color: var(--accent);
+  background: var(--bg-inset);
+}
+
+.multis-page__match-teams {
+  font-weight: 600;
+  color: var(--text-h);
+  font-size: 0.9rem;
+}
+
+.multis-page__tier-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.2rem;
+}
+
+.multis-page__tier-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  background: var(--bg-inset);
+  color: var(--accent-light);
+}
+
+.multis-page__detail {
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .multis-page__layout {
+    grid-template-columns: 1fr;
+  }
+
+  .multis-page__match-list {
+    max-height: none;
+  }
+}

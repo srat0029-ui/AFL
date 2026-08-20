@@ -28,11 +28,15 @@ from itertools import combinations
 CORRELATION_TEAM_DIRECTIONAL = "same_team_directional_view"
 CORRELATION_TEAM_AND_TOTAL = "team_view_and_match_total"
 CORRELATION_SAME_TEAM_PLAYERS = "same_team_players"
+CORRELATION_TEAM_AND_PLAYER = "team_view_and_player"
+CORRELATION_TOTAL_AND_PLAYER = "match_total_and_player"
 
 CORRELATION_STRENGTH = {
     CORRELATION_TEAM_DIRECTIONAL: "strong",
     CORRELATION_TEAM_AND_TOTAL: "moderate",
     CORRELATION_SAME_TEAM_PLAYERS: "moderate",
+    CORRELATION_TEAM_AND_PLAYER: "moderate",
+    CORRELATION_TOTAL_AND_PLAYER: "moderate",
 }
 
 
@@ -58,6 +62,18 @@ def _pair_correlation(a: dict, b: dict) -> str | None:
             return CORRELATION_SAME_TEAM_PLAYERS
         return None
 
+    # Team <-> player pairs (Multi Builder stage): "team win + one of that
+    # team's goal scorers" and "match total + a goal scorer" are both
+    # real, named moderate-correlation examples from the brief - related by
+    # shared game-environment, not the same underlying opinion twice.
+    team_leg, player_leg = (a, b) if a["opportunity_type"] == "team" else (b, a)
+    if team_leg["opportunity_type"] != "team" or player_leg["opportunity_type"] != "player":
+        return None
+    team_directional = team_leg["market_type"] in ("h2h", "line") and team_leg.get("team_id") is not None
+    if team_directional and team_leg["team_id"] == player_leg.get("team_id"):
+        return CORRELATION_TEAM_AND_PLAYER
+    if team_leg["market_type"] == "total":
+        return CORRELATION_TOTAL_AND_PLAYER
     return None
 
 
@@ -105,4 +121,8 @@ def market_correlation_labels(opportunity: dict, correlations_by_identity: dict[
             labels.append(f"Shares game environment with \"{r['other_label']}\" (moderately related)")
         elif r["category"] == CORRELATION_SAME_TEAM_PLAYERS:
             labels.append(f"Same team as \"{r['other_label']}\" (moderately related)")
+        elif r["category"] == CORRELATION_TEAM_AND_PLAYER:
+            labels.append(f"Shares a team with \"{r['other_label']}\" (moderately related)")
+        elif r["category"] == CORRELATION_TOTAL_AND_PLAYER:
+            labels.append(f"Shares game environment with \"{r['other_label']}\" (moderately related)")
     return labels

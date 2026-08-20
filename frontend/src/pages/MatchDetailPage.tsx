@@ -7,6 +7,7 @@ import DataFreshnessPanel from "../components/DataFreshnessPanel";
 import Disclaimer from "../components/Disclaimer";
 import ExpectedLineupPanel from "../components/ExpectedLineupPanel";
 import MatchContextPanel from "../components/MatchContextPanel";
+import MultiBuilderView from "../components/MultiBuilderView";
 import OddsPanel from "../components/OddsPanel";
 import PlayerPropPanel from "../components/PlayerPropPanel";
 import PlayerStatsTable, { type Column } from "../components/PlayerStatsTable";
@@ -245,6 +246,8 @@ function MatchDetailPage() {
       <OddsPanel matchId={match.id} homeTeamName={match.home_team.name} awayTeamName={match.away_team.name} />
 
       {match.status === "scheduled" && <MatchOpportunitiesSection opportunities={opportunities} loading={opportunitiesLoading} />}
+
+      {match.status === "scheduled" && <MultiBuilderView matchId={match.id} />}
 
       {match.status === "scheduled" && (
         <>

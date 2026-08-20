@@ -1556,6 +1556,69 @@ class ExcludedOpportunityRead(BaseModel):
     reason: str
 
 
+# --- Multi Builder (product feature stage) ----------------------------------
+
+
+class MultiLegRead(BaseModel):
+    opportunity_type: str
+    label: str
+    market_type: str
+    player_id: int | None
+    player_name: str | None
+    team_id: int | None
+    bookmaker_price: float
+    model_probability: float
+    model_fair_odds: float
+    difference_pp: float
+    confidence_tier: str
+    selection_status: str | None
+    is_confirmed: bool | None
+    odds_freshness: str
+    warnings: list[str]
+    reasons: list[str]
+
+
+class MultiOptionRead(BaseModel):
+    option_label: str
+    bookmaker: str
+    n_legs: int
+    indicative_combined_odds: float
+    indicative_odds_label: str
+    indicative_odds_explanation: str
+    provisional: bool
+    lineup_ready: bool
+    correlation_warnings: list[str]
+    average_confidence_component: float
+    legs: list[MultiLegRead]
+
+
+class MultiTierRead(BaseModel):
+    tier: str
+    label: str
+    options: list[MultiOptionRead]
+
+
+class MatchMultiTiersRead(BaseModel):
+    match_id: int
+    n_eligible_legs: int
+    bookmakers_available: list[str]
+    tiers: list[MultiTierRead]
+
+
+class RoundMultiSummaryRowRead(BaseModel):
+    match_id: int
+    home_team_name: str
+    away_team_name: str
+    scheduled_start: UtcDatetime
+    n_eligible_legs: int
+    n_bookmakers_available: int
+    tiers_available: list[str]
+
+
+class RoundMultiSummaryRead(BaseModel):
+    matches: list[RoundMultiSummaryRowRead]
+
+
 class FinalShortlistResponseRead(BaseModel):
     opportunities: list[FinalShortlistOpportunityRead]
     excluded: list[ExcludedOpportunityRead]

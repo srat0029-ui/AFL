@@ -1696,6 +1696,84 @@ export function fetchOpportunityTiers(
   return request(`/api/afl/best-opportunities/tiers${qs ? `?${qs}` : ""}`);
 }
 
+// --- Multi Builder (product feature stage) ----------------------------------
+
+export interface MultiLeg {
+  opportunity_type: "player" | "team";
+  label: string;
+  market_type: string;
+  player_id: number | null;
+  player_name: string | null;
+  team_id: number | null;
+  bookmaker_price: number;
+  model_probability: number;
+  model_fair_odds: number;
+  difference_pp: number;
+  confidence_tier: string;
+  selection_status: string | null;
+  is_confirmed: boolean | null;
+  odds_freshness: string;
+  warnings: string[];
+  reasons: string[];
+}
+
+export interface MultiOption {
+  option_label: string;
+  bookmaker: string;
+  n_legs: number;
+  indicative_combined_odds: number;
+  indicative_odds_label: string;
+  indicative_odds_explanation: string;
+  provisional: boolean;
+  lineup_ready: boolean;
+  correlation_warnings: string[];
+  average_confidence_component: number;
+  legs: MultiLeg[];
+}
+
+export type MultiTierKey = "conservative" | "balanced" | "higher_return" | "longer_shot";
+
+export interface MultiTier {
+  tier: MultiTierKey;
+  label: string;
+  options: MultiOption[];
+}
+
+export interface MatchMultiTiers {
+  match_id: number;
+  n_eligible_legs: number;
+  bookmakers_available: string[];
+  tiers: MultiTier[];
+}
+
+export function fetchMatchMultiBuilder(matchId: number, params: { confirmedOnly?: boolean } = {}): Promise<MatchMultiTiers> {
+  const query = new URLSearchParams();
+  if (params.confirmedOnly !== undefined) query.set("confirmed_only", String(params.confirmedOnly));
+  const qs = query.toString();
+  return request(`/api/afl/matches/${matchId}/multi-builder${qs ? `?${qs}` : ""}`);
+}
+
+export interface RoundMultiSummaryRow {
+  match_id: number;
+  home_team_name: string;
+  away_team_name: string;
+  scheduled_start: string;
+  n_eligible_legs: number;
+  n_bookmakers_available: number;
+  tiers_available: MultiTierKey[];
+}
+
+export interface RoundMultiSummary {
+  matches: RoundMultiSummaryRow[];
+}
+
+export function fetchRoundMultiSummary(params: { confirmedOnly?: boolean } = {}): Promise<RoundMultiSummary> {
+  const query = new URLSearchParams();
+  if (params.confirmedOnly !== undefined) query.set("confirmed_only", String(params.confirmedOnly));
+  const qs = query.toString();
+  return request(`/api/afl/multi-builder/round-summary${qs ? `?${qs}` : ""}`);
+}
+
 // --- Final Weekly Shortlist (Market Integrity stage, Sections 7-11, 22) ---
 
 export interface FinalShortlistOpportunity extends BestOpportunity {
