@@ -6,16 +6,27 @@ leg's model_probability/model_fair_odds/confidence_tier/odds_freshness is
 copied unchanged from that existing computation.
 
 Two modes, selectable independently of tier (see MODE_HIGH_PROBABILITY /
-MODE_VALUE):
-  - High Probability: ranks and searches candidate legs primarily by their
-    OWN model probability (then confidence/calibration/lineup/freshness,
-    edge only last) — a leg like "82% model probability, $1.25, modest
-    edge" is exactly what this mode is FOR, not something to filter out.
+MODE_VALUE), sourced from two DIFFERENT candidate pools built from that
+same underlying data:
+  - High Probability (the default): ranks and searches candidate legs
+    primarily by their OWN model probability (then confidence/threshold-
+    specific calibration/confirmed lineup/freshness/recent-form warnings,
+    edge only last, minor). Built from _all_alternate_legs — EVERY valid
+    fresh alternate threshold line, never collapsed down to one
+    value-ranked "representative" per player/market first, so a player's
+    15+/20+/25+ disposal lines are all independently available and a
+    genuinely likely line is never hidden behind a punchier-but-riskier
+    one. A leg like "82% model probability, $1.25, modest edge" is
+    exactly what this mode is FOR, not something to filter out — nor is
+    "92% model probability, $1.10, tiny edge" something a large-edge-but-
+    52%-probability leg should be able to outrank here.
   - Value: ranks by the existing transparent opportunity_score (edge/EV-
-    led) — unchanged from before this stage.
-Neither mode ever includes a leg with a negative model-market edge (see
-MIN_EDGE_FLOOR_HIGH_PROBABILITY) — "modest positive edge" is allowed,
-"the model thinks this is overpriced" is not, in either mode.
+    led), built from the existing collapsed _match_legs pool — unchanged
+    from before this stage.
+Both modes still refuse a leg the model considers CLEARLY overpriced (see
+MIN_EDGE_FLOOR_HIGH_PROBABILITY — a small, configurable, near-neutral
+tolerance for High Probability; Value mode leans on its own score
+ranking instead of a second hard floor).
 
 Combination search, not greedy top-2: for each tier this searches actual
 2..N-leg COMBINATIONS (N per MAX_LEGS below) of the mode-ranked candidate
@@ -51,7 +62,7 @@ from sqlalchemy.orm import Session
 from app.models.bookmaker import ELIGIBILITY_INCLUDED
 from app.player_modelling.best_opportunities import load_best_opportunities
 from app.player_modelling.market_correlation import CORRELATION_STRENGTH, _pair_correlation
-from app.player_modelling.opportunity_families import group_into_families, representative_score
+from app.player_modelling.opportunity_families import family_key, group_into_families, representative_score
 from app.player_modelling.quality_tiers import TIER_DO_NOT_HEADLINE
 
 TIER_CONSERVATIVE = "conservative"
@@ -66,36 +77,42 @@ TIER_LABELS = {
 # (min, max) target combined decimal odds - max=None means no ceiling.
 TIER_RANGES: dict[str, tuple[float, float | None]] = {
     TIER_CONSERVATIVE: (1.80, 2.50),
-    TIER_BALANCED: (3.00, 5.00),
+    TIER_BALANCED: (2.50, 5.00),
     TIER_HIGHER_RETURN: (5.00, 10.00),
     TIER_LONGER_SHOT: (10.00, None),
 }
 
 # Ranges, not targets (see module docstring) - fewer legs are preferred
-# when they already reach the target band, but a 3-5 leg combination of
+# when they already reach the target band, but a 4-5 leg combination of
 # individually strong legs is never artificially capped at 2.
 MIN_LEGS: dict[str, int] = {TIER_CONSERVATIVE: 2, TIER_BALANCED: 2, TIER_HIGHER_RETURN: 3, TIER_LONGER_SHOT: 3}
-MAX_LEGS: dict[str, int] = {TIER_CONSERVATIVE: 4, TIER_BALANCED: 5, TIER_HIGHER_RETURN: 6, TIER_LONGER_SHOT: 7}
+MAX_LEGS: dict[str, int] = {TIER_CONSERVATIVE: 5, TIER_BALANCED: 6, TIER_HIGHER_RETURN: 7, TIER_LONGER_SHOT: 8}
 
 MODE_HIGH_PROBABILITY = "high_probability"
 MODE_VALUE = "value"
 DEFAULT_MODE = MODE_HIGH_PROBABILITY
 
 # High-Probability mode's per-tier minimum individual-leg model
-# probability - configurable, not hardcoded into the search itself.
+# probability - configurable, not hardcoded into the search itself. Every
+# tier sits above 50% per leg; Conservative/Balanced deliberately demand a
+# genuinely high individual chance since that's the entire point of the
+# mode (a 2+ goals leg at 51% must never qualify here just because its
+# bookmaker price is generous - see the module docstring's goals example).
 MIN_LEG_PROBABILITY: dict[str, float] = {
-    TIER_CONSERVATIVE: 0.75, TIER_BALANCED: 0.68, TIER_HIGHER_RETURN: 0.60, TIER_LONGER_SHOT: 0.50,
+    TIER_CONSERVATIVE: 0.75, TIER_BALANCED: 0.65, TIER_HIGHER_RETURN: 0.55, TIER_LONGER_SHOT: 0.50,
 }
-# Both modes require a non-negative model-market edge (never a leg the
-# model thinks is overpriced); High-Probability mode's floor may sit right
-# at neutral since a leg's OWN probability, not its edge, is what earns it
-# a place here. Value mode leans on the existing opportunity_score ranking
-# for its stronger edge preference rather than a second hard floor.
-MIN_EDGE_FLOOR_HIGH_PROBABILITY = 0.0
+# A small, configurable tolerance for near-neutral value: High-Probability
+# mode's OWN qualification is the leg's probability, not its edge, so a
+# leg sitting right at (or a touch below) neutral is still allowed. This
+# is deliberately small - nowhere near enough to admit a leg the model
+# considers clearly overpriced just to pad a leg count. Value mode leans
+# on the existing opportunity_score ranking for its stronger edge
+# preference rather than this floor.
+MIN_EDGE_FLOOR_HIGH_PROBABILITY = -0.02
 
 MAX_OPTIONS_PER_TIER = 3
 MAX_APPEARANCES_PER_PLAYER = 2  # across the WHOLE match's multi set (every tier, every option) - no single player dominates
-_MAX_POOL_SIZE = 12  # candidate legs considered per bookmaker, per tier+mode - keeps combination search fast without changing which legs WIN
+_MAX_POOL_SIZE = 16  # candidate legs considered per bookmaker, per tier+mode - keeps combination search fast without changing which legs WIN
 _MAX_BOOKMAKERS_SEARCHED = 5  # ranked by how many usable legs they offer
 
 INDICATIVE_ODDS_LABEL = "Indicative combined odds"
@@ -180,6 +197,33 @@ def _match_legs(db: Session, match_id: int) -> list[dict]:
     return result
 
 
+def _all_alternate_legs(db: Session, match_id: int) -> list[dict]:
+    """High-Probability mode's candidate source — deliberately NOT
+    _match_legs/group_into_families: that pipeline collapses every
+    player+market family down to one value-ranked representative plus at
+    most one "safest alternate," which silently discards other threshold
+    lines (e.g. a player's 15+/20+/25+ disposal lines) before High-
+    Probability mode ever sees them. This instead keeps EVERY individual
+    alternate line that passes the same hard integrity gate (fresh,
+    non-stale, sufficient history, no confirmed-out/price-integrity
+    failure) as its own independent candidate, still tagged with the same
+    family_key so _combo_valid can enforce "only one line per player's
+    disposal/goal market in a single multi" — that's a per-combination
+    validity rule, not a reason to hide candidates from the ranking/search
+    itself."""
+    raw = load_best_opportunities(
+        db, market_scope="all", include_uncertain=True, include_stale=True, include_insufficient_history=True, limit=None,
+    )
+    result = []
+    for o in raw:
+        if o["match_id"] != match_id or o["quality_tier"]["tier"] == TIER_DO_NOT_HEADLINE:
+            continue
+        leg = dict(o)
+        leg["_family_key"] = family_key(o)
+        result.append(leg)
+    return result
+
+
 def _legs_by_bookmaker(legs: list[dict]) -> dict[str, list[dict]]:
     """Only ELIGIBLE (enabled sportsbook) bookmakers - a multi is only ever
     proposed against a bookmaker that actually offers every one of its
@@ -198,14 +242,19 @@ def _legs_by_bookmaker(legs: list[dict]) -> dict[str, list[dict]]:
 
 def _high_probability_score(leg: dict) -> tuple:
     """Lexicographic priority exactly as specified: model probability,
-    then confidence, then calibration, then confirmed-lineup, then
-    freshness, then (last, minor) model-market edge. Confidence/
-    calibration/freshness/lineup are the SAME named, already-visible
-    components opportunity_score itself uses (prop_opportunity_ranking.py)
-    — reused, not reinvented."""
+    then confidence, then threshold-specific calibration, then confirmed
+    lineup, then freshness/integrity, then recent-form/context warnings,
+    then (last, minor) model-market edge. Confidence/calibration/
+    freshness/lineup are the SAME named, already-visible components
+    opportunity_score itself uses (prop_opportunity_ranking.py) — reused,
+    not reinvented."""
     comp = leg["opportunity_components"]
     lineup_ok = leg["opportunity_type"] != "player" or bool(leg.get("is_confirmed"))
-    return (leg["model_probability"], comp["confidence"], comp["calibration"], 1.0 if lineup_ok else 0.0, comp["freshness"], leg["difference_pp"])
+    n_warnings = len(leg.get("warnings", []))
+    return (
+        leg["model_probability"], comp["confidence"], comp["calibration"],
+        1.0 if lineup_ok else 0.0, comp["freshness"], -n_warnings, leg["difference_pp"],
+    )
 
 
 def _candidate_pool(legs: list[dict], tier_key: str, mode: str, *, confirmed_only: bool) -> list[dict]:
@@ -256,17 +305,21 @@ def _combo_valid(
     return combined, warnings
 
 
-def _combo_rank_key(combo: tuple[dict, ...], mode: str) -> tuple:
+def _combo_rank_key(combo: tuple[dict, ...], warnings: list[str], mode: str) -> tuple:
     probs = [leg["model_probability"] for leg in combo]
     n_confirmed = sum(1 for leg in combo if leg["opportunity_type"] != "player" or leg.get("is_confirmed"))
     if mode == MODE_HIGH_PROBABILITY:
-        # Maximise the WEAKEST leg's probability first (a multi is only as
-        # safe as its shakiest leg), then average probability, then
-        # calibration/freshness quality, then confirmed-player count,
-        # finally prefer fewer legs when everything else ties.
-        avg_calibration = mean(leg["opportunity_components"]["calibration"] for leg in combo)
-        avg_freshness = mean(leg["opportunity_components"]["freshness"] for leg in combo)
-        return (min(probs), mean(probs), avg_calibration, avg_freshness, n_confirmed, -len(combo))
+        # Exactly the order specified: (1) target odds band is a hard
+        # filter in _combo_valid, not part of this key; (2) maximise the
+        # WEAKEST leg's probability (a multi is only as safe as its
+        # shakiest leg); (3) maximise average probability; (4) maximise
+        # average confidence/calibration quality; (5) minimise
+        # correlation (fewer/no moderate-correlation warnings); (6)
+        # prefer confirmed players; (7) only then consider additional
+        # model-market value; fewer legs is the final tiebreak.
+        avg_quality = mean((leg["opportunity_components"]["confidence"] + leg["opportunity_components"]["calibration"]) / 2 for leg in combo)
+        avg_edge = mean(leg["difference_pp"] for leg in combo)
+        return (min(probs), mean(probs), avg_quality, -len(warnings), n_confirmed, avg_edge, -len(combo))
     # Value mode: prioritise average model-market edge/value (the existing
     # transparent opportunity score), never raw combined odds.
     avg_value_score = mean(representative_score(leg) for leg in combo)
@@ -289,7 +342,7 @@ def _search_tier_bookmaker(
             if check is None:
                 continue
             combined_odds, warnings = check
-            key = _combo_rank_key(combo, mode)
+            key = _combo_rank_key(combo, warnings, mode)
             if best is None or key > best_key:
                 best, best_key = (combo, combined_odds, warnings), key
     return best
@@ -321,7 +374,7 @@ def _options_for_tier(
             if found is None:
                 continue
             combo, combined_odds, warnings = found
-            key = _combo_rank_key(combo, mode)
+            key = _combo_rank_key(combo, warnings, mode)
             if best_overall is None or key > best_overall_key:
                 best_overall, best_overall_key, best_bookmaker = (combo, combined_odds, warnings), key, bookmaker_name
         if best_overall is None:
@@ -366,7 +419,10 @@ class MatchMultiTiers:
 
 
 def build_match_multis(db: Session, match_id: int, *, confirmed_only: bool = True, mode: str = DEFAULT_MODE) -> MatchMultiTiers:
-    legs = _match_legs(db, match_id)
+    # High-Probability mode sources from EVERY alternate threshold line
+    # (see _all_alternate_legs); Value mode keeps the existing collapsed
+    # one-representative-plus-safest-alternate pool (_match_legs), unchanged.
+    legs = _all_alternate_legs(db, match_id) if mode == MODE_HIGH_PROBABILITY else _match_legs(db, match_id)
     by_bookmaker = _legs_by_bookmaker(legs)
     player_counts: dict[int, int] = {}
 

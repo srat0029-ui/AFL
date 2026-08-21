@@ -440,3 +440,83 @@ def test_multi_builder_route_exposes_mode_and_probability_fields(client, db_sess
 
     bad = client.get(f"/api/afl/matches/{match.id}/multi-builder", params={"mode": "not_a_real_mode"})
     assert bad.status_code == 422
+
+
+def test_high_probability_sees_every_alternate_line_not_just_one_safest_alt(db_session):
+    """This stage's core fix: _match_legs (Value mode's pool) collapses a
+    player's alternate lines down to one value-ranked representative plus
+    at most one "safest alternate," which would silently hide a player's
+    3rd/4th/5th disposal line from High-Probability mode entirely. High
+    Probability must instead see EVERY valid alternate threshold line."""
+    from app.player_modelling.multi_builder import _all_alternate_legs
+
+    match, home, away = _seed_match(db_session)
+    # One player, three alternate disposal lines - low/mid/high threshold,
+    # same underlying projection (mean=27, matching the module docstring's
+    # own 15+/20+/25+ example).
+    # Prices set a touch LONGER than each threshold's own fair odds (model
+    # prob ~80%/65%/49%) so every line nets a small positive edge - the
+    # rows would otherwise be silently dropped by opportunities_only, same
+    # as any real market with a negative model-market difference.
+    _add_player_leg(db_session, match, home, player_name="Multi Line Player", threshold=14.5, predicted_mean=27.0, nb_alpha=0.25, prices=[("SportsBet", 1.32)])
+    _add_player_leg(db_session, match, home, player_name="Multi Line Player", threshold=19.5, predicted_mean=27.0, nb_alpha=0.25, prices=[("SportsBet", 1.65)])
+    _add_player_leg(db_session, match, home, player_name="Multi Line Player", threshold=24.5, predicted_mean=27.0, nb_alpha=0.25, prices=[("SportsBet", 2.20)])
+
+    all_legs = _all_alternate_legs(db_session, match.id)
+    thresholds = sorted(leg["threshold"] for leg in all_legs if leg.get("player_name") == "Multi Line Player")
+    assert thresholds == [14.5, 19.5, 24.5], f"expected all three alternate lines, got {thresholds}"
+
+    # All three share one family_key (same player, same match, same market
+    # family) so a combo can never use two of this player's disposal lines
+    # at once - a pool-visibility fix, not a relaxation of that rule.
+    family_keys = {leg["_family_key"] for leg in all_legs if leg.get("player_name") == "Multi Line Player"}
+    assert len(family_keys) == 1
+
+
+def test_low_probability_goal_leg_excluded_from_conservative_and_balanced_despite_big_edge(db_session):
+    """Module docstring's explicit goals caution: a 2+ goals leg sitting at
+    ~51% model probability must never qualify for Conservative/Balanced
+    High-Probability multis no matter how attractive its price/edge looks -
+    the probability floor is never bypassed by edge."""
+    from app.player_modelling.multi_builder import MIN_LEG_PROBABILITY, MODE_HIGH_PROBABILITY, TIER_BALANCED, TIER_CONSERVATIVE, _all_alternate_legs, _candidate_pool
+
+    match, home, away = _seed_match(db_session)
+    _ensure_promoted_disposal_model(db_session)
+    player = Player(sport_id=match.sport_id, display_name="Marginal Goalkicker", source="afltables", source_player_id="marginal-goalkicker", current_team_id=home.id)
+    db_session.add(player)
+    db_session.flush()
+    from app.player_modelling.goal_distribution import HurdleDistribution  # local import mirrors goal_backtest's own usage
+
+    db_session.add(ExpectedLineup(
+        match_id=match.id, player_id=player.id, team_id=home.id, status="expected_in",
+        selection_status="confirmed_selected", is_confirmed=True, recorded_at=NOW, source="manual",
+    ))
+    from app.models import PlayerGoalProjection
+    # p_score/mu_scored/alpha_scored chosen so P(2+ goals) lands ~51% -
+    # a "coin flip" goal leg, exactly the case that must NOT qualify.
+    dist = HurdleDistribution(p_score=0.95, mu_scored=1.6, alpha_scored=0.35)
+    prob_2plus = dist.prob_at_least(2)
+    assert 0.45 <= prob_2plus <= 0.58, f"fixture sanity: expected ~51% P(2+ goals), got {prob_2plus:.2%}"
+    db_session.add(PlayerGoalProjection(
+        match_id=match.id, player_id=player.id, team_id=home.id, model_name="goals_hurdle", model_version="v1",
+        generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=40,
+        predicted_mean=dist.mean(), distribution_kind="hurdle", nb_alpha=None, p_score=0.95, mu_scored=1.6, alpha_scored=0.35,
+        scoring_archetype="forward", confidence_tier="higher_confidence", warnings=[], input_features={},
+    ))
+    bookmaker = _bookmaker(db_session, "SportsBet")
+    db_session.add(PlayerPropMarket(
+        match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id, market_type=PlayerMarket.GOALS.value,
+        line_type="over_under", threshold=1.5, selection="over", price_decimal=2.60,  # big edge vs ~51% model prob
+        recorded_at=NOW, source="the_odds_api",
+    ))
+    db_session.commit()
+
+    all_legs = _all_alternate_legs(db_session, match.id)
+    leg = next(leg for leg in all_legs if leg.get("player_name") == "Marginal Goalkicker")
+    assert 0.45 <= leg["model_probability"] <= 0.58
+    assert leg["difference_pp"] > 0.10, "fixture sanity: this leg must have a large positive edge"
+
+    for tier in (TIER_CONSERVATIVE, TIER_BALANCED):
+        assert leg["model_probability"] < MIN_LEG_PROBABILITY[tier]
+        pool = _candidate_pool(all_legs, tier, MODE_HIGH_PROBABILITY, confirmed_only=True)
+        assert leg["_family_key"] not in {p["_family_key"] for p in pool if p.get("player_name") == "Marginal Goalkicker"}

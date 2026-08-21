@@ -5,8 +5,8 @@ import "./MultiBuilderView.css";
 const DEFAULT_MODE_BY_TIER: Record<MultiTierKey, MultiMode> = {
   conservative: "high_probability",
   balanced: "high_probability",
-  higher_return: "value",
-  longer_shot: "value",
+  higher_return: "high_probability",
+  longer_shot: "high_probability",
 };
 
 const MODE_LABEL: Record<MultiMode, string> = {
@@ -45,6 +45,10 @@ function MultiLegRow({ leg }: { leg: MultiOption["legs"][number] }) {
 }
 
 function MultiOptionCard({ tierLabel, option }: { tierLabel: string; option: MultiOption }) {
+  // Floor to the nearest 5% so the badge never overstates what the data
+  // actually supports (e.g. 76.4% lowest -> "All legs >= 75%", not 76%).
+  const badgeFloor = Math.floor((option.lowest_leg_probability * 100) / 5) * 5;
+
   return (
     <div className="multi-card">
       <div className="multi-card__header">
@@ -55,7 +59,12 @@ function MultiOptionCard({ tierLabel, option }: { tierLabel: string; option: Mul
           <span className="hint multi-card__bookmaker"> · {option.bookmaker}</span>
           <span className="multi-card__mode-badge"> · {MODE_LABEL[option.mode]}</span>
         </div>
-        {option.provisional && <span className="multi-card__provisional-badge">Provisional</span>}
+        <div className="multi-card__badges">
+          {option.mode === "high_probability" && badgeFloor >= 50 && (
+            <span className="multi-card__probability-badge">All legs ≥ {badgeFloor}%</span>
+          )}
+          {option.provisional && <span className="multi-card__provisional-badge">Provisional</span>}
+        </div>
       </div>
 
       <div className="multi-card__legs">

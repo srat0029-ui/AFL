@@ -98,6 +98,13 @@
   font-weight: normal;
 }
 
+.multi-card__badges {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
 .multi-card__provisional-badge {
   display: inline-block;
   font-size: 0.68rem;
@@ -106,6 +113,17 @@
   padding: 0.1rem 0.4rem;
   background: var(--warning-bg);
   color: var(--warning-text);
+  white-space: nowrap;
+}
+
+.multi-card__probability-badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 0.1rem 0.4rem;
+  background: var(--success-bg);
+  color: var(--success-text);
   white-space: nowrap;
 }
 
