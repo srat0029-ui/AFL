@@ -185,6 +185,9 @@ def compute_match_edges(db: Session, match: Match, context: ModelContext) -> lis
         if primary_prob is None:
             continue  # e.g. selection didn't match either team — shouldn't happen given Stage 1.4's own validation, but don't crash on bad data
 
+        if quote.price_decimal <= 1.0:
+            continue  # a degenerate/placeholder price from the provider (e.g. a suspended market) — real bad data seen live, not a hypothetical; skip this ONE quote rather than let implied_probability's ValueError abort every match's opportunities
+
         fair_market_prob, overround_removed = _fair_market_probability(quote, quotes, pairing_index)
         market_implied_prob = implied_probability(quote.price_decimal)
 
@@ -288,7 +291,14 @@ def _index_pairings(quotes: list[OddsQuote], home_name: str, away_name: str) -> 
 
 def _fair_market_probability(quote: OddsQuote, quotes: list[OddsQuote], pairing_index: dict[int, OddsQuote]) -> tuple[float, bool]:
     pairing = pairing_index.get(quote.id)
-    if pairing is None:
+    # A degenerate pairing price (e.g. a provider glitch reporting 1.0 for
+    # a suspended market) can't de-vig against - fall back to this quote's
+    # own raw implied probability rather than letting remove_overround's
+    # ValueError propagate and take down every other match's opportunities
+    # too (compute_match_edges already skips a degenerate `quote` itself;
+    # this covers the OTHER side of the pairing, which can independently
+    # be bad even when `quote` itself is fine).
+    if pairing is None or pairing.price_decimal <= 1.0:
         return implied_probability(quote.price_decimal), False
 
     fair = remove_overround({"this": quote.price_decimal, "other": pairing.price_decimal})

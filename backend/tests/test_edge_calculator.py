@@ -118,6 +118,30 @@ def test_h2h_one_side_only_flags_overround_not_removed(db_session):
     assert any("overround" in r for r in edges[0].confidence_reasons)
 
 
+def test_degenerate_price_from_provider_never_crashes_the_whole_match(db_session):
+    """Real bug seen live: a provider (The Odds API) occasionally reports a
+    degenerate price_decimal of 1.0 for a suspended/settled market, which
+    implied_probability correctly rejects — but compute_match_edges used to
+    let that ValueError propagate uncaught, which (via best_opportunities'
+    per-round loop) took down opportunities for EVERY match in the round,
+    not just the one bad quote. Both sides of the pairing must be guarded:
+    the degenerate quote itself is skipped entirely, and a fine quote whose
+    PAIRED opposite side is degenerate falls back to its own raw implied
+    probability instead of crashing remove_overround."""
+    _seed_model_runs(db_session)
+    match = _seed_upcoming_match(db_session)
+    _add_quote(db_session, match, "Sportsbet", "h2h", "Carlton", 1.0)  # degenerate/placeholder
+    _add_quote(db_session, match, "Sportsbet", "h2h", "Richmond", 2.05)  # otherwise-fine paired quote
+    context = build_model_context(db_session)
+
+    edges = compute_match_edges(db_session, match, context)  # must not raise
+    assert len(edges) == 1
+    richmond_edge = edges[0]
+    assert richmond_edge.selection == "Richmond"
+    assert richmond_edge.overround_removed is False
+    assert richmond_edge.fair_market_probability == pytest.approx(richmond_edge.market_implied_probability)
+
+
 def test_total_market_with_no_validated_edge_is_insufficient_data(db_session):
     """The core 'do not manufacture an insight' check: Stage 1.3 found the
     Poisson total-points market has no demonstrated edge over naive — any
