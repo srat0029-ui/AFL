@@ -33,6 +33,7 @@ from app.player_modelling.prop_math import categorize_edge, compare_model_to_mar
 from app.player_modelling.team_selection_ingestion import derive_announcement_state
 from app.player_modelling.upcoming_team_context import build_upcoming_team_context
 from app.player_modelling.upcoming_features import load_next_upcoming_round
+from app.player_modelling.usage_regime import goal_usage_risk_flags
 
 DISPOSAL_THRESHOLDS: tuple[int, ...] = (15, 20, 25, 30, 35, 40)
 GOAL_THRESHOLDS: tuple[int, ...] = (1, 2, 3, 4, 5)
@@ -123,6 +124,8 @@ def _disposal_view(
         "is_stale": staleness.is_stale,
         "stale_reasons": staleness.reasons,
         "input_features": row.input_features,
+        "usage_regime": row.usage_regime,
+        "model_risk_flags": [],  # disposal's usage-change effect didn't meet the evidence bar for a flag (see usage_regime.goal_usage_risk_flags)
     }
 
 
@@ -173,6 +176,8 @@ def _goal_view(
         "is_stale": staleness.is_stale,
         "stale_reasons": staleness.reasons,
         "input_features": row.input_features,
+        "usage_regime": row.usage_regime,
+        "model_risk_flags": [{"code": f.code, "description": f.description} for f in goal_usage_risk_flags(row.usage_regime)],
     }
 
 

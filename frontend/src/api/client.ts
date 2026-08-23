@@ -1207,6 +1207,8 @@ export interface DisposalProjection {
   is_stale: boolean;
   stale_reasons: string[];
   input_features: Record<string, number | null>;
+  usage_regime: string | null;
+  model_risk_flags: ModelRiskFlagV1[];
 }
 
 export interface GoalProjection {
@@ -1235,6 +1237,8 @@ export interface GoalProjection {
   is_stale: boolean;
   stale_reasons: string[];
   input_features: Record<string, number | null>;
+  usage_regime: string | null;
+  model_risk_flags: ModelRiskFlagV1[];
 }
 
 export interface MatchProjections {
@@ -1560,6 +1564,8 @@ export interface BestOpportunity {
   why_model_likes_it: string;
   calibration: CalibrationMetrics | null;
   warnings: string[];
+  usage_regime: string | null;
+  model_risk_flags: ModelRiskFlagV1[];
   opportunity_score: number;
   opportunity_components: OpportunityComponents;
   price_integrity: PriceIntegrityCheck | null;
@@ -1715,6 +1721,8 @@ export interface MultiLeg {
   odds_freshness: string;
   warnings: string[];
   reasons: string[];
+  usage_regime: string | null;
+  model_risk_flags: ModelRiskFlagV1[];
   // null for player legs by convention (every player-market opportunity IS
   // the "over" side by construction — see backend best_opportunities.py) —
   // callers that need a selection string for a player leg (e.g. adding it
@@ -2810,6 +2818,11 @@ export interface CalibrationInfoV1 {
   n: number;
 }
 
+export interface ModelRiskFlagV1 {
+  code: string;
+  description: string;
+}
+
 export interface DisposalPriceV1 {
   match_id: number;
   player_id: number;
@@ -2830,6 +2843,9 @@ export interface DisposalPriceV1 {
   warnings: string[];
   is_stale: boolean;
   stale_reasons: string[];
+  usage_regime: string | null;
+  usage_change_score: number | null;
+  model_risk_flags: ModelRiskFlagV1[];
 }
 
 export interface GoalPriceV1 {
@@ -2850,6 +2866,9 @@ export interface GoalPriceV1 {
   warnings: string[];
   is_stale: boolean;
   stale_reasons: string[];
+  usage_regime: string | null;
+  usage_change_score: number | null;
+  model_risk_flags: ModelRiskFlagV1[];
 }
 
 export interface MatchPricing {

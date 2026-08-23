@@ -29,6 +29,7 @@ from app.api.pricing_schemas import (
     ModelHealthEntry,
     ModelHealthRead,
     ModelProvenance,
+    ModelRiskFlagRead,
     RoundPricingRead,
     StaleWarningRead,
     TeamMarketPriceRead,
@@ -91,6 +92,8 @@ def _disposal_read(p: DisposalPrice) -> DisposalPriceRead:
         interval_50=p.interval_50, interval_80=p.interval_80, interval_90=p.interval_90,
         thresholds=[ThresholdPriceRead(**vars(t)) for t in p.thresholds], calibration=_calibration_read(p.calibration),
         warnings=p.warnings, is_stale=p.is_stale, stale_reasons=p.stale_reasons,
+        usage_regime=p.usage_regime, usage_change_score=p.usage_change_score,
+        model_risk_flags=[ModelRiskFlagRead(code=f.code, description=f.description) for f in p.model_risk_flags],
     )
 
 
@@ -102,6 +105,8 @@ def _goal_read(p: GoalPrice) -> GoalPriceRead:
         expected=p.expected, distribution_kind=p.distribution_kind, distribution_params=p.distribution_params,
         scoring_archetype=p.scoring_archetype, thresholds=[ThresholdPriceRead(**vars(t)) for t in p.thresholds],
         calibration=_calibration_read(p.calibration), warnings=p.warnings, is_stale=p.is_stale, stale_reasons=p.stale_reasons,
+        usage_regime=p.usage_regime, usage_change_score=p.usage_change_score,
+        model_risk_flags=[ModelRiskFlagRead(code=f.code, description=f.description) for f in p.model_risk_flags],
     )
 
 

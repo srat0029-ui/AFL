@@ -28,6 +28,7 @@ from sqlalchemy.orm import Session
 from app.models import PlayerDisposalProjection, PlayerGoalProjection, PlayerPropMarket
 from app.player_modelling.bookmaker_classification import annotate_price_entries, best_prices, load_bookmaker_info
 from app.player_modelling.live_confidence import rare_event_warning
+from app.player_modelling.usage_regime import ModelRiskFlag, goal_usage_risk_flags
 from app.models.bookmaker import ELIGIBILITY_INCLUDED
 from app.player_modelling.live_report_query import (
     EXPECTED_IN_SELECTION_STATUSES,
@@ -139,6 +140,8 @@ def _load_normalized_prop_insights_uncached(
             base_confidence_tier = proj.confidence_tier
             base_warnings = list(proj.warnings)
             input_features = proj.input_features
+            usage_regime = proj.usage_regime
+            model_risk_flags: list[ModelRiskFlag] = []  # disposal's usage-change effect didn't meet the evidence bar for a flag
         elif key.market_type == PlayerMarket.GOALS.value:
             proj = db.scalar(
                 select(PlayerGoalProjection).where(
@@ -151,6 +154,8 @@ def _load_normalized_prop_insights_uncached(
             base_confidence_tier = proj.confidence_tier
             base_warnings = list(proj.warnings)
             input_features = proj.input_features
+            usage_regime = proj.usage_regime
+            model_risk_flags = goal_usage_risk_flags(proj.usage_regime)
         else:
             continue
 
@@ -303,6 +308,8 @@ def _load_normalized_prop_insights_uncached(
                 "selection_status": selection_status,
                 "is_confirmed": is_confirmed,
                 "warnings": warnings,
+                "usage_regime": usage_regime,
+                "model_risk_flags": [{"code": f.code, "description": f.description} for f in model_risk_flags],
                 "n_bookmakers": len(book_entries),
                 "bookmakers": book_entries,
                 "odds_freshness": best_entry["freshness"],

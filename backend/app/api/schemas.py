@@ -1126,6 +1126,17 @@ class RoundContextDashboardRead(BaseModel):
     matches: list[RoundContextMatchRead]
 
 
+class ModelRiskFlagRead(BaseModel):
+    """Structured model-risk metadata (Usage-Change Production Integration
+    stage, item 6) - mirrors app.api.pricing_schemas.ModelRiskFlagRead;
+    duplicated rather than imported to keep this internal-product schema
+    module independent of the separately-versioned B2B pricing schema
+    module (see pricing_schemas.py's own docstring)."""
+
+    code: str
+    description: str
+
+
 class DisposalProjectionRead(BaseModel):
     is_research_only: bool = False
     match_id: int
@@ -1155,6 +1166,8 @@ class DisposalProjectionRead(BaseModel):
     is_stale: bool
     stale_reasons: list[str]
     input_features: dict[str, float | None]
+    usage_regime: str | None = None
+    model_risk_flags: list[ModelRiskFlagRead] = []
 
 
 class GoalProjectionRead(BaseModel):
@@ -1183,6 +1196,8 @@ class GoalProjectionRead(BaseModel):
     is_stale: bool
     stale_reasons: list[str]
     input_features: dict[str, float | None]
+    usage_regime: str | None = None
+    model_risk_flags: list[ModelRiskFlagRead] = []
 
 
 class MatchProjectionsRead(BaseModel):
@@ -1432,6 +1447,8 @@ class BestOpportunityRead(BaseModel):
     why_model_likes_it: str
     calibration: CalibrationMetricsRead | None
     warnings: list[str]
+    usage_regime: str | None = None
+    model_risk_flags: list[ModelRiskFlagRead] = []
     opportunity_score: float
     opportunity_components: OpportunityComponentsRead
     price_integrity: PriceIntegrityCheckRead | None = None
@@ -1576,6 +1593,12 @@ class MultiLegRead(BaseModel):
     odds_freshness: str
     warnings: list[str]
     reasons: list[str]
+    usage_regime: str | None = None
+    model_risk_flags: list[ModelRiskFlagRead] = []
+    selection: str | None = None
+    threshold: float | None = None
+    line_type: str | None = None
+    line_value: float | None = None
 
 
 class MultiOptionRead(BaseModel):

@@ -275,6 +275,11 @@ function PropInsightsPage() {
                                 unconfirmed
                               </span>
                             )}
+                            {o.model_risk_flags.length > 0 && (
+                              <span className="prop-insights-table__risk-flag" title={o.model_risk_flags.map((f) => f.description).join(" ")}>
+                                Recent usage change
+                              </span>
+                            )}
                           </td>
                           <td>{(o.model_probability * 100).toFixed(1)}%</td>
                           <td title={o.best_bookmaker}>
@@ -320,6 +325,7 @@ function PropInsightsPage() {
                                 whyModelLikesIt={o.why_model_likes_it}
                                 calibration={o.calibration}
                                 warnings={o.warnings}
+                                modelRiskFlags={o.model_risk_flags}
                               />
                             </td>
                           </tr>

@@ -79,6 +79,12 @@ function TransparencyDrawer({ row, labels }: { row: DisposalProjection | GoalPro
               ))}
             </div>
           )}
+          {row.usage_regime === "changed" && (
+            <p className="projection-drawer__warning hint">
+              Recent usage change: this player's recent role/usage profile differs from their longer-run baseline.
+              {row.model_risk_flags.length > 0 ? ` ${row.model_risk_flags[0].description}` : ""}
+            </p>
+          )}
           <p className="projection-drawer__title">Model inputs used for this projection</p>
           <div className="projection-drawer__grid">
             {entries.map(([key, value]) => (
@@ -258,6 +264,11 @@ export function GoalProjectionTable({ rows, thresholds = ["1", "2", "3", "4"], s
                     {row.player_name}
                   </Link>
                   {row.is_stale && <span className="projection-table__stale-badge" title={row.stale_reasons.join(" ")}>stale</span>}
+                  {row.model_risk_flags.length > 0 && (
+                    <span className="projection-table__risk-badge" title={row.model_risk_flags.map((f) => f.description).join(" ")}>
+                      Recent usage change
+                    </span>
+                  )}
                 </td>
                 {showMatchColumn && <td>{row.team_name}</td>}
                 <td>{num(row.expected, 2)}</td>

@@ -184,6 +184,16 @@
   color: var(--text-muted);
 }
 
+.multi-leg__risk-flag {
+  display: inline-block;
+  font-size: 0.68rem;
+  border-radius: 4px;
+  padding: 0.05rem 0.35rem;
+  background: #2e2a1c;
+  color: #eab308;
+  cursor: help;
+}
+
 .multi-leg__warning,
 .multi-leg__reasons {
   margin: 0.25rem 0 0;

@@ -44,7 +44,7 @@ def snapshot_price(
     db: Session, *, match_id: int, player_id: int | None, market_family: str, market_type: str, selection: str,
     line_type: str | None, threshold: float | None, line_value: float | None, model_name: str, model_version: str,
     generated_at: datetime, data_cutoff: datetime, lineup_status: str | None, confidence_tier: str,
-    model_probability: float, intelligence: MarketIntelligence | None = None,
+    model_probability: float, intelligence: MarketIntelligence | None = None, usage_regime_at_prediction: str | None = None,
 ) -> PricingSnapshot | None:
     existing = db.scalar(
         select(PricingSnapshot.id).where(
@@ -61,6 +61,7 @@ def snapshot_price(
         selection=selection, line_type=line_type, threshold=threshold, line_value=line_value,
         model_name=model_name, model_version=model_version, generated_at=generated_at, data_cutoff=data_cutoff,
         lineup_status=lineup_status, confidence_tier=confidence_tier, model_probability=model_probability,
+        usage_regime_at_prediction=usage_regime_at_prediction,
         model_fair_odds=fair_odds_from_probability(model_probability) if model_probability > 0 else float("inf"),
         best_bookmaker_price=intelligence.best_price if intelligence else None,
         best_bookmaker_name=intelligence.best_bookmaker if intelligence else None,
@@ -154,7 +155,7 @@ def snapshot_round_pricing(db: Session, match_ids: list[int]) -> SnapshotReport:
                     market_type=PlayerMarket.DISPOSALS.value, selection="over", line_type="over_under", threshold=t, line_value=None,
                     model_name=DISPOSAL_MODEL_NAME, model_version=row.model_version, generated_at=row.generated_at,
                     data_cutoff=row.data_cutoff, lineup_status=row.lineup_status_at_generation, confidence_tier=row.confidence_tier,
-                    model_probability=tp.probability, intelligence=intel,
+                    model_probability=tp.probability, intelligence=intel, usage_regime_at_prediction=row.usage_regime,
                 ) is not None:
                     report.disposal_snapshots_created += 1
 
@@ -171,7 +172,7 @@ def snapshot_round_pricing(db: Session, match_ids: list[int]) -> SnapshotReport:
                     market_type=PlayerMarket.GOALS.value, selection="over", line_type="over_under", threshold=t, line_value=None,
                     model_name=GOAL_MODEL_NAME, model_version=row.model_version, generated_at=row.generated_at,
                     data_cutoff=row.data_cutoff, lineup_status=row.lineup_status_at_generation, confidence_tier=row.confidence_tier,
-                    model_probability=tp.probability, intelligence=intel,
+                    model_probability=tp.probability, intelligence=intel, usage_regime_at_prediction=row.usage_regime,
                 ) is not None:
                     report.goal_snapshots_created += 1
 

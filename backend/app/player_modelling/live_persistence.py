@@ -60,6 +60,8 @@ def persist_projection_run(db: Session, run: LiveProjectionRun) -> tuple[int, in
         existing.confidence_tier = p.confidence_tier
         existing.warnings = p.warnings
         existing.input_features = p.input_features
+        existing.usage_regime = p.usage_regime
+        existing.usage_change_score = p.usage_change_score
 
     for p in run.goal_projections:
         existing = db.scalar(
@@ -86,6 +88,8 @@ def persist_projection_run(db: Session, run: LiveProjectionRun) -> tuple[int, in
         existing.confidence_tier = p.confidence_tier
         existing.warnings = p.warnings
         existing.input_features = p.input_features
+        existing.usage_regime = p.usage_regime
+        existing.usage_change_score = p.usage_change_score
 
     db.commit()
     return (len(run.disposal_projections), len(run.goal_projections))

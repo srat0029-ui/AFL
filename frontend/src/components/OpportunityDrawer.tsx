@@ -1,4 +1,4 @@
-import type { BookmakerQuote, CalibrationMetrics, OpportunityAlternateLine, RecentForm } from "../api/client";
+import type { BookmakerQuote, CalibrationMetrics, ModelRiskFlagV1, OpportunityAlternateLine, RecentForm } from "../api/client";
 import { formatCompactDateTime } from "../lib/datetime";
 import { AddBetButton, type AddBetSnapshot } from "./AddBetButton";
 import RecentFormChart from "./RecentFormChart";
@@ -10,6 +10,7 @@ interface OpportunityDrawerProps {
   whyModelLikesIt: string;
   calibration: CalibrationMetrics | null;
   warnings: string[];
+  modelRiskFlags?: ModelRiskFlagV1[];
   // Present when the caller has full opportunity context (diversified
   // views) — the drawer renders the richer Model/Market/Alternate Lines
   // layout (Section 12) when these are supplied, and falls back to the
@@ -50,6 +51,7 @@ function OpportunityDrawer({
   whyModelLikesIt,
   calibration,
   warnings,
+  modelRiskFlags = [],
   modelProbability,
   modelFairOdds,
   confidenceTier,
@@ -226,6 +228,16 @@ function OpportunityDrawer({
             </div>
           </div>
         </>
+      )}
+
+      {modelRiskFlags.length > 0 && (
+        <div className="opportunity-drawer__risk-flags">
+          {modelRiskFlags.map((f, i) => (
+            <p key={i} className="opportunity-drawer__risk-flag">
+              <strong>Recent usage change</strong> — {f.description}
+            </p>
+          ))}
+        </div>
       )}
 
       {warnings.length > 0 && (

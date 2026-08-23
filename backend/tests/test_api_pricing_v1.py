@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from app.modelling.elo import EloConfig
 from app.modelling.model_run_persistence import persist_model_run
 from app.modelling.poisson_model import PoissonConfig
-from app.models import Match, MatchStatus, Round, Season, Sport, Team
+from app.models import Match, MatchStatus, Player, PlayerGoalProjection, Round, Season, Sport, Team
 
 NOW = datetime.now(timezone.utc)
 
@@ -72,3 +72,35 @@ def test_current_round_pricing_returns_empty_when_no_upcoming_matches(client, db
     resp = client.get("/api/v1/pricing/afl/current-round")
     assert resp.status_code == 200
     assert resp.json()["n_matches"] == 0
+
+
+def test_goal_price_response_carries_structured_model_risk_flag(client, db_session):
+    match = _seed(db_session)
+    home = db_session.get(Team, match.home_team_id)
+    player = Player(sport_id=home.sport_id, display_name="Flagged Goalkicker", source="afltables", source_player_id="flagged-1", current_team_id=home.id)
+    db_session.add(player)
+    db_session.flush()
+    db_session.add(PlayerGoalProjection(
+        match_id=match.id, player_id=player.id, team_id=home.id, model_name="goal_hurdle", model_version="v1",
+        generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=20,
+        predicted_mean=0.9, distribution_kind="hurdle", p_score=0.6, mu_scored=1.5, alpha_scored=0.4,
+        scoring_archetype="forward", confidence_tier="higher_confidence", warnings=[], input_features={},
+        usage_regime="changed", usage_change_score=2.4,
+    ))
+    db_session.commit()
+
+    resp = client.get(f"/api/v1/pricing/afl/matches/{match.id}")
+
+    assert resp.status_code == 200
+    goal = resp.json()["goals"][0]
+    assert goal["usage_regime"] == "changed"
+    assert goal["usage_change_score"] == 2.4
+    assert goal["model_risk_flags"] == [
+        {
+            "code": "RECENT_USAGE_REGIME_CHANGE",
+            "description": (
+                "Recent usage profile materially differs from the player's established baseline. "
+                "Historically, goal point-error was approximately 11% higher in this state."
+            ),
+        }
+    ]

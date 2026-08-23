@@ -77,6 +77,17 @@ class CalibrationInfo(BaseModel):
     n: int
 
 
+class ModelRiskFlagRead(BaseModel):
+    """Structured, programmatically-consumable model-risk metadata (Usage-
+    Change Production Integration stage, item 6) — a code plus a plain-
+    English description, never a probability/confidence adjustment. Only
+    flags backed by held-out evidence are ever populated (see
+    app/pricing/player_pricing.py's USAGE_REGIME_CHANGE_FLAG)."""
+
+    code: str
+    description: str
+
+
 class DisposalPriceRead(BaseModel):
     match_id: int
     player_id: int
@@ -98,6 +109,9 @@ class DisposalPriceRead(BaseModel):
     warnings: list[str]
     is_stale: bool
     stale_reasons: list[str]
+    usage_regime: str | None
+    usage_change_score: float | None
+    model_risk_flags: list[ModelRiskFlagRead]
 
 
 class GoalPriceRead(BaseModel):
@@ -119,6 +133,9 @@ class GoalPriceRead(BaseModel):
     warnings: list[str]
     is_stale: bool
     stale_reasons: list[str]
+    usage_regime: str | None
+    usage_change_score: float | None
+    model_risk_flags: list[ModelRiskFlagRead]
 
 
 class MatchPricingRead(BaseModel):

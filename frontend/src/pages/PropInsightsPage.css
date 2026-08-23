@@ -48,6 +48,16 @@
   cursor: help;
 }
 
+.prop-insights-table__risk-flag {
+  margin-left: 0.4rem;
+  font-size: 0.62rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 4px;
+  background: #2e2a1c;
+  color: #eab308;
+  cursor: help;
+}
+
 .prop-insights-page__filters select {
   background: var(--bg);
   border: 1px solid var(--border);

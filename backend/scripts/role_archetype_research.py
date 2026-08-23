@@ -35,19 +35,14 @@ challenger variants per market):
 Run: python -m scripts.role_archetype_research
 """
 
-from collections import defaultdict, deque
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass
 
 import numpy as np
 from sklearn.cluster import KMeans
 from sklearn.impute import SimpleImputer
 from sklearn.preprocessing import StandardScaler
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
-from app.models import Match, MatchStatus, PlayerMatchStat, Sport
 
 from app.player_modelling.disposal_backtest import EVALUATION_START_YEAR, build_dataset, run_candidate_models
 from app.player_modelling.disposal_data import load_team_game_rows
@@ -58,122 +53,29 @@ from app.player_modelling.goal_backtest import build_goal_dataset, run_goal_cand
 from app.player_modelling.goal_evaluation import THRESHOLDS as GOAL_THRESHOLDS, evaluate_goal_model
 from app.player_modelling.goal_features import PLAYER_FEATURE_NAMES as GOAL_PLAYER_FEATURE_NAMES
 
+# Raw-row loading, the leakage-safe role/usage profile builder, and
+# ROLE_CHANGE_MIN_GAMES are now the shared production implementation (moved
+# to app/player_modelling/usage_regime.py in the Usage-Change Production
+# Integration stage) — imported here, not duplicated, so this research
+# script and the live pipeline can never silently drift apart.
+from app.player_modelling.usage_regime import (
+    ROLE_CHANGE_MIN_GAMES,
+    ROLE_DIMS,
+    RawPlayerRow,
+    RoleRow,
+    build_role_rows,
+    load_raw_player_rows,
+)
+
 N_ARCHETYPES = 7
 ARCHETYPE_MIN_GAMES = 5  # below this, a player's role profile is too noisy to cluster meaningfully
-ROLE_CHANGE_MIN_GAMES = 10  # need a real "recent" (5) vs "prior" window to compute a change score at all
-ROLE_DIMS = ("tog", "disposal_share", "kick_share", "i50", "clearances", "marks", "contested_share", "scoring")
 RANDOM_STATE = 42
 
 
 # ---------------------------------------------------------------------------
-# Raw per-player-match rows (superset of disposal_data/goal_data's fields —
-# everything needed to build role/usage profiles) and team-disposal lookup.
-# ---------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class RawPlayerRow:
-    player_id: int
-    match_id: int
-    team_id: int
-    season_year: int
-    scheduled_start: datetime
-    disposals: int | None
-    kicks: int | None
-    marks: int | None
-    clearances: int | None
-    inside_50s: int | None
-    contested_possessions: int | None
-    uncontested_possessions: int | None
-    time_on_ground_pct: int | None
-    goals: int | None
-    behinds: int | None
-
-
-def load_raw_player_rows(db: Session, sport_code: str = "AFL", source: str = "afltables") -> list[RawPlayerRow]:
-    rows = db.execute(
-        select(PlayerMatchStat, Match)
-        .join(Match, Match.id == PlayerMatchStat.match_id)
-        .join(Sport, Sport.id == Match.sport_id)
-        .where(
-            Sport.code == sport_code, Match.status == MatchStatus.COMPLETED,
-            PlayerMatchStat.source == source, PlayerMatchStat.disposals.is_not(None),
-        )
-        .order_by(Match.scheduled_start, Match.id)
-    ).all()
-    return [
-        RawPlayerRow(
-            player_id=s.player_id, match_id=m.id, team_id=s.team_id, season_year=m.season.year,
-            scheduled_start=m.scheduled_start, disposals=s.disposals, kicks=s.kicks, marks=s.marks,
-            clearances=s.clearances, inside_50s=s.inside_50s, contested_possessions=s.contested_possessions,
-            uncontested_possessions=s.uncontested_possessions, time_on_ground_pct=s.time_on_ground_pct,
-            goals=s.goals, behinds=s.behinds,
-        )
-        for s, m in rows
-    ]
-
-
-# ---------------------------------------------------------------------------
-# Point-in-time role/usage profile builder — same leakage discipline as
-# disposal_features.py: a row's own stats are folded into history only AFTER
-# that row's profile has been produced.
-# ---------------------------------------------------------------------------
-
-
-@dataclass
-class _RoleHistory:
-    tog: deque = field(default_factory=lambda: deque(maxlen=40))
-    disposal_share: deque = field(default_factory=lambda: deque(maxlen=40))
-    kick_share: deque = field(default_factory=lambda: deque(maxlen=40))
-    i50: deque = field(default_factory=lambda: deque(maxlen=40))
-    clearances: deque = field(default_factory=lambda: deque(maxlen=40))
-    marks: deque = field(default_factory=lambda: deque(maxlen=40))
-    contested_share: deque = field(default_factory=lambda: deque(maxlen=40))
-    scoring: deque = field(default_factory=lambda: deque(maxlen=40))
-    n_games: int = 0
-
-
-@dataclass(frozen=True)
-class RoleRow:
-    player_id: int
-    match_id: int
-    season_year: int
-    games_of_history: int
-    recent: dict[str, float | None]  # last-5-game window
-    longterm: dict[str, float | None]  # the window strictly before that (games -40..-6)
-
-
-def _avg(vals) -> float | None:
-    v = [x for x in vals if x is not None]
-    return sum(v) / len(v) if v else None
-
-
-def build_role_rows(player_rows: list[RawPlayerRow], team_disposals_by_match: dict[tuple[int, int], float]) -> list[RoleRow]:
-    rows_sorted = sorted(player_rows, key=lambda r: (r.scheduled_start, r.match_id, r.player_id))
-    histories: dict[int, _RoleHistory] = defaultdict(_RoleHistory)
-    result = []
-    for row in rows_sorted:
-        hist = histories[row.player_id]
-        recent = {d: _avg(list(getattr(hist, d))[-5:]) for d in ROLE_DIMS}
-        longterm = {d: _avg(list(getattr(hist, d))[-40:-5]) if hist.n_games >= ROLE_CHANGE_MIN_GAMES else None for d in ROLE_DIMS}
-        result.append(RoleRow(player_id=row.player_id, match_id=row.match_id, season_year=row.season_year, games_of_history=hist.n_games, recent=recent, longterm=longterm))
-
-        team_total = team_disposals_by_match.get((row.team_id, row.match_id))
-        hist.tog.append(row.time_on_ground_pct)
-        hist.disposal_share.append(row.disposals / team_total if (row.disposals is not None and team_total) else None)
-        hist.kick_share.append(row.kicks / row.disposals if (row.kicks is not None and row.disposals) else None)
-        hist.i50.append(row.inside_50s)
-        hist.clearances.append(row.clearances)
-        hist.marks.append(row.marks)
-        co, un = row.contested_possessions, row.uncontested_possessions
-        hist.contested_share.append(co / (co + un) if (co is not None and un is not None and (co + un) > 0) else None)
-        hist.scoring.append((row.goals or 0) + (row.behinds or 0) if row.goals is not None else None)
-        hist.n_games += 1
-    return result
-
-
-# ---------------------------------------------------------------------------
-# Archetype clustering (fit on tune-period rows only) + role-change score
+# Archetype clustering (fit on tune-period rows only) + role-change score —
+# archetype clustering itself stays research-only (never added to the
+# promoted models or to usage_regime.py's production detector).
 # ---------------------------------------------------------------------------
 
 

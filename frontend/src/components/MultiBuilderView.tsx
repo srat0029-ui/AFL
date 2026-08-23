@@ -60,6 +60,11 @@ function MultiLegRow({
           </span>
         )}
         {leg.odds_freshness !== "fresh" && <span className="odds-table__stale">{leg.odds_freshness}</span>}
+        {leg.model_risk_flags.length > 0 && (
+          <span className="multi-leg__risk-flag" title={leg.model_risk_flags.map((f) => f.description).join(" ")}>
+            Recent usage change
+          </span>
+        )}
       </div>
       {leg.warnings.length > 0 && <p className="hint multi-leg__warning">⚠ {leg.warnings[0]}</p>}
       <p className="hint multi-leg__reasons">{leg.reasons.join(" · ")}</p>

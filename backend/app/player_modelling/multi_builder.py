@@ -319,7 +319,15 @@ def _combo_rank_key(combo: tuple[dict, ...], warnings: list[str], mode: str) -> 
         # model-market value; fewer legs is the final tiebreak.
         avg_quality = mean((leg["opportunity_components"]["confidence"] + leg["opportunity_components"]["calibration"]) / 2 for leg in combo)
         avg_edge = mean(leg["difference_pp"] for leg in combo)
-        return (min(probs), mean(probs), avg_quality, -len(warnings), n_confirmed, avg_edge, -len(combo))
+        # Usage-Change Production Integration stage, item 4: a genuinely
+        # LAST-priority caution tiebreak — never touches model_probability
+        # or any earlier ranking criterion, and only decides between combos
+        # that are otherwise tied on everything above. Prefers fewer
+        # usage-regime-changed goal legs when two combos are equal in
+        # every other respect (research found no held-out support for a
+        # harder exclusion — see usage_regime_change_research.py).
+        n_risk_flagged = sum(1 for leg in combo if leg.get("model_risk_flags"))
+        return (min(probs), mean(probs), avg_quality, -len(warnings), n_confirmed, avg_edge, -len(combo), -n_risk_flagged)
     # Value mode: prioritise average model-market edge/value (the existing
     # transparent opportunity score), never raw combined odds.
     avg_value_score = mean(representative_score(leg) for leg in combo)
@@ -461,6 +469,7 @@ def option_as_dict(opt: dict) -> dict:
                 "confidence_tier": leg["confidence_tier"], "selection_status": leg.get("selection_status"),
                 "is_confirmed": leg.get("is_confirmed"), "odds_freshness": leg["odds_freshness"],
                 "warnings": leg.get("warnings", []), "reasons": _reasons_for(leg),
+                "usage_regime": leg.get("usage_regime"), "model_risk_flags": leg.get("model_risk_flags", []),
                 # Exposed so a leg can be frozen into a Placed Bets record
                 # (app/player_modelling/placed_bets.py) with the exact
                 # selection/line it represents - not used by any ranking

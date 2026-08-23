@@ -34,9 +34,12 @@ from app.player_modelling.live_report_query import (
 )
 from app.player_modelling.live_staleness import check_staleness
 from app.player_modelling.market import PlayerMarket
+from app.player_modelling.usage_regime import USAGE_REGIME_CHANGE_FLAG, ModelRiskFlag, goal_usage_risk_flags
 
 DISPOSAL_MODEL_NAME = "disposal_nb"
 GOAL_MODEL_NAME = "goal_hurdle"
+
+_goal_model_risk_flags = goal_usage_risk_flags  # local alias kept for readability at call sites below
 
 # The standard preset threshold set every response includes for free,
 # alongside whatever arbitrary threshold(s) the caller explicitly asked
@@ -86,6 +89,9 @@ class DisposalPrice:
     warnings: list[str] = field(default_factory=list)
     is_stale: bool = False
     stale_reasons: list[str] = field(default_factory=list)
+    usage_regime: str | None = None
+    usage_change_score: float | None = None
+    model_risk_flags: list[ModelRiskFlag] = field(default_factory=list)
 
 
 def price_disposals(db, row: PlayerDisposalProjection, extra_thresholds: list[float] | None = None) -> DisposalPrice:
@@ -113,6 +119,11 @@ def price_disposals(db, row: PlayerDisposalProjection, extra_thresholds: list[fl
         thresholds=thresholds,
         calibration=historical_calibration_metrics(db, PlayerMarket.DISPOSALS.value, nearest_default),
         warnings=list(row.warnings or []), is_stale=staleness.is_stale, stale_reasons=staleness.reasons,
+        usage_regime=row.usage_regime, usage_change_score=row.usage_change_score,
+        # Disposal's historical usage-change effect (~1.7% MAE) did not meet
+        # the evidence bar a flag requires (see _goal_model_risk_flags's
+        # docstring) — usage_regime is still exposed above as low-priority
+        # informational context, but no structured risk flag is raised here.
     )
 
 
@@ -138,6 +149,9 @@ class GoalPrice:
     warnings: list[str] = field(default_factory=list)
     is_stale: bool = False
     stale_reasons: list[str] = field(default_factory=list)
+    usage_regime: str | None = None
+    usage_change_score: float | None = None
+    model_risk_flags: list[ModelRiskFlag] = field(default_factory=list)
 
 
 def price_goals(db, row: PlayerGoalProjection, extra_thresholds: list[float] | None = None) -> GoalPrice:
@@ -166,4 +180,6 @@ def price_goals(db, row: PlayerGoalProjection, extra_thresholds: list[float] | N
         thresholds=thresholds,
         calibration=historical_calibration_metrics(db, PlayerMarket.GOALS.value, 1.5),
         warnings=list(row.warnings or []), is_stale=staleness.is_stale, stale_reasons=staleness.reasons,
+        usage_regime=row.usage_regime, usage_change_score=row.usage_change_score,
+        model_risk_flags=_goal_model_risk_flags(row.usage_regime),
     )

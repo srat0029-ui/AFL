@@ -153,6 +153,8 @@ def _player_opportunities(db: Session, match_ids: set[int], *, include_uncertain
                 "why_model_likes_it": r["why_model_likes_it"],
                 "calibration": r["calibration"],
                 "warnings": r["warnings"],
+                "usage_regime": r["usage_regime"],
+                "model_risk_flags": r["model_risk_flags"],
                 "opportunity_score": r["opportunity_score"],
                 "opportunity_components": r["opportunity_components"],
             }
@@ -297,6 +299,8 @@ def _team_opportunities(
                     ),
                     "calibration": None,
                     "warnings": warnings,
+                    "usage_regime": None,  # team markets have no player-level usage-regime concept
+                    "model_risk_flags": [],
                     "opportunity_score": opportunity.total,
                     "opportunity_components": {
                         "difference": opportunity.difference_component,

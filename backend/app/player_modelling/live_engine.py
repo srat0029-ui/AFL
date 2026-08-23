@@ -20,6 +20,7 @@ from app.player_modelling.goal_backtest import build_goal_dataset
 from app.player_modelling.live_confidence import live_disposal_confidence, live_goal_confidence
 from app.player_modelling.live_models import fit_live_disposal_model, fit_live_goal_model
 from app.player_modelling.request_cache import cached_model_fit
+from app.player_modelling.usage_regime import compute_upcoming_usage_regimes
 from app.player_modelling.upcoming_features import (
     ExpectedPlayer,
     UpcomingMatchTeams,
@@ -59,6 +60,8 @@ class DisposalProjectionResult:
     confidence_tier: str
     warnings: list[str]
     input_features: dict
+    usage_regime: str | None = None
+    usage_change_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -78,6 +81,8 @@ class GoalProjectionResult:
     confidence_tier: str
     warnings: list[str]
     input_features: dict
+    usage_regime: str | None = None
+    usage_change_score: float | None = None
 
 
 @dataclass(frozen=True)
@@ -143,6 +148,11 @@ def generate_live_projections(db: Session, target_match_ids: set[int] | None = N
     disposal_run, goal_run = _load_promoted_runs(db)
     team_model_version = compute_team_model_version(db)
 
+    # Informational only (see app/player_modelling/usage_regime.py's module
+    # docstring) — computed alongside the real projections but never fed
+    # into predicted_mean/nb_alpha/confidence_tier below.
+    usage_regime_by_key = compute_upcoming_usage_regimes(db, upcoming_matches, expected_players)
+
     # Raises ModelsUnavailableError if elo_cli/poisson_cli haven't been run
     # yet — deliberately left to propagate to the caller (see cli.py),
     # since a live projection without team context would be silently
@@ -185,11 +195,13 @@ def generate_live_projections(db: Session, target_match_ids: set[int] | None = N
             disposals_last5_std=row.features.get("disposals_last5_std"),
             lineup_status=ep.status,
         )
+        usage = usage_regime_by_key.get((row.player_id, row.match_id))
         disposal_projections.append(
             DisposalProjectionResult(
                 player_id=row.player_id, match_id=row.match_id, team_id=row.team_id, lineup_status=ep.status,
                 games_of_history=row.games_of_history, predicted_mean=max(float(mean), 0.0), nb_alpha=live_disposal_model.nb_alpha,
                 confidence_tier=conf.tier, warnings=conf.warnings, input_features=dict(row.features),
+                usage_regime=usage.usage_regime if usage else None, usage_change_score=usage.usage_change_score if usage else None,
             )
         )
 
@@ -209,6 +221,7 @@ def generate_live_projections(db: Session, target_match_ids: set[int] | None = N
             goals_career_avg=row.features.get("goals_career_avg"),
             lineup_status=ep.status,
         )
+        usage = usage_regime_by_key.get((row.player_id, row.match_id))
         goal_projections.append(
             GoalProjectionResult(
                 player_id=row.player_id, match_id=row.match_id, team_id=row.team_id, lineup_status=ep.status,
@@ -220,6 +233,7 @@ def generate_live_projections(db: Session, target_match_ids: set[int] | None = N
                 alpha_scored=live_goal_model.alpha_scored if live_goal_model.distribution_kind == "hurdle" else None,
                 scoring_archetype=conf.scoring_archetype, confidence_tier=conf.tier, warnings=conf.warnings,
                 input_features=dict(row.features),
+                usage_regime=usage.usage_regime if usage else None, usage_change_score=usage.usage_change_score if usage else None,
             )
         )
 

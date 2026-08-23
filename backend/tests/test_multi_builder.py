@@ -544,3 +544,91 @@ def test_low_probability_goal_leg_excluded_from_conservative_and_balanced_despit
         assert leg["model_probability"] < MIN_LEG_PROBABILITY[tier]
         pool = _candidate_pool(all_legs, tier, MODE_HIGH_PROBABILITY, confirmed_only=True)
         assert leg["_family_key"] not in {p["_family_key"] for p in pool if p.get("player_name") == "Marginal Goalkicker"}
+
+
+# --- Usage-Change Production Integration stage, item 4: risk-flag tiebreak -
+
+
+def _minimal_leg(*, model_risk_flags, opportunity_score=0.5, best_price=2.0, model_probability=0.7, confidence=0.8, calibration=0.8, difference_pp=0.02):
+    """A minimal synthetic leg dict carrying only the fields
+    _combo_rank_key/representative_score actually read - lets the tiebreak
+    itself be tested in isolation from a full DB-backed leg search, and
+    guarantees two legs are identical on every ranking dimension EXCEPT
+    model_risk_flags (a full search-based fixture can't cheaply guarantee
+    an exact tie on every prior criterion)."""
+    return {
+        "model_probability": model_probability,
+        "difference_pp": difference_pp,
+        "opportunity_type": "player",
+        "is_confirmed": True,
+        "opportunity_components": {"confidence": confidence, "calibration": calibration},
+        "opportunity_score": opportunity_score,
+        "best_price": best_price,
+        "model_risk_flags": model_risk_flags,
+    }
+
+
+def test_high_probability_tiebreak_prefers_stable_regime_leg_when_otherwise_tied():
+    from app.player_modelling.multi_builder import MODE_HIGH_PROBABILITY, _combo_rank_key
+
+    flagged = _minimal_leg(model_risk_flags=[{"code": "RECENT_USAGE_REGIME_CHANGE", "description": "..."}])
+    unflagged = _minimal_leg(model_risk_flags=[])
+
+    key_flagged = _combo_rank_key((flagged,), warnings=[], mode=MODE_HIGH_PROBABILITY)
+    key_unflagged = _combo_rank_key((unflagged,), warnings=[], mode=MODE_HIGH_PROBABILITY)
+
+    # Every ranking criterion before the risk-flag tiebreak is identical by
+    # construction (same probability/confidence/calibration/edge/leg-count),
+    # so this proves the flag is what breaks the tie - not model_probability
+    # or any earlier criterion.
+    assert key_flagged[:-1] == key_unflagged[:-1]
+    assert key_unflagged > key_flagged
+
+
+def test_high_probability_tiebreak_never_overrides_a_genuinely_higher_probability_leg():
+    """The risk flag is the LAST-priority tiebreak - a flagged leg with a
+    real probability edge must still outrank an unflagged leg with lower
+    probability, exactly as it would with no flag involved at all."""
+    from app.player_modelling.multi_builder import MODE_HIGH_PROBABILITY, _combo_rank_key
+
+    flagged_higher_prob = _minimal_leg(model_risk_flags=[{"code": "RECENT_USAGE_REGIME_CHANGE", "description": "..."}], model_probability=0.85)
+    unflagged_lower_prob = _minimal_leg(model_risk_flags=[], model_probability=0.60)
+
+    key_flagged = _combo_rank_key((flagged_higher_prob,), warnings=[], mode=MODE_HIGH_PROBABILITY)
+    key_unflagged = _combo_rank_key((unflagged_lower_prob,), warnings=[], mode=MODE_HIGH_PROBABILITY)
+
+    assert key_flagged > key_unflagged
+
+
+def test_value_mode_ranking_is_unaffected_by_the_risk_flag():
+    """Item 4's explicit boundary: Best Value mode can still surface a
+    flagged leg - the risk flag must play no role at all in Value mode's
+    ranking key (only opportunity/representative score + confirmed-count +
+    leg-count, unchanged from before this stage)."""
+    from app.player_modelling.multi_builder import MODE_VALUE, _combo_rank_key
+
+    flagged = _minimal_leg(model_risk_flags=[{"code": "RECENT_USAGE_REGIME_CHANGE", "description": "..."}])
+    unflagged = _minimal_leg(model_risk_flags=[])
+
+    key_flagged = _combo_rank_key((flagged,), warnings=[], mode=MODE_VALUE)
+    key_unflagged = _combo_rank_key((unflagged,), warnings=[], mode=MODE_VALUE)
+
+    assert key_flagged == key_unflagged
+
+
+def test_multi_leg_dict_exposes_usage_regime_and_model_risk_flags(db_session):
+    """option_as_dict must pass model_risk_flags/usage_regime through to
+    the API-facing leg dict, not just use them internally for ranking."""
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", prices=[("SportsBet", 1.60)])
+    _add_player_leg(db_session, match, home, player_name="Player B", prices=[("SportsBet", 2.20)])
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    options = _all_options(result)
+    assert options
+    from app.player_modelling.multi_builder import option_as_dict
+
+    leg = option_as_dict(options[0])["legs"][0]
+    assert "usage_regime" in leg
+    assert "model_risk_flags" in leg
+    assert leg["model_risk_flags"] == []  # these disposal legs carry no goal risk flag

@@ -51,6 +51,11 @@ function WeeklyReviewOpportunityRow({
           {opportunity.evidence_summary.caution_labels.length > 0 && (
             <span className="weekly-review-row__caution">{opportunity.evidence_summary.caution_labels.length} caution flag(s)</span>
           )}
+          {opportunity.model_risk_flags.length > 0 && (
+            <span className="weekly-review-row__caution" title={opportunity.model_risk_flags.map((f) => f.description).join(" ")}>
+              Recent usage change
+            </span>
+          )}
         </div>
       </div>
     </div>

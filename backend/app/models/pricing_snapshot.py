@@ -55,6 +55,12 @@ class PricingSnapshot(Base, TimestampMixin):
     data_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     lineup_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
     confidence_tier: Mapped[str] = mapped_column(String(24), nullable=False)
+    # Usage-Change Production Integration stage (item 5): frozen at snapshot
+    # time alongside everything else here, never backfilled onto existing
+    # rows — lets prospective evaluation later be split stable vs changed to
+    # verify (or refute) the historical +11% goal-error finding live. Only
+    # ever populated for player markets; None for team snapshots.
+    usage_regime_at_prediction: Mapped[str | None] = mapped_column(String(24), nullable=True)
 
     model_probability: Mapped[float] = mapped_column(Float, nullable=False)
     model_fair_odds: Mapped[float] = mapped_column(Float, nullable=False)

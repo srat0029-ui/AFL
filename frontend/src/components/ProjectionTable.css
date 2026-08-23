@@ -58,6 +58,16 @@
   cursor: help;
 }
 
+.projection-table__risk-badge {
+  margin-left: 0.5rem;
+  font-size: 0.65rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: #2e2a1c;
+  color: #eab308;
+  cursor: help;
+}
+
 .projection-table__rare-flag {
   color: #fdba74;
   margin-left: 0.15rem;

@@ -67,6 +67,14 @@ class PlayerDisposalProjection(TimestampMixin, Base):
     # inputs, not a generated explanation.
     input_features: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
 
+    # Usage-Change Production Integration stage: informational only (see
+    # app/player_modelling/usage_regime.py's module docstring) — never read
+    # by any pricing/probability/confidence-tier computation, only exposed
+    # as metadata. "stable" | "changed" | "insufficient_history" | None
+    # (None only for rows persisted before this stage).
+    usage_regime: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    usage_change_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+
     match: Mapped["Match"] = relationship(foreign_keys=[match_id])
     player: Mapped["Player"] = relationship(foreign_keys=[player_id])
     team: Mapped["Team"] = relationship(foreign_keys=[team_id])
@@ -103,6 +111,12 @@ class PlayerGoalProjection(TimestampMixin, Base):
     confidence_tier: Mapped[str] = mapped_column(String(24), nullable=False)
     warnings: Mapped[list] = mapped_column(JSON, nullable=False, default=list)
     input_features: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+
+    # Usage-Change Production Integration stage — see PlayerDisposalProjection's
+    # identical fields above; informational only, never fed into the point
+    # prediction/probability/confidence tier.
+    usage_regime: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    usage_change_score: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     match: Mapped["Match"] = relationship(foreign_keys=[match_id])
     player: Mapped["Player"] = relationship(foreign_keys=[player_id])

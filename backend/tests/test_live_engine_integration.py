@@ -274,6 +274,40 @@ def test_player_identity_consistency_through_pipeline(db_session):
     assert projection.games_of_history == len(historical_stat_count)
 
 
+def test_usage_regime_is_computed_and_persisted_alongside_projections(db_session):
+    """Usage-Change Production Integration stage, item 1/7: the detector
+    runs inside the real live pipeline (not just in isolation) and its
+    output round-trips through persist_projection_run onto both projection
+    tables. This fixture only has 3 historical games per player - below
+    ROLE_CHANGE_MIN_GAMES (10) - so "insufficient_history" is the correct,
+    expected classification here; this test proves the wiring works
+    end-to-end without crashing on a realistic small-sample case, not that
+    a "changed" classification specifically fires (see test_usage_regime.py
+    for that, on synthetic data with enough history)."""
+    from app.player_modelling.usage_regime import INSUFFICIENT_HISTORY
+
+    upcoming_match, home, away, players = _seed_teams_and_players(db_session)
+    _seed_team_models(db_session)
+    _seed_promoted_player_models(db_session)
+    player = players[(home.id, 0)]
+    _set_lineup(db_session, upcoming_match.id, player.id, home.id, "expected_in")
+
+    run = generate_live_projections(db_session)
+    disposal_result = next(p for p in run.disposal_projections if p.player_id == player.id)
+    assert disposal_result.usage_regime == INSUFFICIENT_HISTORY
+    assert disposal_result.usage_change_score is None
+    goal_result = next(p for p in run.goal_projections if p.player_id == player.id)
+    assert goal_result.usage_regime == INSUFFICIENT_HISTORY
+
+    persist_projection_run(db_session, run)
+
+    persisted_disposal = db_session.scalar(select(PlayerDisposalProjection).where(PlayerDisposalProjection.player_id == player.id))
+    assert persisted_disposal.usage_regime == INSUFFICIENT_HISTORY
+    assert persisted_disposal.usage_change_score is None
+    persisted_goal = db_session.scalar(select(PlayerGoalProjection).where(PlayerGoalProjection.player_id == player.id))
+    assert persisted_goal.usage_regime == INSUFFICIENT_HISTORY
+
+
 def test_adversarial_upcoming_match_has_no_completed_stats_to_leak(db_session):
     """Direct proof the target match's own outcome can never reach the
     projection: the upcoming match is SCHEDULED (not COMPLETED), so it can

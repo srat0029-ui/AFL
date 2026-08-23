@@ -18,13 +18,14 @@ from app.models import (
     MatchStatus,
     Player,
     PlayerDisposalProjection,
+    PlayerGoalProjection,
     PricingSnapshot,
     Round,
     Season,
     Sport,
     Team,
 )
-from app.pricing.player_pricing import price_disposals
+from app.pricing.player_pricing import USAGE_REGIME_CHANGE_FLAG, price_disposals, price_goals
 from app.pricing.snapshot_service import settle_pricing_snapshots, snapshot_price
 from app.pricing.team_pricing import price_team_market
 
@@ -243,3 +244,120 @@ def test_settle_pricing_snapshot_is_idempotent(db_session):
     second_report = settle_pricing_snapshots(db_session)
 
     assert second_report.settled == 0  # already settled - not re-touched
+
+
+# --- Usage-Change Production Integration stage: model-risk metadata --------
+
+
+def _seed_goal_projection(db, match, *, usage_regime=None, usage_change_score=None, p_score=0.6, mu_scored=1.5, alpha_scored=0.4, name="Test Goalkicker", source_id="g1") -> PlayerGoalProjection:
+    home = db.scalar(select(Team).where(Team.id == match.home_team_id))
+    player = Player(sport_id=home.sport_id, display_name=name, source="afltables", source_player_id=source_id, current_team_id=home.id)
+    db.add(player)
+    db.flush()
+    row = PlayerGoalProjection(
+        match_id=match.id, player_id=player.id, team_id=home.id, model_name="goal_hurdle", model_version="v1",
+        generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=20,
+        predicted_mean=p_score * mu_scored, distribution_kind="hurdle", p_score=p_score, mu_scored=mu_scored,
+        alpha_scored=alpha_scored, scoring_archetype="forward", confidence_tier="higher_confidence",
+        warnings=[], input_features={}, usage_regime=usage_regime, usage_change_score=usage_change_score,
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_goal_price_carries_risk_flag_when_usage_regime_changed(db_session):
+    match = _seed_upcoming_match(db_session)
+    row = _seed_goal_projection(db_session, match, usage_regime="changed", usage_change_score=2.1)
+
+    priced = price_goals(db_session, row)
+
+    assert priced.usage_regime == "changed"
+    assert priced.usage_change_score == 2.1
+    codes = {f.code for f in priced.model_risk_flags}
+    assert codes == {USAGE_REGIME_CHANGE_FLAG}
+    assert "11%" in priced.model_risk_flags[0].description
+    assert "wrong" not in priced.model_risk_flags[0].description.lower()
+
+
+def test_goal_price_has_no_risk_flag_when_usage_regime_stable(db_session):
+    match = _seed_upcoming_match(db_session)
+    row = _seed_goal_projection(db_session, match, usage_regime="stable", usage_change_score=0.4)
+
+    priced = price_goals(db_session, row)
+
+    assert priced.usage_regime == "stable"
+    assert priced.model_risk_flags == []
+
+
+def test_goal_price_has_no_risk_flag_when_usage_regime_unknown(db_session):
+    """Rows persisted before this stage (or with insufficient history) have
+    usage_regime=None - must never be treated as "changed" by default."""
+    match = _seed_upcoming_match(db_session)
+    row = _seed_goal_projection(db_session, match, usage_regime=None, usage_change_score=None)
+
+    priced = price_goals(db_session, row)
+
+    assert priced.model_risk_flags == []
+
+
+def test_goal_price_probability_identical_regardless_of_usage_regime(db_session):
+    """Core boundary (item 2): the risk flag is informational metadata only
+    - the SAME p_score/mu_scored/alpha_scored must produce the exact same
+    thresholds/probabilities and the exact same confidence_tier regardless
+    of usage_regime."""
+    match = _seed_upcoming_match(db_session)
+    row_a = _seed_goal_projection(db_session, match, usage_regime="changed", usage_change_score=3.0, name="Changed Regime Player", source_id="g-changed")
+    row_b = _seed_goal_projection(db_session, match, usage_regime="stable", usage_change_score=0.1, name="Stable Regime Player", source_id="g-stable")
+
+    priced_a = price_goals(db_session, row_a)
+    priced_b = price_goals(db_session, row_b)
+
+    assert priced_a.expected == priced_b.expected
+    assert priced_a.confidence_tier == priced_b.confidence_tier == "higher_confidence"
+    for ta, tb in zip(priced_a.thresholds, priced_b.thresholds):
+        assert ta.threshold == tb.threshold
+        assert abs(ta.probability - tb.probability) < 1e-12  # identical distribution params -> identical probability, flag or no flag
+
+
+def test_disposal_price_exposes_usage_regime_but_never_a_risk_flag(db_session):
+    """Disposal's usage-change effect (~1.7% MAE) did not meet the evidence
+    bar for a structured risk flag (see scripts/usage_regime_change_research.py) -
+    usage_regime is still exposed as low-priority informational context."""
+    match = _seed_upcoming_match(db_session)
+    row = _seed_disposal_projection(db_session, match)
+    row.usage_regime, row.usage_change_score = "changed", 2.5
+    db_session.commit()
+
+    priced = price_disposals(db_session, row)
+
+    assert priced.usage_regime == "changed"
+    assert priced.usage_change_score == 2.5
+    assert priced.model_risk_flags == []
+
+
+def test_pricing_snapshot_freezes_usage_regime_and_never_rewrites_it(db_session):
+    match = _seed_upcoming_match(db_session)
+
+    first = snapshot_price(
+        db_session, match_id=match.id, player_id=None, market_family="player_goals", market_type="player_goals",
+        selection="over", line_type="over_under", threshold=1.5, line_value=None, model_name="goal_hurdle",
+        model_version="v1", generated_at=NOW, data_cutoff=NOW, lineup_status="expected_in",
+        confidence_tier="higher_confidence", model_probability=0.4, usage_regime_at_prediction="changed",
+    )
+    db_session.commit()
+    assert first is not None
+    assert first.usage_regime_at_prediction == "changed"
+
+    # A later snapshot_price call at the SAME identity (even with a
+    # different usage_regime_at_prediction) must not touch the frozen row.
+    second = snapshot_price(
+        db_session, match_id=match.id, player_id=None, market_family="player_goals", market_type="player_goals",
+        selection="over", line_type="over_under", threshold=1.5, line_value=None, model_name="goal_hurdle",
+        model_version="v1", generated_at=NOW, data_cutoff=NOW, lineup_status="expected_in",
+        confidence_tier="higher_confidence", model_probability=0.4, usage_regime_at_prediction="stable",
+    )
+    assert second is None
+    rows = db_session.scalars(select(PricingSnapshot)).all()
+    assert len(rows) == 1
+    assert rows[0].usage_regime_at_prediction == "changed"  # untouched by the second call
