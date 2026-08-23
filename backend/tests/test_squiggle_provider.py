@@ -5,6 +5,7 @@ tests be fast, deterministic, and independent of Squiggle's actual uptime.
 """
 
 import json
+from datetime import datetime, timezone
 
 import pytest
 
@@ -115,7 +116,13 @@ def test_malformed_game_is_skipped_not_raised():
     assert fixtures[0].external_id == "35704"
 
 
-def test_get_upcoming_fixtures_queries_complete_zero():
+def test_get_upcoming_fixtures_does_not_filter_by_complete():
+    """Regression test: this used to query `complete=0`, which Squiggle
+    treats as an exact match on the 0-100 completion percentage (i.e. "not
+    yet started"), not "not yet finished". That silently excluded any match
+    the instant it went live, so in-progress/completed matches could never
+    have their status refreshed through this path again — see the module
+    docstring on get_upcoming_fixtures."""
     captured = {}
 
     def transport(url: str) -> tuple[int, str, str]:
@@ -125,7 +132,23 @@ def test_get_upcoming_fixtures_queries_complete_zero():
     provider = _make_provider(transport)
     provider.get_upcoming_fixtures("AFL")
 
-    assert "complete=0" in captured["url"]
+    assert "complete=" not in captured["url"]
+    assert f"games;year={datetime.now(timezone.utc).year}" in captured["url"]
+
+
+def test_get_upcoming_fixtures_includes_in_progress_and_completed_games():
+    """The whole point of the fix: a match that has already gone live or
+    finished must still come back from this call so its status/score keeps
+    getting refreshed, not just fixtures that haven't started yet."""
+    in_progress_game = {**SAMPLE_GAME_COMPLETE, "id": 2, "complete": 55}
+    provider = _make_provider(
+        lambda url: _json_response({"games": [SAMPLE_GAME_SCHEDULED, SAMPLE_GAME_COMPLETE, in_progress_game]})
+    )
+
+    fixtures = provider.get_upcoming_fixtures("AFL")
+
+    statuses = {f.external_id: f.status for f in fixtures}
+    assert statuses == {"99001": "scheduled", "35704": "completed", "2": "in_progress"}
 
 
 def test_rejects_non_afl_sport():

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 
 from app.ingestion.fixtures import ingest_fixtures
-from app.models import Match, Round, Season, Sport, Team, Venue
+from app.models import Match, MatchStatus, Round, Season, Sport, Team, Venue
 from app.providers.types import Fixture
 
 
@@ -68,6 +68,38 @@ def test_ingest_updates_existing_match_on_result_change(db_session):
     assert match.home_score == 86
     assert match.away_score == 81
     assert len(db_session.scalars(select(Match)).all()) == 1
+
+
+def test_ingest_transitions_in_progress_to_completed(db_session):
+    """Regression: a match that went live must still be able to reach
+    COMPLETED on a later fixture refresh — the actual bug was upstream in
+    SquiggleFixtureProvider (see test_squiggle_provider.py), which stopped
+    returning a match at all once it left "scheduled", so ingest_fixtures
+    itself never got the chance to run this transition. This locks in that
+    ingest_fixtures has always applied it correctly once given the data."""
+    ingest_fixtures(db_session, [_fixture(status="scheduled")])
+    match = db_session.scalar(select(Match))
+    assert match.status == MatchStatus.SCHEDULED
+
+    ingest_fixtures(db_session, [_fixture(status="in_progress", home_score=40, away_score=30)])
+    db_session.refresh(match)
+    assert match.status == MatchStatus.IN_PROGRESS
+    assert match.home_score == 40
+
+    result = ingest_fixtures(
+        db_session,
+        [
+            _fixture(
+                status="completed", home_score=86, away_score=81,
+                home_score_breakdown={"goals": 12, "behinds": 14}, away_score_breakdown={"goals": 12, "behinds": 9},
+            )
+        ],
+    )
+    db_session.refresh(match)
+    assert result.matches_updated == 1
+    assert match.status == MatchStatus.COMPLETED
+    assert match.home_score == 86
+    assert match.away_score == 81
 
 
 def test_ingest_stores_goals_and_behinds_breakdown(db_session):

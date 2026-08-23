@@ -14,15 +14,20 @@ from app.models import (
     STEP_RECOVERABLE_FAILURE,
     STEP_SUCCESS,
     STEP_WARNING,
+    Bookmaker,
     LiveCycleRun,
     Match,
     MatchStatus,
+    Player,
+    PlayerMatchStat,
+    PropMarketObservation,
     Round,
     Season,
     Sport,
     Team,
 )
 from app.player_modelling.live_cycle import run_live_cycle
+from app.providers.types import Fixture
 
 NOW = datetime.now(timezone.utc)
 
@@ -279,3 +284,96 @@ def test_settlement_runs_before_new_data_collection_in_step_order(db_session, mo
 
     step_names = [s["step"] for s in run.steps]
     assert step_names.index("settle_props") < step_names.index("refresh_prop_odds")
+
+
+def _seed_in_progress_match_with_pending_observation(db):
+    """Reproduces the real production scenario this cycle must recover
+    from: a match stuck IN_PROGRESS (the Squiggle `complete=0` bug meant it
+    could never be refreshed), player stats already available (ingested
+    separately, or from a prior attempt), and one prop observation still
+    waiting to be settled."""
+    sport = Sport(code="AFL", name="Australian Football League")
+    db.add(sport)
+    db.flush()
+    season = Season(sport_id=sport.id, year=2026)
+    db.add(season)
+    db.flush()
+    round_ = Round(season_id=season.id, round_number=24)
+    home = Team(sport_id=sport.id, name="Collingwood", short_name="COL")
+    away = Team(sport_id=sport.id, name="Carlton", short_name="CAR")
+    db.add_all([round_, home, away])
+    db.flush()
+    match = Match(
+        sport_id=sport.id, season_id=season.id, round_id=round_.id, home_team_id=home.id, away_team_id=away.id,
+        scheduled_start=NOW - timedelta(days=5), status=MatchStatus.IN_PROGRESS,
+        external_ids={"squiggle": "70001"},
+    )
+    db.add(match)
+    db.flush()
+    player = Player(sport_id=sport.id, display_name="Nick Daicos", source="afltables", source_player_id="p1", current_team_id=home.id)
+    bookmaker = Bookmaker(name="SportsBet")
+    db.add_all([player, bookmaker])
+    db.flush()
+    # A genuinely-upcoming match must also exist: step 2 of the cycle
+    # (identify_upcoming_round) only looks for SCHEDULED matches and
+    # returns early — before settlement — if none exist. Any live AFL
+    # season always has one, so this mirrors realistic state; it's a
+    # separate match, untouched by the fixture refresh below.
+    next_round = Round(season_id=season.id, round_number=25)
+    db.add(next_round)
+    db.flush()
+    db.add(Match(
+        sport_id=sport.id, season_id=season.id, round_id=next_round.id, home_team_id=home.id, away_team_id=away.id,
+        scheduled_start=NOW + timedelta(days=2), status=MatchStatus.SCHEDULED,
+    ))
+    stat = PlayerMatchStat(
+        player_id=player.id, match_id=match.id, team_id=home.id, source="afltables",
+        recorded_at=NOW - timedelta(days=4), disposals=32, goals=1,
+    )
+    observation = PropMarketObservation(
+        quote_id=1, match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id,
+        market_type="player_disposals", line_type="over_under", threshold=29.5, source="the_odds_api",
+        offered_odds=1.9, observed_at=NOW - timedelta(days=5), raw_implied_probability=0.526,
+        devigged_probability=None, overround_removed=False,
+        model_probability=0.55, model_fair_odds=1.82, predicted_mean=28.0,
+        model_name="disposals_nb", model_version="v1", data_cutoff=NOW - timedelta(days=5),
+        confidence_tier="moderate_confidence", selection_status_at_observation="confirmed_selected",
+        is_confirmed_at_observation=True, difference_pp=0.024, expected_value=0.045,
+    )
+    db.add_all([stat, observation])
+    db.commit()
+    return match, observation
+
+
+def test_stuck_in_progress_match_completes_and_settles_via_delayed_fixture_refresh(db_session, monkeypatch):
+    """End-to-end regression for the real bug this cycle was built to fix:
+    a fixture refresh that finally reports a long-stuck IN_PROGRESS match
+    as completed must, in the SAME cycle, flip the match to COMPLETED and
+    settle whichever observations were only waiting on that."""
+    match, observation = _seed_in_progress_match_with_pending_observation(db_session)
+    completed_fixture = Fixture(
+        external_id="70001", sport_code="AFL", season_year=2026, round_number=24,
+        home_team="Collingwood", away_team="Carlton", scheduled_start=match.scheduled_start,
+        status="completed", home_score=86, away_score=81,
+    )
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider(fixtures=[completed_fixture]))
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+
+    run = run_live_cycle(db_session)
+
+    db_session.refresh(match)
+    db_session.refresh(observation)
+    assert match.status == MatchStatus.COMPLETED
+    assert match.home_score == 86
+    assert observation.settled_at is not None
+    assert observation.market_result == "won"  # 32 disposals clears the 29.5 line
+    assert observation.actual_stat_value == 32.0
+    assert run.observations_settled == 1
+
+    # Idempotent rerun: the same fixture/result data must not re-settle or
+    # otherwise double-count anything on a second pass.
+    second_run = run_live_cycle(db_session)
+    db_session.refresh(match)
+    assert match.status == MatchStatus.COMPLETED
+    assert second_run.observations_settled == 0

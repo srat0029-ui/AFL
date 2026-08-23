@@ -78,10 +78,24 @@ class SquiggleFixtureProvider(FixtureProvider):
         return [f for g in games if (f := self._to_fixture(g)) is not None]
 
     def get_upcoming_fixtures(self, sport_code: str) -> list[Fixture]:
+        """Refreshes every fixture in the current season, not just
+        not-yet-started ones.
+
+        Previously queried `complete=0`, which Squiggle treats as an exact
+        match on its 0-100 completion percentage — i.e. "hasn't kicked off
+        yet" — not "isn't finished yet". The instant a match went live,
+        `complete` became >0 and it dropped out of this query permanently,
+        so its status/score could never be refreshed through this path: a
+        match would get stuck IN_PROGRESS forever, and a completed match
+        that had already gone live before its previous fixture refresh
+        would never be observed transitioning to COMPLETED at all. Delegates
+        to get_fixtures (same single-request-per-call shape) so every
+        in-progress/completed match this season keeps getting its
+        status/score refreshed on every call, same as historical backfills.
+        """
         self._require_afl(sport_code)
         current_year = datetime.now(timezone.utc).year
-        games = self._query("games", year=current_year, complete=0)
-        return [f for g in games if (f := self._to_fixture(g)) is not None]
+        return self.get_fixtures(sport_code, current_year)
 
     def _query(self, query_type: str, **params: object) -> list[dict]:
         q = ";".join([query_type] + [f"{key}={value}" for key, value in params.items()])

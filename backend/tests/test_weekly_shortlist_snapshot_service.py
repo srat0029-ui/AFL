@@ -158,6 +158,52 @@ def test_settle_snapshot_h2h_home_selection_wins_when_home_wins(db_session):
         assert h2h_items[0].match_result == "won"
 
 
+def _direct_team_item(snapshot_id, match, *, market_type="h2h", selection=None, line_value=None):
+    """Constructs a WeeklyShortlistSnapshotItem directly rather than via
+    create_snapshot, whose opportunity-ranking quality gates return zero
+    items for this bare synthetic fixture (see the `if snap.n_items == 0:
+    return` guards above) — every other test in this file silently skips
+    the team-settlement code path as a result. This is what actually
+    caught the missing `match` argument to _settle_team_item (settle_snapshot
+    raised TypeError on every real completed team item before that fix)."""
+    return WeeklyShortlistSnapshotItem(
+        snapshot_id=snapshot_id, rank=1, opportunity_type="team", label="test item", match_id=match.id,
+        market_type=market_type, selection=selection or match.home_team.name, line_value=line_value,
+        best_price=1.9, best_bookmaker="TAB", recorded_at=NOW,
+        model_probability=0.6, model_fair_odds=1.67, market_implied_probability=0.55,
+        difference_pp=0.05, expected_value=0.09, confidence_tier="higher_confidence",
+        quality_tier="strong_candidate", n_bookmakers=2, reasons_json={},
+    )
+
+
+def test_settle_snapshot_settles_a_real_team_item_without_raising(db_session):
+    """Regression: settle_snapshot used to call _settle_team_item(db, item)
+    with the match argument missing, raising TypeError for every real
+    completed team item — masked in every other test here by the
+    n_items==0 early return. This constructs the item directly so the
+    team-settlement path is actually exercised."""
+    match, home, away = _seed_match_with_h2h_opportunity(db_session)
+    snapshot = WeeklyShortlistSnapshot(round_number=1, season_year=2026, n_items=1, label="direct")
+    db_session.add(snapshot)
+    db_session.flush()
+    item = _direct_team_item(snapshot.id, match)
+    db_session.add(item)
+    db_session.commit()
+
+    match.status = MatchStatus.COMPLETED
+    match.home_score = 100
+    match.away_score = 80
+    db_session.commit()
+
+    settled_count = settle_snapshot(db_session, snapshot.id)
+
+    assert settled_count == 1
+    db_session.refresh(item)
+    assert item.settled_at is not None
+    assert item.match_result == "won"  # home selection, home won
+    assert item.actual_stat_value == 20.0
+
+
 def test_settle_snapshot_never_re_settles_already_settled_items(db_session):
     match, home, away = _seed_match_with_h2h_opportunity(db_session)
     snap = create_snapshot(db_session, limit=10)

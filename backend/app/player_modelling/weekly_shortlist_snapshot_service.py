@@ -161,7 +161,7 @@ def settle_snapshot(db: Session, snapshot_id: int) -> int:
         if item.opportunity_type == "player":
             _settle_player_item(db, item)
         else:
-            _settle_team_item(db, item)
+            _settle_team_item(db, item, match)
         if item.settled_at is not None:
             settled_count += 1
     db.commit()
