@@ -2659,3 +2659,289 @@ export interface PlacedBetAnalytics {
 export function fetchPlacedBetAnalytics(): Promise<PlacedBetAnalytics> {
   return request("/api/placed-bets/analytics");
 }
+
+// --- Model Registry + Prospective Live Evaluation (B2B pricing engine) -----
+// Two strictly separate datasets — each response carries its own
+// dataset_label ("Historical backtest" vs "Prospective live evaluation")
+// precisely so a consumer never blends them. Read-only; no model/ranking
+// logic lives here.
+
+export type ModelRunStatus = "champion" | "previous_champion" | "challenger" | "rejected";
+
+export interface ModelRunSummary {
+  model_name: string;
+  model_version: string;
+  market: string;
+  status: ModelRunStatus;
+  run_at: string;
+  tune_start_year: number;
+  tune_end_year: number;
+  evaluation_start_year: number;
+  evaluation_end_year: number;
+  sample_size: number | null;
+  point_metrics: Record<string, number | null>;
+  calibration_metrics: Record<string, { brier: number | null; ece: number | null }>;
+  promotion_reason: string | null;
+}
+
+export interface PromotionEvent {
+  market: string;
+  previous_champion_model_name: string | null;
+  previous_champion_model_version: string | null;
+  new_champion_model_name: string;
+  new_champion_model_version: string;
+  promoted_at: string;
+  evidence_summary: string;
+  evaluation_metrics: Record<string, unknown>;
+}
+
+export interface DisposalHeadToHead {
+  ridge: ModelRunSummary | null;
+  huber: ModelRunSummary | null;
+  ridge_high_volume_bias: Record<string, number>;
+  huber_high_volume_bias: Record<string, number>;
+  ridge_low_history_bias: Record<string, number>;
+  huber_low_history_bias: Record<string, number>;
+}
+
+export interface ModelRegistry {
+  dataset_label: string;
+  disposal_models: ModelRunSummary[];
+  goal_models: ModelRunSummary[];
+  team_models: ModelRunSummary[];
+  disposal_head_to_head: DisposalHeadToHead;
+  promotion_events: PromotionEvent[];
+}
+
+export function fetchModelRegistry(): Promise<ModelRegistry> {
+  return request("/api/v1/model-registry");
+}
+
+export interface ProspectiveSplit {
+  label: string;
+  n_settled: number;
+  n_unique_events: number;
+  model_brier: number | null;
+  market_brier: number | null;
+  model_log_loss: number | null;
+  market_log_loss: number | null;
+  model_calibration_ece: number | null;
+  n_with_market_consensus: number;
+  exploratory: boolean;
+}
+
+export interface ProspectiveEvaluation {
+  dataset_label: string;
+  has_settled_data: boolean;
+  n_frozen_total: number;
+  n_settled: number;
+  n_unique_player_match_events: number;
+  overall: ProspectiveSplit | null;
+  by_market_family: ProspectiveSplit[];
+  by_probability_bucket: ProspectiveSplit[];
+  by_model_version: ProspectiveSplit[];
+  message: string;
+}
+
+export function fetchProspectiveEvaluation(): Promise<ProspectiveEvaluation> {
+  return request("/api/v1/model-registry/prospective-evaluation");
+}
+
+// --- B2B Pricing API (/api/v1/pricing/*, /api/v1/market-intelligence/*) ----
+// Pure model belief (pricing) vs bookmaker comparison (market intelligence)
+// are separate endpoints by design — see backend app/pricing/ module docs.
+
+export interface ModelProvenanceV1 {
+  model_name: string;
+  model_version: string;
+  generated_at: string;
+  data_cutoff: string;
+}
+
+export interface ThresholdPriceV1 {
+  threshold: number;
+  line_type: string;
+  probability: number;
+  fair_odds: number;
+}
+
+export interface LinePriceV1 {
+  line_value: number;
+  home_team: string;
+  away_team: string;
+  home_probability: number;
+  away_probability: number;
+  home_fair_odds: number;
+  away_fair_odds: number;
+}
+
+export interface TotalPriceV1 {
+  line_value: number;
+  over_probability: number;
+  under_probability: number;
+  over_fair_odds: number;
+  under_fair_odds: number;
+}
+
+export interface TeamMarketPriceV1 {
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  provenance: ModelProvenanceV1;
+  home_win_probability: number;
+  draw_probability: number;
+  away_win_probability: number;
+  home_fair_odds: number;
+  draw_fair_odds: number;
+  away_fair_odds: number;
+  expected_margin: number;
+  expected_total_points: number;
+  home_expected_score: number;
+  away_expected_score: number;
+  lines: LinePriceV1[];
+  totals: TotalPriceV1[];
+}
+
+export interface CalibrationInfoV1 {
+  market_type: string;
+  requested_threshold: number;
+  evaluated_threshold: number;
+  ece: number;
+  n: number;
+}
+
+export interface DisposalPriceV1 {
+  match_id: number;
+  player_id: number;
+  player_name: string;
+  team_id: number;
+  provenance: ModelProvenanceV1;
+  lineup_status: string;
+  confidence_tier: string;
+  games_of_history: number;
+  expected: number;
+  distribution_method: string;
+  distribution_params: Record<string, number | null>;
+  interval_50: [number, number];
+  interval_80: [number, number];
+  interval_90: [number, number];
+  thresholds: ThresholdPriceV1[];
+  calibration: CalibrationInfoV1 | null;
+  warnings: string[];
+  is_stale: boolean;
+  stale_reasons: string[];
+}
+
+export interface GoalPriceV1 {
+  match_id: number;
+  player_id: number;
+  player_name: string;
+  team_id: number;
+  provenance: ModelProvenanceV1;
+  lineup_status: string;
+  confidence_tier: string;
+  games_of_history: number;
+  expected: number;
+  distribution_kind: string;
+  distribution_params: Record<string, number | null>;
+  scoring_archetype: string;
+  thresholds: ThresholdPriceV1[];
+  calibration: CalibrationInfoV1 | null;
+  warnings: string[];
+  is_stale: boolean;
+  stale_reasons: string[];
+}
+
+export interface MatchPricing {
+  match_id: number;
+  team: TeamMarketPriceV1;
+  disposals: DisposalPriceV1[];
+  goals: GoalPriceV1[];
+}
+
+export interface RoundPricing {
+  round_number: number | null;
+  season_year: number | null;
+  n_matches: number;
+  teams: TeamMarketPriceV1[];
+  disposals: DisposalPriceV1[];
+  goals: GoalPriceV1[];
+}
+
+export function fetchMatchPricing(matchId: number): Promise<MatchPricing> {
+  return request(`/api/v1/pricing/afl/matches/${matchId}`);
+}
+
+export function fetchCurrentRoundPricing(): Promise<RoundPricing> {
+  return request("/api/v1/pricing/afl/current-round");
+}
+
+export interface BookLineV1 {
+  bookmaker_name: string;
+  price_decimal: number;
+  recorded_at: string;
+  eligibility: string;
+}
+
+export interface ConsensusV1 {
+  consensus_probability: number;
+  n_bookmakers: number;
+  n_devigged: number;
+  spread: number;
+  methodology: string;
+}
+
+export interface OutlierV1 {
+  is_outlier: boolean;
+  best_price: number;
+  median_eligible_price: number;
+  pct_difference: number;
+  message: string | null;
+}
+
+export interface MarketIntelligence {
+  has_market: boolean;
+  n_bookmakers: number;
+  best_price: number | null;
+  best_bookmaker: string | null;
+  consensus: ConsensusV1 | null;
+  outlier: OutlierV1 | null;
+  model_probability: number;
+  market_implied_probability: number | null;
+  difference_pp: number | null;
+  books: BookLineV1[];
+}
+
+export function fetchPlayerMarketIntelligence(
+  playerId: number, marketType: "player_disposals" | "player_goals", matchId: number, threshold: number, lineType = "over_under"
+): Promise<MarketIntelligence> {
+  return request(`/api/v1/market-intelligence/afl/players/${playerId}/${marketType}?match_id=${matchId}&threshold=${threshold}&line_type=${lineType}`);
+}
+
+export function fetchTeamMarketIntelligence(
+  matchId: number, marketType: "h2h" | "line" | "total", selection: string, lineValue: number | null = null
+): Promise<MarketIntelligence> {
+  const qs = new URLSearchParams({ selection });
+  if (lineValue !== null) qs.set("line_value", String(lineValue));
+  return request(`/api/v1/market-intelligence/afl/matches/${matchId}/team/${marketType}?${qs.toString()}`);
+}
+
+export interface StaleWarning {
+  category: string;
+  detail: string;
+}
+
+export interface IntegrationHealth {
+  status: string;
+  generated_at: string;
+  last_fixture_refresh: string | null;
+  last_odds_refresh: string | null;
+  current_round: number | null;
+  current_season_year: number | null;
+  promoted_models: Record<string, string>;
+  stale_warnings: StaleWarning[];
+}
+
+export function fetchIntegrationHealth(): Promise<IntegrationHealth> {
+  return request("/api/v1/integration-health");
+}

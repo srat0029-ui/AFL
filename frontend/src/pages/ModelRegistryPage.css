@@ -1,0 +1,148 @@
+.model-registry-page {
+  padding: 1.5rem;
+}
+
+.model-registry-page .subtitle {
+  opacity: 0.75;
+  max-width: 70ch;
+}
+
+.model-registry-page__error {
+  color: #e57373;
+}
+
+.model-registry-section,
+.model-registry-prospective {
+  margin: 1.25rem 0;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border-color, #3a3f4b);
+  border-radius: 8px;
+}
+
+.model-registry-section h2,
+.model-registry-prospective h2 {
+  margin-top: 0;
+}
+
+.model-registry-table__wrap {
+  overflow-x: auto;
+  margin-bottom: 1rem;
+}
+
+.model-registry-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.model-registry-table th,
+.model-registry-table td {
+  padding: 0.35rem 0.55rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-color, #3a3f4b);
+  white-space: nowrap;
+}
+
+.model-registry-table__name {
+  font-weight: 600;
+}
+
+.model-registry-table__section td {
+  font-weight: 600;
+  opacity: 0.75;
+  border-bottom: none;
+  padding-top: 0.6rem;
+}
+
+.model-registry-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.model-registry-badge--champion {
+  background: rgba(76, 175, 80, 0.15);
+  color: #4caf50;
+}
+
+.model-registry-badge--previous_champion {
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+}
+
+.model-registry-badge--challenger {
+  background: rgba(100, 181, 246, 0.15);
+  color: #64b5f6;
+}
+
+.model-registry-badge--rejected {
+  background: rgba(158, 158, 158, 0.15);
+  color: #9e9e9e;
+}
+
+.model-registry-h2h {
+  margin-bottom: 1.25rem;
+}
+
+.model-registry-audit__event {
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color, #3a3f4b);
+}
+
+.model-registry-audit__headline {
+  margin-bottom: 0.2rem;
+}
+
+.model-registry-prospective__headline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.5rem;
+  margin: 0.75rem 0;
+}
+
+.model-registry-stat-label {
+  display: block;
+  font-size: 0.7rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+}
+
+.model-registry-stat-value {
+  display: block;
+  font-size: 1.2rem;
+  font-weight: 600;
+}
+
+.model-registry-accumulating {
+  padding: 1rem;
+  border: 1px dashed var(--border-color, #3a3f4b);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.model-registry-exploratory-tag {
+  display: inline-block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(255, 193, 7, 0.15);
+  color: #ffc107;
+  margin-left: 0.4rem;
+}
+
+.model-registry-exploratory-tag--headline {
+  display: block;
+  margin: 0.5rem 0;
+  font-weight: 400;
+}
+
+.model-registry-prospective__split {
+  margin-top: 1rem;
+}
+
+.model-registry-prospective__split h4 {
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+}

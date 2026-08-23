@@ -1,0 +1,465 @@
+{
+  "dataset_label": "Historical backtest",
+  "disposal_models": [
+    {
+      "model_name": "disposals_baseline_last5",
+      "model_version": "disposals_baseline_last5@2026-08-16T04:25:18.838805",
+      "market": "player_disposals",
+      "status": "rejected",
+      "run_at": "2026-08-16T04:25:18.838805+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2025,
+      "sample_size": 64282,
+      "point_metrics": {
+        "mae": 4.137615506673719,
+        "rmse": 5.355463853004219,
+        "bias": -0.056790910882258384
+      },
+      "calibration_metrics": {
+        "20+": {
+          "brier": 0.11984654953108234,
+          "ece": 0.012554487397449157
+        },
+        "25+": {
+          "brier": 0.07400597538490947,
+          "ece": 0.013338893222337053
+        },
+        "30+": {
+          "brier": 0.036159069056852476,
+          "ece": 0.01942489925821146
+        },
+        "35+": {
+          "brier": 0.0122514728579654,
+          "ece": 0.016944934369953518
+        }
+      },
+      "promotion_reason": null
+    },
+    {
+      "model_name": "disposals_baseline_last10",
+      "model_version": "disposals_baseline_last10@2026-08-16T04:25:30.967802",
+      "market": "player_disposals",
+      "status": "rejected",
+      "run_at": "2026-08-16T04:25:30.967802+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2025,
+      "sample_size": 64282,
+      "point_metrics": {
+        "mae": 4.0630617917183365,
+        "rmse": 5.275442998683147,
+        "bias": -0.048454663800328215
+      },
+      "calibration_metrics": {
+        "20+": {
+          "brier": 0.11884009573882227,
+          "ece": 0.012493693685775503
+        },
+        "25+": {
+          "brier": 0.0730179492156418,
+          "ece": 0.012298192150395565
+        },
+        "30+": {
+          "brier": 0.03558080018366599,
+          "ece": 0.015494698033414252
+        },
+        "35+": {
+          "brier": 0.011779761363490128,
+          "ece": 0.014181984976847067
+        }
+      },
+      "promotion_reason": null
+    },
+    {
+      "model_name": "disposals_baseline_ewma",
+      "model_version": "disposals_baseline_ewma@2026-08-16T04:25:43.642774",
+      "market": "player_disposals",
+      "status": "rejected",
+      "run_at": "2026-08-16T04:25:43.642774+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2025,
+      "sample_size": 64282,
+      "point_metrics": {
+        "mae": 4.061355990333669,
+        "rmse": 5.264766628074194,
+        "bias": -0.06083699011041776
+      },
+      "calibration_metrics": {
+        "20+": {
+          "brier": 0.117837232296354,
+          "ece": 0.013736488931665082
+        },
+        "25+": {
+          "brier": 0.07301822621281122,
+          "ece": 0.01355625791943249
+        },
+        "30+": {
+          "brier": 0.0357087411361423,
+          "ece": 0.01793218024389553
+        },
+        "35+": {
+          "brier": 0.01200016719093034,
+          "ece": 0.015882013851957356
+        }
+      },
+      "promotion_reason": null
+    },
+    {
+      "model_name": "disposals_ridge",
+      "model_version": "disposals_ridge@2026-08-16T04:26:05.563784",
+      "market": "player_disposals",
+      "status": "previous_champion",
+      "run_at": "2026-08-16T04:26:05.563784+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2025,
+      "sample_size": 64282,
+      "point_metrics": {
+        "mae": 3.9543768326012403,
+        "rmse": 5.107007226040458,
+        "bias": 0.10712178671472933
+      },
+      "calibration_metrics": {
+        "20+": {
+          "brier": 0.11665218684947289,
+          "ece": 0.016768859452036298
+        },
+        "25+": {
+          "brier": 0.07246444245420049,
+          "ece": 0.015478506250235193
+        },
+        "30+": {
+          "brier": 0.034553849877169605,
+          "ece": 0.005048370601716207
+        },
+        "35+": {
+          "brier": 0.010636167595260235,
+          "ece": 0.0013064889672288226
+        }
+      },
+      "promotion_reason": null
+    },
+    {
+      "model_name": "disposals_huber",
+      "model_version": "disposals_huber@2026-08-23T12:40:50.407355",
+      "market": "player_disposals",
+      "status": "champion",
+      "run_at": "2026-08-23T12:40:50.407355+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2026,
+      "sample_size": 74197,
+      "point_metrics": {
+        "mae": 3.907010466522446,
+        "rmse": 5.043412727223042,
+        "bias": -0.030423834090342133
+      },
+      "calibration_metrics": {
+        "20+": {
+          "brier": 0.11740600769781091,
+          "ece": 0.020194587405103798
+        },
+        "25+": {
+          "brier": 0.07281689309214522,
+          "ece": 0.015544582741752059
+        },
+        "30+": {
+          "brier": 0.03443078551115957,
+          "ece": 0.004164032822398092
+        },
+        "35+": {
+          "brier": 0.010459059859668876,
+          "ece": 0.0019109347443647914
+        }
+      },
+      "promotion_reason": "Controlled OLS (n=62,173) found Ridge's elite/high-volume under-prediction survives controlling for sample size, season, and TOG - not a small-sample artefact. A Ridge alpha grid (0.1-50) showed elite bias barely moves with regularisation strength, ruling out excessive L2 shrinkage as the cause. Huber (robust loss) improved overall MAE (3.931->3.907) and bias (+0.063->-0.030), reduced 28+ bias (-0.420->-0.307) and 25+ bias (-0.065->+0.013), IMPROVED (not worsened) low-history (<5 games) over-prediction (+1.703->+1.082), maintained calibration at 20/25/30/35+, and won on MAE in all 8 evaluated seasons (2019-2026). ElasticNet and a player-baseline+contextual-residual challenger were both evaluated and rejected (worse elite bias and/or worse low-history bias) \u2014 see scripts/elite_disposal_challenger_research.py for the full comparison."
+    }
+  ],
+  "goal_models": [
+    {
+      "model_name": "goals_baseline_last5",
+      "model_version": "goals_baseline_last5@2026-08-16T04:51:25.393727",
+      "market": "player_goals",
+      "status": "rejected",
+      "run_at": "2026-08-16T04:51:25.393727+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2025,
+      "sample_size": 64282,
+      "point_metrics": {
+        "mae": 0.5092221254265061,
+        "bias": -0.0008802360432676821
+      },
+      "calibration_metrics": {
+        "1+": {
+          "brier": 0.1778866395638064,
+          "ece": 0.05887319898134708
+        },
+        "2+": {
+          "brier": 0.08712381337655274,
+          "ece": 0.02527838444824632
+        },
+        "3+": {
+          "brier": 0.03854550880616652,
+          "ece": 0.011730760430419299
+        },
+        "4+": {
+          "brier": 0.015977741217316852,
+          "ece": 0.008935280274631526
+        },
+        "5+": {
+          "brier": 0.006154572165168697,
+          "ece": 0.006590252621178667
+        }
+      },
+      "promotion_reason": null
+    },
+    {
+      "model_name": "goals_baseline_last10",
+      "model_version": "goals_baseline_last10@2026-08-16T04:51:38.904030",
+      "market": "player_goals",
+      "status": "rejected",
+      "run_at": "2026-08-16T04:51:38.904030+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2025,
+      "sample_size": 64282,
+      "point_metrics": {
+        "mae": 0.503526759323872,
+        "bias": 0.0009442397412591264
+      },
+      "calibration_metrics": {
+        "1+": {
+          "brier": 0.16986584196917995,
+          "ece": 0.03785203506100043
+        },
+        "2+": {
+          "brier": 0.08441787070074992,
+          "ece": 0.01496520999621784
+        },
+        "3+": {
+          "brier": 0.03742400942450578,
+          "ece": 0.007459560008175683
+        },
+        "4+": {
+          "brier": 0.01541045859851756,
+          "ece": 0.00603020973964277
+        },
+        "5+": {
+          "brier": 0.005841513003976683,
+          "ece": 0.004457850915033791
+        }
+      },
+      "promotion_reason": null
+    }
+  ],
+  "team_models": [
+    {
+      "model_name": "elo",
+      "model_version": "elo@2026-08-14T14:04:30.922530",
+      "market": "team",
+      "status": "champion",
+      "run_at": "2026-08-14T14:04:30.922530+00:00",
+      "tune_start_year": 2022,
+      "tune_end_year": 2022,
+      "evaluation_start_year": 2023,
+      "evaluation_end_year": 2023,
+      "sample_size": null,
+      "point_metrics": {},
+      "calibration_metrics": {},
+      "promotion_reason": null
+    },
+    {
+      "model_name": "poisson",
+      "model_version": "poisson@2026-08-15T07:06:27.617657",
+      "market": "team",
+      "status": "champion",
+      "run_at": "2026-08-15T07:06:27.617657+00:00",
+      "tune_start_year": 2022,
+      "tune_end_year": 2022,
+      "evaluation_start_year": 2023,
+      "evaluation_end_year": 2023,
+      "sample_size": null,
+      "point_metrics": {},
+      "calibration_metrics": {},
+      "promotion_reason": null
+    }
+  ],
+  "disposal_head_to_head": {
+    "ridge": {
+      "model_name": "disposals_ridge",
+      "model_version": "disposals_ridge@2026-08-16T04:26:05.563784",
+      "market": "player_disposals",
+      "status": "previous_champion",
+      "run_at": "2026-08-16T04:26:05.563784+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2025,
+      "sample_size": 64282,
+      "point_metrics": {
+        "mae": 3.9543768326012403,
+        "rmse": 5.107007226040458,
+        "bias": 0.10712178671472933
+      },
+      "calibration_metrics": {
+        "20+": {
+          "brier": 0.11665218684947289,
+          "ece": 0.016768859452036298
+        },
+        "25+": {
+          "brier": 0.07246444245420049,
+          "ece": 0.015478506250235193
+        },
+        "30+": {
+          "brier": 0.034553849877169605,
+          "ece": 0.005048370601716207
+        },
+        "35+": {
+          "brier": 0.010636167595260235,
+          "ece": 0.0013064889672288226
+        }
+      },
+      "promotion_reason": null
+    },
+    "huber": {
+      "model_name": "disposals_huber",
+      "model_version": "disposals_huber@2026-08-23T12:40:50.407355",
+      "market": "player_disposals",
+      "status": "champion",
+      "run_at": "2026-08-23T12:40:50.407355+00:00",
+      "tune_start_year": 2016,
+      "tune_end_year": 2018,
+      "evaluation_start_year": 2019,
+      "evaluation_end_year": 2026,
+      "sample_size": 74197,
+      "point_metrics": {
+        "mae": 3.907010466522446,
+        "rmse": 5.043412727223042,
+        "bias": -0.030423834090342133
+      },
+      "calibration_metrics": {
+        "20+": {
+          "brier": 0.11740600769781091,
+          "ece": 0.020194587405103798
+        },
+        "25+": {
+          "brier": 0.07281689309214522,
+          "ece": 0.015544582741752059
+        },
+        "30+": {
+          "brier": 0.03443078551115957,
+          "ece": 0.004164032822398092
+        },
+        "35+": {
+          "brier": 0.010459059859668876,
+          "ece": 0.0019109347443647914
+        }
+      },
+      "promotion_reason": "Controlled OLS (n=62,173) found Ridge's elite/high-volume under-prediction survives controlling for sample size, season, and TOG - not a small-sample artefact. A Ridge alpha grid (0.1-50) showed elite bias barely moves with regularisation strength, ruling out excessive L2 shrinkage as the cause. Huber (robust loss) improved overall MAE (3.931->3.907) and bias (+0.063->-0.030), reduced 28+ bias (-0.420->-0.307) and 25+ bias (-0.065->+0.013), IMPROVED (not worsened) low-history (<5 games) over-prediction (+1.703->+1.082), maintained calibration at 20/25/30/35+, and won on MAE in all 8 evaluated seasons (2019-2026). ElasticNet and a player-baseline+contextual-residual challenger were both evaluated and rejected (worse elite bias and/or worse low-history bias) \u2014 see scripts/elite_disposal_challenger_research.py for the full comparison."
+    },
+    "ridge_high_volume_bias": {
+      "22+": -0.137,
+      "25+": -0.065,
+      "28+": -0.42
+    },
+    "huber_high_volume_bias": {
+      "22+": -0.082,
+      "25+": 0.013,
+      "28+": -0.307
+    },
+    "ridge_low_history_bias": {
+      "<5": 1.703,
+      "5-9": 0.385,
+      "10-19": 0.402,
+      "20+": -0.068
+    },
+    "huber_low_history_bias": {
+      "<5": 1.082,
+      "5-9": 0.23,
+      "10-19": 0.264,
+      "20+": -0.127
+    }
+  },
+  "promotion_events": [
+    {
+      "market": "player_disposals",
+      "previous_champion_model_name": "disposals_ridge",
+      "previous_champion_model_version": "disposals_ridge@2026-08-16T04:26:05.563784",
+      "new_champion_model_name": "disposals_huber",
+      "new_champion_model_version": "disposals_huber@2026-08-23T12:40:50.407355",
+      "promoted_at": "2026-08-23T12:40:50.407355+00:00",
+      "evidence_summary": "Controlled OLS (n=62,173) found Ridge's elite/high-volume under-prediction survives controlling for sample size, season, and TOG - not a small-sample artefact. A Ridge alpha grid (0.1-50) showed elite bias barely moves with regularisation strength, ruling out excessive L2 shrinkage as the cause. Huber (robust loss) improved overall MAE (3.931->3.907) and bias (+0.063->-0.030), reduced 28+ bias (-0.420->-0.307) and 25+ bias (-0.065->+0.013), IMPROVED (not worsened) low-history (<5 games) over-prediction (+1.703->+1.082), maintained calibration at 20/25/30/35+, and won on MAE in all 8 evaluated seasons (2019-2026). ElasticNet and a player-baseline+contextual-residual challenger were both evaluated and rejected (worse elite bias and/or worse low-history bias) \u2014 see scripts/elite_disposal_challenger_research.py for the full comparison.",
+      "evaluation_metrics": {
+        "overall_mae": {
+          "ridge": 3.931,
+          "huber": 3.907
+        },
+        "overall_rmse": {
+          "ridge": 5.073,
+          "huber": 5.043
+        },
+        "overall_bias": {
+          "ridge": 0.063,
+          "huber": -0.03
+        },
+        "ridge_high_volume_bias": {
+          "22+": -0.137,
+          "25+": -0.065,
+          "28+": -0.42
+        },
+        "huber_high_volume_bias": {
+          "22+": -0.082,
+          "25+": 0.013,
+          "28+": -0.307
+        },
+        "ridge_low_history_bias": {
+          "<5": 1.703,
+          "5-9": 0.385,
+          "10-19": 0.402,
+          "20+": -0.068
+        },
+        "huber_low_history_bias": {
+          "<5": 1.082,
+          "5-9": 0.23,
+          "10-19": 0.264,
+          "20+": -0.127
+        },
+        "calibration_ece": {
+          "ridge": {
+            "20+": 0.0176,
+            "25+": 0.016,
+            "30+": 0.0051,
+            "35+": 0.0014
+          },
+          "huber": {
+            "20+": 0.0202,
+            "25+": 0.0155,
+            "30+": 0.0042,
+            "35+": 0.0019
+          }
+        },
+        "interval_80_coverage": {
+          "ridge": 0.81,
+          "huber": 0.812
+        },
+        "seasons_huber_beat_ridge_on_mae": 8,
+        "seasons_evaluated": 8,
+        "challengers_rejected": [
+          "elasticnet",
+          "baseline_plus_contextual_residual"
+        ]
+      }
+    }
+  ],
+  "_note": "Trimmed for readability \u2014 real response lists every persisted model run per market."
+}

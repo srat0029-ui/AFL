@@ -35,6 +35,7 @@ from app.player_modelling.disposal_features import DisposalFeatureRow
 from app.player_modelling.disposal_models import (
     BoostingRegressionConfig,
     fit_boosting_regression,
+    fit_huber,
     fit_negative_binomial_regression,
     fit_poisson_regression,
     fit_residual_nb_alpha,
@@ -80,6 +81,8 @@ def fit_live_disposal_model(train_rows: list[DisposalFeatureRow], run: PlayerMod
 
     if family == "ridge":
         fitted = fit_ridge(train_rows, feature_names, alpha=config.get("alpha", 5.0))
+    elif family == "huber":
+        fitted = fit_huber(train_rows, feature_names, epsilon=config.get("epsilon", 1.35), alpha=config.get("alpha", 0.001))
     elif family == "poisson_regression":
         fitted = fit_poisson_regression(train_rows, feature_names)
     elif family == "negative_binomial":

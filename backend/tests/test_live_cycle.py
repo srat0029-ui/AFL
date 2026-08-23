@@ -415,3 +415,29 @@ def test_stuck_in_progress_match_completes_and_settles_via_delayed_fixture_refre
     db_session.refresh(match)
     assert match.status == MatchStatus.COMPLETED
     assert second_run.observations_settled == 0
+
+
+def test_run_live_cycle_freezes_a_pricing_snapshot_for_the_upcoming_round(db_session, monkeypatch):
+    """End-to-end: the snapshot_pricing step must actually persist a
+    PricingSnapshot row for a real upcoming match, reusing
+    app/pricing/snapshot_service.py rather than duplicating pricing logic."""
+    from sqlalchemy import select
+
+    from app.modelling.elo import EloConfig
+    from app.modelling.model_run_persistence import persist_model_run
+    from app.modelling.poisson_model import PoissonConfig
+    from app.models import PricingSnapshot
+
+    match = _seed_scheduled_match(db_session)
+    persist_model_run(db_session, "elo", EloConfig(), 2022, metrics=[{"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 10, "holdout_value": 0.2, "naive_baseline_value": 0.25, "has_edge_over_naive": True}])
+    persist_model_run(db_session, "poisson", PoissonConfig(), 2022, metrics=[{"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 10, "holdout_value": 0.2, "naive_baseline_value": 0.25, "has_edge_over_naive": True}])
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+
+    run = run_live_cycle(db_session)
+
+    step_names = [s["step"] for s in run.steps]
+    assert "snapshot_pricing" in step_names
+    snapshots = db_session.scalars(select(PricingSnapshot)).all()
+    assert any(s.match_id == match.id and s.market_type == "h2h" for s in snapshots)

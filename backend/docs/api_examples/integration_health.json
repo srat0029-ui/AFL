@@ -1,0 +1,15 @@
+{
+  "status": "ok",
+  "generated_at": "2026-08-23T13:10:48.015909+00:00",
+  "last_fixture_refresh": "2026-08-23T07:26:52.589453+00:00",
+  "last_odds_refresh": "2026-08-23T07:26:52.589453+00:00",
+  "current_round": 24,
+  "current_season_year": 2026,
+  "promoted_models": {
+    "player_disposals": "disposals_huber@2026-08-23T12:40:50.407355",
+    "player_goals": "goals_hurdle@2026-08-16T04:52:52.559756",
+    "team_elo": "elo@2026-08-14T14:04:30.922530",
+    "team_poisson": "poisson@2026-08-15T07:06:27.617657"
+  },
+  "stale_warnings": []
+}

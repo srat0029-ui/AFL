@@ -1,9 +1,11 @@
 import { NavLink, Route, Routes } from "react-router-dom";
 import "./App.css";
+import B2BDemoPage from "./pages/B2BDemoPage";
 import BacktestPage from "./pages/BacktestPage";
 import DashboardPage from "./pages/DashboardPage";
 import MatchDetailPage from "./pages/MatchDetailPage";
 import MultisPage from "./pages/MultisPage";
+import ModelRegistryPage from "./pages/ModelRegistryPage";
 import PlacedBetsPage from "./pages/PlacedBetsPage";
 import PlayerInsightsPage from "./pages/PlayerInsightsPage";
 import PlayerProfilePage from "./pages/PlayerProfilePage";
@@ -44,6 +46,12 @@ function App() {
         <NavLink to="/placed-bets" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Placed Bets
         </NavLink>
+        <NavLink to="/model-registry" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          Model Registry
+        </NavLink>
+        <NavLink to="/b2b-demo" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          B2B Demo
+        </NavLink>
         <NavLink to="/real-market-tracking" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Real Market Tracking
         </NavLink>
@@ -68,6 +76,8 @@ function App() {
         <Route path="/prop-insights" element={<PropInsightsPage />} />
         <Route path="/multis" element={<MultisPage />} />
         <Route path="/placed-bets" element={<PlacedBetsPage />} />
+        <Route path="/model-registry" element={<ModelRegistryPage />} />
+        <Route path="/b2b-demo" element={<B2BDemoPage />} />
         <Route path="/real-market-tracking" element={<RealMarketTrackingPage />} />
         <Route path="/live-status" element={<LiveStatusPage />} />
         <Route path="/backtest" element={<BacktestPage />} />

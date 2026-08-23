@@ -56,6 +56,7 @@ from app.player_modelling.live_persistence import persist_projection_run
 from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, run_all_sanity_checks
 from app.player_modelling.placed_bets import settle_placed_bets
 from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
+from app.pricing.snapshot_service import settle_pricing_snapshots, snapshot_round_pricing
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
 from app.player_modelling.prop_odds_quota import recommended_refresh_interval
 from app.player_modelling.prop_settlement import settle_all_completed_matches
@@ -257,6 +258,20 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     except Exception as exc:  # noqa: BLE001
         report.add("settle_placed_bets", STEP_RECOVERABLE_FAILURE, f"placed-bet settlement failed: {exc}")
 
+    # Step 4c: settle any pending PricingSnapshot rows (B2B Pricing Engine's
+    # prospective evaluation dataset) - same Section 14 reasoning: before
+    # new-data collection, reusing the exact same settlement primitives as
+    # every other settlement step above (see app/pricing/snapshot_service.py).
+    try:
+        snap_settlement = settle_pricing_snapshots(db)
+        report.add(
+            "settle_pricing_snapshots", STEP_SUCCESS,
+            f"settled {snap_settlement.settled} (won={snap_settlement.won} lost={snap_settlement.lost} "
+            f"push={snap_settlement.pushed} void={snap_settlement.voided}), {snap_settlement.awaiting_data} awaiting data",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("settle_pricing_snapshots", STEP_RECOVERABLE_FAILURE, f"pricing snapshot settlement failed: {exc}")
+
     # Step 5-6: detect stale projections and regenerate only those (reuses
     # exactly what `refresh-live` already does — see cli.py's _refresh_live).
     changed_match_ids: set[int] = set()
@@ -333,6 +348,23 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
             )
     except Exception as exc:  # noqa: BLE001
         report.add("refresh_team_odds", STEP_RECOVERABLE_FAILURE, f"team odds refresh failed: {exc}")
+
+    # Step 10b: freeze this cycle's pricing into the prospective evaluation
+    # dataset (B2B Pricing Engine item 5) - deliberately AFTER odds refresh
+    # above, so whatever market context exists this cycle is captured
+    # alongside the model price, not a stale market snapshot from before
+    # this cycle's odds refresh ran. Idempotent per model_version (see
+    # snapshot_price's docstring) - safe to run every cycle.
+    try:
+        snap_report = snapshot_round_pricing(db, [m.match_id for m in upcoming_matches])
+        report.add(
+            "snapshot_pricing", STEP_SUCCESS,
+            f"{snap_report.matches_considered} match(es) considered: "
+            f"{snap_report.team_snapshots_created} team, {snap_report.disposal_snapshots_created} disposal, "
+            f"{snap_report.goal_snapshots_created} goal snapshot(s) newly frozen",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("snapshot_pricing", STEP_RECOVERABLE_FAILURE, f"pricing snapshot creation failed: {exc}")
 
     # Step 11: venue-local weather forecast refresh (free, keyless Open-Meteo
     # — reuses refresh_weather_for_matches exactly as `refresh-weather` does).

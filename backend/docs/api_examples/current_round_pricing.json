@@ -1,0 +1,313 @@
+{
+  "round_number": 24,
+  "season_year": 2026,
+  "n_matches": 1,
+  "teams": [
+    {
+      "match_id": 2070,
+      "home_team": "West Coast",
+      "away_team": "Hawthorn",
+      "provenance": {
+        "model_name": "elo_poisson",
+        "model_version": "elo_poisson-v1",
+        "generated_at": "2026-08-23T13:10:50.607901+00:00",
+        "data_cutoff": "2026-08-23T02:20:00+00:00"
+      },
+      "home_win_probability": 0.1341568863714746,
+      "draw_probability": 0.0062833802518643045,
+      "away_win_probability": 0.8595597333766611,
+      "home_fair_odds": 7.45395951744917,
+      "draw_fair_odds": 159.15000523854908,
+      "away_fair_odds": 1.1633862792427918,
+      "expected_margin": -37.21217009163027,
+      "expected_total_points": 178.1445031867847,
+      "home_expected_score": 70.46616654757722,
+      "away_expected_score": 107.67833663920749,
+      "lines": [],
+      "totals": []
+    }
+  ],
+  "disposals": [
+    {
+      "match_id": 2070,
+      "player_id": 333,
+      "player_name": "Jack Gunston",
+      "team_id": 18,
+      "provenance": {
+        "model_name": "disposal_nb",
+        "model_version": "disposals_huber@2026-08-23T12:40:50.407355",
+        "generated_at": "2026-08-23T12:42:06.325344+00:00",
+        "data_cutoff": "2026-08-16T06:40:00+00:00"
+      },
+      "lineup_status": "uncertain",
+      "confidence_tier": "moderate_confidence",
+      "games_of_history": 196,
+      "expected": 11.649317924192566,
+      "distribution_method": "nb",
+      "distribution_params": {
+        "mu": 11.649317924192566,
+        "alpha": 0.03300951820498612
+      },
+      "interval_50": [
+        9.0,
+        14.0
+      ],
+      "interval_80": [
+        7.0,
+        17.0
+      ],
+      "interval_90": [
+        6.0,
+        19.0
+      ],
+      "thresholds": [
+        {
+          "threshold": 15.5,
+          "line_type": "over_under",
+          "probability": 0.1657812360910656,
+          "fair_odds": 6.032045746423848
+        },
+        {
+          "threshold": 20.5,
+          "line_type": "over_under",
+          "probability": 0.022826147413088835,
+          "fair_odds": 43.80940777709102
+        },
+        {
+          "threshold": 25.5,
+          "line_type": "over_under",
+          "probability": 0.001773624162042847,
+          "fair_odds": 563.8173077481125
+        },
+        {
+          "threshold": 30.5,
+          "line_type": "over_under",
+          "probability": 8.80230382950893e-05,
+          "fair_odds": 11360.662155827775
+        },
+        {
+          "threshold": 35.5,
+          "line_type": "over_under",
+          "probability": 3.057868289701654e-06,
+          "fair_odds": 327025.2035929143
+        }
+      ],
+      "calibration": {
+        "market_type": "player_disposals",
+        "requested_threshold": 15.5,
+        "evaluated_threshold": 20.0,
+        "ece": 0.020194587405103798,
+        "n": 74197
+      },
+      "warnings": [
+        "Expected lineup not confirmed \u2014 this player is marked uncertain to play."
+      ],
+      "is_stale": false,
+      "stale_reasons": []
+    },
+    {
+      "match_id": 2070,
+      "player_id": 346,
+      "player_name": "James Sicily",
+      "team_id": 18,
+      "provenance": {
+        "model_name": "disposal_nb",
+        "model_version": "disposals_huber@2026-08-23T12:40:50.407355",
+        "generated_at": "2026-08-23T12:42:06.325344+00:00",
+        "data_cutoff": "2026-08-16T06:40:00+00:00"
+      },
+      "lineup_status": "uncertain",
+      "confidence_tier": "moderate_confidence",
+      "games_of_history": 197,
+      "expected": 19.407155317241493,
+      "distribution_method": "nb",
+      "distribution_params": {
+        "mu": 19.407155317241493,
+        "alpha": 0.03300951820498612
+      },
+      "interval_50": [
+        15.0,
+        23.0
+      ],
+      "interval_80": [
+        12.0,
+        27.0
+      ],
+      "interval_90": [
+        11.0,
+        29.0
+      ],
+      "thresholds": [
+        {
+          "threshold": 15.5,
+          "line_type": "over_under",
+          "probability": 0.7450003906353649,
+          "fair_odds": 1.342281175379199
+        },
+        {
+          "threshold": 20.5,
+          "line_type": "over_under",
+          "probability": 0.39799687686631857,
+          "fair_odds": 2.512582530480222
+        },
+        {
+          "threshold": 25.5,
+          "line_type": "over_under",
+          "probability": 0.14088464447438237,
+          "fair_odds": 7.098005632415349
+        },
+        {
+          "threshold": 30.5,
+          "line_type": "over_under",
+          "probability": 0.0343674625204766,
+          "fair_odds": 29.0972893155608
+        },
+        {
+          "threshold": 35.5,
+          "line_type": "over_under",
+          "probability": 0.006103142810909056,
+          "fair_odds": 163.85000826337392
+        }
+      ],
+      "calibration": {
+        "market_type": "player_disposals",
+        "requested_threshold": 20.5,
+        "evaluated_threshold": 20.0,
+        "ece": 0.020194587405103798,
+        "n": 74197
+      },
+      "warnings": [
+        "Expected lineup not confirmed \u2014 this player is marked uncertain to play."
+      ],
+      "is_stale": false,
+      "stale_reasons": []
+    }
+  ],
+  "goals": [
+    {
+      "match_id": 2070,
+      "player_id": 333,
+      "player_name": "Jack Gunston",
+      "team_id": 18,
+      "provenance": {
+        "model_name": "goal_hurdle",
+        "model_version": "goals_hurdle@2026-08-16T04:52:52.559756",
+        "generated_at": "2026-08-23T12:42:06.325344+00:00",
+        "data_cutoff": "2026-08-16T06:40:00+00:00"
+      },
+      "lineup_status": "uncertain",
+      "confidence_tier": "insufficient_history",
+      "games_of_history": 196,
+      "expected": 2.9926017264446068,
+      "distribution_kind": "hurdle",
+      "distribution_params": {
+        "p_score": 0.9370190354572098,
+        "mu_scored": 3.0411515024376365,
+        "alpha_scored": 1e-06
+      },
+      "scoring_archetype": "high_volume",
+      "thresholds": [
+        {
+          "threshold": 0.5,
+          "line_type": "over_under",
+          "probability": 0.9370190354572097,
+          "fair_odds": 1.0672141783246265
+        },
+        {
+          "threshold": 1.5,
+          "line_type": "over_under",
+          "probability": 0.7940326666348969,
+          "fair_odds": 1.2593940300189295
+        },
+        {
+          "threshold": 2.5,
+          "line_type": "over_under",
+          "probability": 0.5766115051899563,
+          "fair_odds": 1.7342699391170915
+        },
+        {
+          "threshold": 3.5,
+          "line_type": "over_under",
+          "probability": 0.35620817063078364,
+          "fair_odds": 2.807347170698447
+        }
+      ],
+      "calibration": {
+        "market_type": "player_goals",
+        "requested_threshold": 1.5,
+        "evaluated_threshold": 1.0,
+        "ece": 0.019301558349895817,
+        "n": 64282
+      },
+      "warnings": [
+        "Recent goal-scoring has been volatile game-to-game.",
+        "High-volume goal scorers have historically been slightly under-predicted by this model.",
+        "Expected lineup not confirmed \u2014 this player is marked uncertain to play."
+      ],
+      "is_stale": false,
+      "stale_reasons": []
+    },
+    {
+      "match_id": 2070,
+      "player_id": 346,
+      "player_name": "James Sicily",
+      "team_id": 18,
+      "provenance": {
+        "model_name": "goal_hurdle",
+        "model_version": "goals_hurdle@2026-08-16T04:52:52.559756",
+        "generated_at": "2026-08-23T12:42:06.325344+00:00",
+        "data_cutoff": "2026-08-16T06:40:00+00:00"
+      },
+      "lineup_status": "uncertain",
+      "confidence_tier": "moderate_confidence",
+      "games_of_history": 197,
+      "expected": 0.28186249956930787,
+      "distribution_kind": "hurdle",
+      "distribution_params": {
+        "p_score": 0.16215711011474357,
+        "mu_scored": 1.2302867194936644,
+        "alpha_scored": 1e-06
+      },
+      "scoring_archetype": "occasional",
+      "thresholds": [
+        {
+          "threshold": 0.5,
+          "line_type": "over_under",
+          "probability": 0.16215711011474357,
+          "fair_odds": 6.166858790788715
+        },
+        {
+          "threshold": 1.5,
+          "line_type": "over_under",
+          "probability": 0.0797944509609046,
+          "fair_odds": 12.532199770256598
+        },
+        {
+          "threshold": 2.5,
+          "line_type": "over_under",
+          "probability": 0.02912961974476641,
+          "fair_odds": 34.329318705908115
+        },
+        {
+          "threshold": 3.5,
+          "line_type": "over_under",
+          "probability": 0.008352180744496425,
+          "fair_odds": 119.72920972273482
+        }
+      ],
+      "calibration": {
+        "market_type": "player_goals",
+        "requested_threshold": 1.5,
+        "evaluated_threshold": 1.0,
+        "ece": 0.019301558349895817,
+        "n": 64282
+      },
+      "warnings": [
+        "Expected lineup not confirmed \u2014 this player is marked uncertain to play."
+      ],
+      "is_stale": false,
+      "stale_reasons": []
+    }
+  ],
+  "_note": "Trimmed for readability \u2014 real response for this round has 46 disposal and 46 goal entries across 1 match(es)."
+}

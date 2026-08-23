@@ -16,7 +16,7 @@ from typing import Callable
 
 import numpy as np
 from sklearn.impute import SimpleImputer
-from sklearn.linear_model import Ridge
+from sklearn.linear_model import HuberRegressor, Ridge
 from sklearn.preprocessing import StandardScaler
 
 from app.player_modelling.disposal_features import DisposalFeatureRow
@@ -68,6 +68,42 @@ def fit_ridge(train_rows: list[DisposalFeatureRow], feature_names: tuple[str, ..
         return np.clip(model.predict(scaler.transform(imputer.transform(X_new))), 0, None)
 
     return FittedDisposalModel(name="ridge", feature_names=feature_names, predict_fn=predict_fn)
+
+
+# ---------------------------------------------------------------------------
+# Huber regression (robust linear regression) — Elite Disposal Model
+# Research stage: a controlled OLS study found the promoted Ridge's
+# systematic under-prediction of high-volume/elite players survives
+# controlling for sample size, season, and TOG (i.e. isn't a small-sample
+# regression-to-mean artefact), and a dedicated Ridge alpha grid (0.1-50)
+# showed elite bias barely moves with regularisation strength - ruling out
+# "excessive L2 shrinkage" as the cause. Huber's robust loss (quadratic for
+# small residuals, linear beyond `epsilon`) down-weights the influence of
+# high-variance/high-residual training rows during FITTING rather than via
+# regularisation strength, which is the mechanism that empirically fixed
+# it: on the same chronological tune/eval split as the promoted Ridge,
+# Huber improved overall MAE (3.931->3.907), roughly halved the 25+ bias
+# (-0.065->+0.013), reduced 28+ bias (-0.420->-0.307), IMPROVED (not
+# worsened) the low-history (<5 games) over-prediction (+1.703->+1.082),
+# maintained calibration (ECE within noise at every threshold), and won on
+# MAE in all 8 evaluated seasons. See scripts/elite_disposal_challenger_research.py
+# for the full comparison against ElasticNet and a player-baseline+residual
+# challenger, both of which were rejected (worse elite bias and/or worse
+# low-history bias).
+# ---------------------------------------------------------------------------
+
+
+def fit_huber(train_rows: list[DisposalFeatureRow], feature_names: tuple[str, ...], epsilon: float = 1.35, alpha: float = 0.001) -> FittedDisposalModel:
+    X = feature_matrix(train_rows, feature_names)
+    y = target_vector(train_rows)
+    imputer = SimpleImputer(strategy="median").fit(X)
+    scaler = StandardScaler().fit(imputer.transform(X))
+    model = HuberRegressor(epsilon=epsilon, alpha=alpha, max_iter=500).fit(scaler.transform(imputer.transform(X)), y)
+
+    def predict_fn(X_new: np.ndarray) -> np.ndarray:
+        return np.clip(model.predict(scaler.transform(imputer.transform(X_new))), 0, None)
+
+    return FittedDisposalModel(name="huber", feature_names=feature_names, predict_fn=predict_fn)
 
 
 # ---------------------------------------------------------------------------

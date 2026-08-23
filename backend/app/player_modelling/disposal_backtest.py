@@ -42,6 +42,7 @@ from app.player_modelling.disposal_models import (
     FittedDisposalModel,
     feature_matrix,
     fit_boosting_regression,
+    fit_huber,
     fit_negative_binomial_regression,
     fit_poisson_regression,
     fit_residual_nb_alpha,
@@ -170,7 +171,7 @@ def run_baselines(split: DatasetSplit) -> dict[str, list[PredictionRecord]]:
     return results
 
 
-DEFAULT_MODEL_NAMES = ("ridge", "poisson_regression", "negative_binomial", "gbm_xgboost", "gbm_lightgbm")
+DEFAULT_MODEL_NAMES = ("ridge", "huber", "poisson_regression", "negative_binomial", "gbm_xgboost", "gbm_lightgbm")
 
 
 def run_candidate_models(
@@ -186,6 +187,8 @@ def run_candidate_models(
     fitted: dict[str, FittedDisposalModel] = {}
     if "ridge" in model_names:
         fitted["ridge"] = fit_ridge(split.tune_rows, feature_names)
+    if "huber" in model_names:
+        fitted["huber"] = fit_huber(split.tune_rows, feature_names)
     if "poisson_regression" in model_names:
         fitted["poisson_regression"] = fit_poisson_regression(split.tune_rows, feature_names)
     if "negative_binomial" in model_names:

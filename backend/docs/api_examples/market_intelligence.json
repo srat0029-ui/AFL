@@ -1,0 +1,31 @@
+{
+  "has_market": true,
+  "n_bookmakers": 2,
+  "best_price": 17.0,
+  "best_bookmaker": "SportsBet",
+  "consensus": {
+    "consensus_probability": 0.0748663101604278,
+    "n_bookmakers": 2,
+    "n_devigged": 0,
+    "spread": 0.03208556149732621,
+    "methodology": "Same-book devig where that bookmaker quotes the opposite side of the exact same market; raw implied probability otherwise. Simple unweighted mean across eligible sportsbooks. Exchanges excluded."
+  },
+  "outlier": null,
+  "model_probability": 0.022826147413088835,
+  "market_implied_probability": 0.0748663101604278,
+  "difference_pp": -0.05204016274733897,
+  "books": [
+    {
+      "bookmaker_name": "PointsBet (AU)",
+      "price_decimal": 11.0,
+      "recorded_at": "2026-08-23T06:51:38.698195+00:00",
+      "eligibility": "included"
+    },
+    {
+      "bookmaker_name": "SportsBet",
+      "price_decimal": 17.0,
+      "recorded_at": "2026-08-22T03:03:35.330617+00:00",
+      "eligibility": "included"
+    }
+  ]
+}

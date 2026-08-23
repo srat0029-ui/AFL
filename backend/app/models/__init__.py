@@ -31,6 +31,7 @@ from app.models.match_context import (
     ContextType,
     MatchContextItem,
 )
+from app.models.model_promotion_event import ModelPromotionEvent
 from app.models.model_run import ModelRun, ModelRunHistory, ModelValidationMetric
 from app.models.odds_quote import OddsQuote
 from app.models.placed_bet import (
@@ -52,6 +53,7 @@ from app.models.player_match_stat import PlayerMatchStat
 from app.models.player_model_run import PlayerDisposalPrediction, PlayerModelRun, PlayerModelValidationMetric
 from app.models.player_projection import PlayerDisposalProjection, PlayerGoalProjection
 from app.models.player_prop_market import PlayerPropMarket
+from app.models.pricing_snapshot import PricingSnapshot
 from app.models.poisson_prediction import PoissonMatchPrediction
 from app.models.prop_market_observation import PropMarketObservation
 from app.models.round import Round
@@ -125,4 +127,6 @@ __all__ = [
     "SOURCE_MODE_BEST_OPPORTUNITY",
     "SOURCE_MODE_FINAL_SHORTLIST",
     "SOURCE_MODE_MANUAL",
+    "PricingSnapshot",
+    "ModelPromotionEvent",
 ]

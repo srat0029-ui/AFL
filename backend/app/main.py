@@ -12,12 +12,14 @@ from app.api.routes import (
     health,
     live_status,
     matches,
+    model_registry_v1,
     odds,
     placed_bets,
     player_identity,
     player_models,
     player_projections,
     predictions,
+    pricing_v1,
     real_market_tracking,
     refresh,
     weekly_review,
@@ -74,3 +76,7 @@ app.include_router(refresh.router)
 app.include_router(weekly_review.router)
 app.include_router(context.router)
 app.include_router(placed_bets.router)
+app.include_router(pricing_v1.pricing_router)
+app.include_router(pricing_v1.market_intel_router)
+app.include_router(pricing_v1.integration_router)
+app.include_router(model_registry_v1.router)

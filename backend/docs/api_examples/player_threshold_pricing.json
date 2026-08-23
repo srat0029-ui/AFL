@@ -1,0 +1,83 @@
+{
+  "match_id": 2070,
+  "player_id": 333,
+  "player_name": "Jack Gunston",
+  "team_id": 18,
+  "provenance": {
+    "model_name": "disposal_nb",
+    "model_version": "disposals_huber@2026-08-23T12:40:50.407355",
+    "generated_at": "2026-08-23T12:42:06.325344+00:00",
+    "data_cutoff": "2026-08-16T06:40:00+00:00"
+  },
+  "lineup_status": "uncertain",
+  "confidence_tier": "moderate_confidence",
+  "games_of_history": 196,
+  "expected": 11.649317924192566,
+  "distribution_method": "nb",
+  "distribution_params": {
+    "mu": 11.649317924192566,
+    "alpha": 0.03300951820498612
+  },
+  "interval_50": [
+    9.0,
+    14.0
+  ],
+  "interval_80": [
+    7.0,
+    17.0
+  ],
+  "interval_90": [
+    6.0,
+    19.0
+  ],
+  "thresholds": [
+    {
+      "threshold": 15.5,
+      "line_type": "over_under",
+      "probability": 0.1657812360910656,
+      "fair_odds": 6.032045746423848
+    },
+    {
+      "threshold": 20.5,
+      "line_type": "over_under",
+      "probability": 0.022826147413088835,
+      "fair_odds": 43.80940777709102
+    },
+    {
+      "threshold": 25.5,
+      "line_type": "over_under",
+      "probability": 0.001773624162042847,
+      "fair_odds": 563.8173077481125
+    },
+    {
+      "threshold": 30.5,
+      "line_type": "over_under",
+      "probability": 8.80230382950893e-05,
+      "fair_odds": 11360.662155827775
+    },
+    {
+      "threshold": 35.5,
+      "line_type": "over_under",
+      "probability": 3.057868289701654e-06,
+      "fair_odds": 327025.2035929143
+    },
+    {
+      "threshold": 27.5,
+      "line_type": "over_under",
+      "probability": 0.0005597713742172486,
+      "fair_odds": 1786.443619769484
+    }
+  ],
+  "calibration": {
+    "market_type": "player_disposals",
+    "requested_threshold": 15.5,
+    "evaluated_threshold": 20.0,
+    "ece": 0.020194587405103798,
+    "n": 74197
+  },
+  "warnings": [
+    "Expected lineup not confirmed \u2014 this player is marked uncertain to play."
+  ],
+  "is_stale": false,
+  "stale_reasons": []
+}
