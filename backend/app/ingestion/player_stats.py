@@ -113,6 +113,58 @@ class PlayerStatsIngestionResult:
         return self.stats_created + self.stats_updated + self.stats_unchanged
 
 
+# Small and deliberately conservative - the real case this exists for
+# (Opening Round inserted ahead of the traditional round-1..24 sequence)
+# is a +1 shift; a little headroom is kept for an equivalent gap elsewhere
+# without inviting a coincidental match at a wide offset. Never applied
+# unless it's also the UNIQUE offset that produces a clean trailing-only
+# gap (see _find_trailing_round_offset) - going wider here doesn't weaken
+# that, it just gives a genuine larger shift more chance to be found.
+_ROUND_OFFSET_SEARCH_RANGE = (-2, -1, 1, 2)
+
+
+def _find_trailing_round_offset(source_round_numbers: list[int], squiggle_round_numbers: set[int]) -> int | None:
+    """Looks for a single constant integer offset that reconciles this
+    team's source round labels with Squiggle's round numbers when neither
+    the exact-match nor the equal-length fallback above applies (see
+    module docstring's "Opening Round" example - AFL Tables' round labels
+    can be a whole season's worth of a competition-wide constant amount
+    higher than Squiggle's for every team, not just the ones who played
+    the extra round).
+
+    Real, current-database example this was built from: every 2026 team's
+    source round-number set becomes an EXACT subset of its Squiggle round
+    numbers under offset -1, with the sole leftover always being that
+    team's single most-recently-played round - i.e. AFL Tables simply
+    hasn't published it yet, not a genuine mismatch.
+
+    Deliberately conservative in three ways: (1) the offset must be
+    unique in _ROUND_OFFSET_SEARCH_RANGE - if more than one offset
+    produces a clean result, that's ambiguous and this refuses same as
+    the caller's existing fallback; (2) shifted source rounds must be a
+    full subset of Squiggle's rounds, never merely overlapping; (3) every
+    Squiggle round NOT covered by the shift must be strictly later than
+    every one that is - a leftover round earlier than (or interleaved
+    with) matched ones means a real gap (e.g. a postponed/rescheduled
+    match), not just "not published yet", and this returns None so the
+    caller falls through to its normal refusal rather than guess through it.
+    """
+    if not source_round_numbers or not squiggle_round_numbers:
+        return None
+    candidates: list[int] = []
+    for offset in _ROUND_OFFSET_SEARCH_RANGE:
+        shifted = {r + offset for r in source_round_numbers}
+        if not shifted.issubset(squiggle_round_numbers):
+            continue
+        leftover = squiggle_round_numbers - shifted
+        if not leftover:
+            continue  # exact bijection would already have been caught by the equal-length fallback above
+        if min(leftover) <= max(shifted):
+            continue  # a leftover round not strictly after every matched round is a real gap, not just unpublished-yet
+        candidates.append(offset)
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def _display_name(published_name: str) -> str:
     """"Acres, Blake" (AFL Tables' published "Last, First" form) -> "Blake Acres".
     Falls back to the raw published form unchanged if it isn't in that shape."""
@@ -273,6 +325,44 @@ def ingest_player_stats(
                     resolved.append((row, match))
                     if match.round.round_number != round_number:
                         result.fallback_resolved += 1
+                claimed_match_ids.add(match.id)
+        elif (offset := _find_trailing_round_offset(source_round_numbers, squiggle_round_numbers)) is not None:
+            # Neither of the above applies, but shifting every source round
+            # number by one CONSTANT amount makes it line up exactly with a
+            # PREFIX of this team's Squiggle rounds - i.e. the source's
+            # round-number sequence is trustworthy (same competition-wide
+            # labelling gap as the equal-length case above, e.g. Opening
+            # Round pushing every later label up by one - see module
+            # docstring), it's just missing its most-recently-played
+            # round(s) because the source hasn't published them yet. Only
+            # ever accepted when every unmatched Squiggle round is strictly
+            # AFTER every round the offset does match (see
+            # _find_trailing_round_offset) - a genuine gap in the middle of
+            # the season still falls through to the refusal below, same as
+            # today. Reuses the exact (round, team) lookup and its
+            # zero/multiple-candidates refusal, just keyed by the shifted
+            # round number instead of the raw source label.
+            for round_number in source_round_numbers:
+                effective_round = round_number + offset
+                candidates = [m for m in matches_by_round_team.get((effective_round, team.id), []) if m.id not in claimed_match_ids]
+                if len(candidates) == 0:
+                    for row in rounds_map[round_number]:
+                        result.unmatched.append(
+                            f"no match found: {row.team_name!r} in round {row.round_label.raw}, {season_year} "
+                            f"(player {row.player_name!r}) — tried shifted round {effective_round} (offset {offset:+d})"
+                        )
+                    continue
+                if len(candidates) > 1:
+                    for row in rounds_map[round_number]:
+                        result.unmatched.append(
+                            f"ambiguous match: {row.team_name!r} in shifted round {effective_round} (offset {offset:+d}), "
+                            f"{season_year} has {len(candidates)} candidate matches (player {row.player_name!r}) — refusing to guess"
+                        )
+                    continue
+                match = candidates[0]
+                for row in rounds_map[round_number]:
+                    resolved.append((row, match))
+                    result.fallback_resolved += 1
                 claimed_match_ids.add(match.id)
         else:
             for round_number in source_round_numbers:

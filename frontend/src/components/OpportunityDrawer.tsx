@@ -1,5 +1,6 @@
 import type { BookmakerQuote, CalibrationMetrics, OpportunityAlternateLine, RecentForm } from "../api/client";
 import { formatCompactDateTime } from "../lib/datetime";
+import { AddBetButton, type AddBetSnapshot } from "./AddBetButton";
 import RecentFormChart from "./RecentFormChart";
 import "./OpportunityDrawer.css";
 
@@ -24,6 +25,10 @@ interface OpportunityDrawerProps {
   reasonLabels?: string[];
   priceAdvantagePct?: number | null;
   recentForm?: RecentForm | null;
+  // Present when the caller has enough opportunity context to freeze a
+  // Placed Bets record (see AddBetButton) - omitted entirely (no button
+  // rendered) for callers like the raw "All Markets" table that don't.
+  addBetSnapshot?: AddBetSnapshot;
 }
 
 const CONFIDENCE_LABELS: Record<string, string> = {
@@ -55,6 +60,7 @@ function OpportunityDrawer({
   reasonLabels,
   priceAdvantagePct,
   recentForm,
+  addBetSnapshot,
 }: OpportunityDrawerProps) {
   const sorted = [...bookmakers].sort((a, b) => b.price_decimal - a.price_decimal);
   const hasModelSection = modelProbability !== undefined;
@@ -62,6 +68,11 @@ function OpportunityDrawer({
   return (
     <div className="opportunity-drawer">
       <p className="opportunity-drawer__why">{whyModelLikesIt}</p>
+      {addBetSnapshot && (
+        <div className="opportunity-drawer__add-bet">
+          <AddBetButton snapshot={addBetSnapshot} />
+        </div>
+      )}
 
       {(correlationLabels?.length || reasonLabels?.length) && (
         <div className="opportunity-drawer__badges">

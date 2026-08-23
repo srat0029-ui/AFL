@@ -1715,6 +1715,14 @@ export interface MultiLeg {
   odds_freshness: string;
   warnings: string[];
   reasons: string[];
+  // null for player legs by convention (every player-market opportunity IS
+  // the "over" side by construction — see backend best_opportunities.py) —
+  // callers that need a selection string for a player leg (e.g. adding it
+  // to Placed Bets) supply "over" themselves rather than reading a stored one.
+  selection: string | null;
+  threshold: number | null;
+  line_type: string | null;
+  line_value: number | null;
 }
 
 export type MultiMode = "high_probability" | "value";
@@ -2571,4 +2579,83 @@ export function fetchWeatherDiagnostic(matchId: number): Promise<WeatherDiagnost
 
 export function fetchContextDashboard(): Promise<RoundContextDashboard> {
   return request("/api/afl/context-dashboard");
+}
+
+// --- Placed Bets tracker (personal record-keeping only — never feeds
+// model training or ranking; see backend app/player_modelling/placed_bets.py) ---
+
+export type PlacedBetSourceMode = "high_probability" | "best_value" | "best_opportunity" | "final_shortlist" | "manual";
+export type PlacedBetStatus = "pending" | "won" | "lost" | "push" | "void";
+
+export interface PlacedBetCreateInput {
+  match_id: number;
+  opportunity_type: "player" | "team";
+  label: string;
+  selection: string;
+  market_type: string;
+  bookmaker: string;
+  odds_taken: number;
+  model_probability: number;
+  model_fair_odds: number;
+  confidence_tier: string;
+  source_mode: PlacedBetSourceMode;
+  player_id?: number | null;
+  line_type?: string | null;
+  threshold?: number | null;
+  line_value?: number | null;
+  stake?: number | null;
+  lineup_status?: string | null;
+  notes?: string | null;
+  placed_at?: string | null;
+}
+
+export interface PlacedBet extends PlacedBetCreateInput {
+  id: number;
+  status: PlacedBetStatus;
+  actual_stat_value: number | null;
+  settled_at: string | null;
+}
+
+export function fetchPlacedBets(status?: PlacedBetStatus): Promise<PlacedBet[]> {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+  return request(`/api/placed-bets${qs}`);
+}
+
+export function createPlacedBet(input: PlacedBetCreateInput): Promise<PlacedBet> {
+  return request("/api/placed-bets", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function deletePlacedBet(betId: number): Promise<void> {
+  return request(`/api/placed-bets/${betId}`, { method: "DELETE" });
+}
+
+export interface PlacedBetSplit {
+  label: string;
+  n_settled: number;
+  wins: number;
+  losses: number;
+  voids: number;
+  hit_rate: number | null;
+  exploratory: boolean;
+}
+
+export interface PlacedBetAnalytics {
+  n_total_settled: number;
+  wins: number;
+  losses: number;
+  voids: number;
+  hit_rate: number | null;
+  avg_odds_taken: number | null;
+  flat_stake_units: number | null;
+  flat_stake_roi_pct: number | null;
+  exploratory: boolean;
+  min_sample_for_labeled: number;
+  by_source_mode: PlacedBetSplit[];
+  by_market_type: PlacedBetSplit[];
+  by_probability_bucket: PlacedBetSplit[];
+  by_confidence_tier: PlacedBetSplit[];
+}
+
+export function fetchPlacedBetAnalytics(): Promise<PlacedBetAnalytics> {
+  return request("/api/placed-bets/analytics");
 }

@@ -2180,3 +2180,85 @@ class MarketMovementRead(BaseModel):
     first_observed_at: UtcDatetime
     latest_observed_at: UtcDatetime
     n_observations: int
+
+
+# --- Placed Bets tracker (personal record-keeping only - see
+# app/player_modelling/placed_bets.py's module docstring: never feeds
+# model training or ranking) ---
+
+
+class PlacedBetCreate(BaseModel):
+    match_id: int
+    opportunity_type: str  # "player" | "team"
+    label: str
+    selection: str
+    market_type: str
+    bookmaker: str
+    odds_taken: float
+    model_probability: float
+    model_fair_odds: float
+    confidence_tier: str
+    source_mode: str  # high_probability | best_value | best_opportunity | final_shortlist | manual
+    player_id: int | None = None
+    line_type: str | None = None
+    threshold: float | None = None
+    line_value: float | None = None
+    stake: float | None = None
+    lineup_status: str | None = None
+    notes: str | None = None
+    placed_at: UtcDatetime | None = None
+
+
+class PlacedBetSplitRead(BaseModel):
+    label: str
+    n_settled: int
+    wins: int
+    losses: int
+    voids: int
+    hit_rate: float | None
+    exploratory: bool
+
+
+class PlacedBetAnalyticsRead(BaseModel):
+    n_total_settled: int
+    wins: int
+    losses: int
+    voids: int
+    hit_rate: float | None
+    avg_odds_taken: float | None
+    flat_stake_units: float | None
+    flat_stake_roi_pct: float | None
+    exploratory: bool
+    min_sample_for_labeled: int
+    by_source_mode: list[PlacedBetSplitRead]
+    by_market_type: list[PlacedBetSplitRead]
+    by_probability_bucket: list[PlacedBetSplitRead]
+    by_confidence_tier: list[PlacedBetSplitRead]
+
+
+class PlacedBetRead(BaseModel):
+    model_config = {"from_attributes": True}
+
+    id: int
+    match_id: int
+    player_id: int | None
+    opportunity_type: str
+    label: str
+    selection: str
+    market_type: str
+    line_type: str | None
+    threshold: float | None
+    line_value: float | None
+    bookmaker: str
+    odds_taken: float
+    stake: float | None
+    placed_at: UtcDatetime
+    source_mode: str
+    model_probability: float
+    model_fair_odds: float
+    confidence_tier: str
+    lineup_status: str | None
+    notes: str | None
+    status: str
+    actual_stat_value: float | None
+    settled_at: UtcDatetime | None

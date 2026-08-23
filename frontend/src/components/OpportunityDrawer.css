@@ -178,3 +178,7 @@
 .prop-insights-table__diff-neg {
   color: var(--danger-text);
 }
+
+.opportunity-drawer__add-bet {
+  margin: 0.25rem 0 0.75rem;
+}

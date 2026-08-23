@@ -38,6 +38,39 @@ def _actual_stat_value(stat: PlayerMatchStat, market_type: str) -> float | None:
     return None
 
 
+def compute_team_market_result(match: Match, market_type: str, selection: str, line_value: float | None) -> tuple[float, str] | None:
+    """Pure team-market settlement (h2h/line/total) shared by anything that
+    settles a team-market pick against a completed Match - originally
+    written for WeeklyShortlistSnapshotItem (see
+    weekly_shortlist_snapshot_service._settle_team_item, which now just
+    delegates here) and reused as-is by PlacedBet settlement
+    (app/player_modelling/placed_bets.py) so the same result for the same
+    match+selection is never computed two different ways. Returns None
+    when the match has no score yet (nothing to settle), otherwise
+    (actual_stat_value, RESULT_*)."""
+    if match.home_score is None or match.away_score is None:
+        return None
+    margin = match.home_score - match.away_score
+    total = match.home_score + match.away_score
+    is_home_selection = selection == match.home_team.name
+
+    if market_type == "h2h":
+        home_won = margin > 0
+        won = home_won if is_home_selection else (not home_won and margin != 0)
+        return float(margin), (RESULT_PUSH if margin == 0 else (RESULT_WON if won else RESULT_LOST))
+    if market_type == "line":
+        margin_for_selection = margin if is_home_selection else -margin
+        covers = margin_for_selection + (line_value or 0.0)
+        return float(margin_for_selection), (RESULT_PUSH if covers == 0 else (RESULT_WON if covers > 0 else RESULT_LOST))
+    if market_type == "total":
+        if total == line_value:
+            return float(total), RESULT_PUSH
+        over_hit = total > (line_value or 0.0)
+        won = over_hit if selection == "over" else not over_hit
+        return float(total), (RESULT_WON if won else RESULT_LOST)
+    return None
+
+
 def _settle_result(actual: float, threshold: float, line_type: str) -> str:
     """Every observation represents the "over" (or "yes") side only (see
     prop_observation.py — only PRIMARY_SELECTIONS get an observation), so

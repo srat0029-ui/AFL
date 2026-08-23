@@ -13,6 +13,7 @@ from app.api.routes import (
     live_status,
     matches,
     odds,
+    placed_bets,
     player_identity,
     player_models,
     player_projections,
@@ -72,3 +73,4 @@ app.include_router(live_status.router)
 app.include_router(refresh.router)
 app.include_router(weekly_review.router)
 app.include_router(context.router)
+app.include_router(placed_bets.router)

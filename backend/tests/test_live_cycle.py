@@ -284,6 +284,44 @@ def test_settlement_runs_before_new_data_collection_in_step_order(db_session, mo
 
     step_names = [s["step"] for s in run.steps]
     assert step_names.index("settle_props") < step_names.index("refresh_prop_odds")
+    assert "settle_placed_bets" in step_names
+    assert step_names.index("settle_placed_bets") < step_names.index("refresh_prop_odds")
+
+
+def test_run_live_cycle_settles_a_placed_bet(db_session, monkeypatch):
+    """End-to-end: a pending team-market PlacedBet on an already-completed
+    match must come out settled after one live cycle, via the same
+    settle_placed_bets reused (not duplicated) by placed_bets.py."""
+    from app.models import PlacedBet
+    from app.player_modelling.placed_bets import PlacedBetInput, create_placed_bet
+
+    match = _seed_scheduled_match(db_session)
+    match.status = MatchStatus.COMPLETED
+    match.home_score, match.away_score = 100, 80
+    # A genuinely-upcoming SCHEDULED match must also exist: step 2
+    # (identify_upcoming_round) returns early - before settlement - if
+    # none exist. Any live season always has one; this mirrors that.
+    other = Match(
+        sport_id=match.sport_id, season_id=match.season_id, round_id=match.round_id,
+        home_team_id=match.home_team_id, away_team_id=match.away_team_id,
+        scheduled_start=NOW + timedelta(days=10), status=MatchStatus.SCHEDULED,
+    )
+    db_session.add(other)
+    db_session.commit()
+    create_placed_bet(db_session, PlacedBetInput(
+        match_id=match.id, opportunity_type="team", label="Collingwood to win", selection="Collingwood",
+        market_type="h2h", bookmaker="TAB", odds_taken=1.7, model_probability=0.62, model_fair_odds=1.61,
+        confidence_tier="higher_confidence", source_mode="best_opportunity",
+    ))
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+
+    run_live_cycle(db_session)
+
+    bet = db_session.query(PlacedBet).one()
+    assert bet.status == "won"
+    assert bet.settled_at is not None
 
 
 def _seed_in_progress_match_with_pending_observation(db):

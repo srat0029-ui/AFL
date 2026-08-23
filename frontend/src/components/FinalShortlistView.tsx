@@ -160,6 +160,24 @@ function FinalShortlistView() {
                       reasonLabels={[]}
                       priceAdvantagePct={null}
                       recentForm={null}
+                      addBetSnapshot={{
+                        matchId: o.match_id,
+                        opportunityType: o.opportunity_type,
+                        label: o.label,
+                        selection: o.selection ?? (o.opportunity_type === "player" ? "over" : ""),
+                        marketType: o.market_type,
+                        bookmaker: o.best_bookmaker,
+                        oddsTaken: o.best_price,
+                        modelProbability: o.model_probability,
+                        modelFairOdds: o.model_fair_odds,
+                        confidenceTier: o.confidence_tier,
+                        sourceMode: "final_shortlist",
+                        playerId: o.player_id,
+                        lineType: o.line_type,
+                        threshold: o.threshold,
+                        lineValue: o.line_value,
+                        lineupStatus: o.selection_status,
+                      }}
                     />
                   </div>
                 )}

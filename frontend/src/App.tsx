@@ -4,6 +4,7 @@ import BacktestPage from "./pages/BacktestPage";
 import DashboardPage from "./pages/DashboardPage";
 import MatchDetailPage from "./pages/MatchDetailPage";
 import MultisPage from "./pages/MultisPage";
+import PlacedBetsPage from "./pages/PlacedBetsPage";
 import PlayerInsightsPage from "./pages/PlayerInsightsPage";
 import PlayerProfilePage from "./pages/PlayerProfilePage";
 import LiveStatusPage from "./pages/LiveStatusPage";
@@ -40,6 +41,9 @@ function App() {
         <NavLink to="/multis" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Multis
         </NavLink>
+        <NavLink to="/placed-bets" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          Placed Bets
+        </NavLink>
         <NavLink to="/real-market-tracking" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Real Market Tracking
         </NavLink>
@@ -63,6 +67,7 @@ function App() {
         <Route path="/player-insights" element={<PlayerInsightsPage />} />
         <Route path="/prop-insights" element={<PropInsightsPage />} />
         <Route path="/multis" element={<MultisPage />} />
+        <Route path="/placed-bets" element={<PlacedBetsPage />} />
         <Route path="/real-market-tracking" element={<RealMarketTrackingPage />} />
         <Route path="/live-status" element={<LiveStatusPage />} />
         <Route path="/backtest" element={<BacktestPage />} />

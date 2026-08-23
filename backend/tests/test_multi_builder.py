@@ -344,6 +344,30 @@ def test_indicative_odds_terminology(db_session):
     assert "correlation" in d["indicative_odds_explanation"].lower()
 
 
+def test_leg_dict_exposes_selection_and_line_fields_for_placed_bets(db_session):
+    """These fields aren't used by any ranking/combo-validity logic (which
+    reads them straight off the underlying leg dict - see _combo_key) -
+    they're exposed here so a leg can be frozen into a Placed Bets record
+    with its exact selection/threshold, not just its label/price."""
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", prices=[("SportsBet", 1.60)])
+    _add_player_leg(db_session, match, home, player_name="Player B", prices=[("SportsBet", 2.20)])
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    options = _all_options(result)
+    assert options
+    from app.player_modelling.multi_builder import option_as_dict
+    d = option_as_dict(options[0])
+    leg = d["legs"][0]
+    # Player legs never store an explicit "over" selection (see
+    # best_opportunities.py - every player-market opportunity IS the over
+    # side by construction, so callers that need a selection string for a
+    # player leg supply "over" themselves rather than reading a stored one).
+    assert leg["selection"] is None
+    assert leg["threshold"] is not None
+    assert leg["line_type"] == "over_under"
+
+
 # --- High-Probability vs Value mode (product feature refinement) -----------
 
 

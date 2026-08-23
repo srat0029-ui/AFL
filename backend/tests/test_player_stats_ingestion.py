@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 
@@ -585,3 +585,89 @@ def test_subs_and_jumper_number_persisted(db_session):
     assert stat.jumper_number == 13
     assert stat.subbed_off is True
     assert stat.subbed_on is False
+
+
+def _seed_trailing_gap_scenario(db_session, n_squiggle_rounds=3):
+    """Real pattern found auditing the live 2026 database: every currently
+    affected team's AFL Tables round labels are exactly Squiggle's round
+    number + 1 (Opening Round pushes the whole season's labelling up by
+    one for everyone, not just the teams who played it), and the source
+    simply hasn't published that team's most-recently-played round yet.
+    Neither the exact-match nor the equal-length fallback above catches
+    this - source has one FEWER round than Squiggle, not a different
+    count for an unrelated reason - which is exactly what
+    _find_trailing_round_offset exists for."""
+    sport = Sport(code="AFL", name="Australian Football League")
+    db_session.add(sport)
+    db_session.flush()
+    season = Season(sport_id=sport.id, year=2026)
+    db_session.add(season)
+    db_session.flush()
+    rounds = {n: Round(season_id=season.id, round_number=n) for n in range(1, n_squiggle_rounds + 1)}
+    # Round 5 exists in the season (other teams play it) even when Carlton's
+    # own match sequence stops at n_squiggle_rounds - needed so a source row
+    # labelled "5" resolves as far as the home-and-away batch logic (a round
+    # number that doesn't exist in the season AT ALL is filtered out earlier,
+    # before ever reaching the offset check this is meant to exercise).
+    rounds[5] = rounds.get(5, Round(season_id=season.id, round_number=5))
+    carlton = Team(sport_id=sport.id, name="Carlton", short_name="CAR")
+    richmond = Team(sport_id=sport.id, name="Richmond", short_name="RIC")
+    db_session.add_all([*rounds.values(), carlton, richmond])
+    db_session.flush()
+    matches = {}
+    for n in range(1, n_squiggle_rounds + 1):
+        home, away = (carlton, richmond) if n % 2 else (richmond, carlton)
+        matches[n] = Match(
+            sport_id=sport.id, season_id=season.id, round_id=rounds[n].id,
+            home_team_id=home.id, away_team_id=away.id,
+            scheduled_start=datetime(2026, 3, 14, tzinfo=timezone.utc) + timedelta(days=7 * n),
+            status=MatchStatus.COMPLETED, home_score=90, away_score=80,
+        )
+    db_session.add_all(matches.values())
+    db_session.commit()
+    return {"sport": sport, "season": season, "carlton": carlton, "richmond": richmond, "matches": matches}
+
+
+def test_offset_reconciliation_resolves_trailing_publication_gap(db_session):
+    """Source has rounds "2" and "3" (Squiggle rounds 1 and 2 shifted by
+    +1) but nothing at all for Squiggle's round 3 - not yet published,
+    not a mismatch. Offset -1 is the unique reconciling shift, and the
+    leftover (Squiggle round 3) is strictly after everything matched, so
+    this must resolve rounds 1-2 and simply leave round 3 alone (no row
+    was ever given for it - nothing to report as unmatched either)."""
+    seed = _seed_trailing_gap_scenario(db_session, n_squiggle_rounds=3)
+    rows = [
+        _row("Carlton", round_number=2, disposals=18),  # -> Squiggle round 1
+        _row("Carlton", round_number=3, disposals=24),  # -> Squiggle round 2
+    ]
+
+    result = ingest_player_stats(db_session, rows, season_year=2026)
+
+    assert result.stats_created == 2
+    assert result.fallback_resolved == 2
+    assert result.unmatched == []
+    stats_by_match = {s.match_id: s for s in db_session.scalars(select(PlayerMatchStat)).all()}
+    assert stats_by_match[seed["matches"][1].id].disposals == 18
+    assert stats_by_match[seed["matches"][2].id].disposals == 24
+    assert seed["matches"][3].id not in stats_by_match  # round 3: correctly left pending, not guessed
+
+
+def test_offset_reconciliation_refuses_when_gap_is_not_trailing(db_session):
+    """Same shift (+1) would explain rounds 1-2 and 4, but Squiggle round 3
+    is missing from the source in between them, not at the end - a real
+    gap (e.g. a postponed match never re-scraped), not just "not
+    published yet". Must refuse entirely rather than guess through it,
+    exactly like the existing equal-length fallback's safety guarantee."""
+    seed = _seed_trailing_gap_scenario(db_session, n_squiggle_rounds=4)
+    rows = [
+        _row("Carlton", round_number=2, disposals=18),  # -> would be Squiggle round 1
+        _row("Carlton", round_number=3, disposals=24),  # -> would be Squiggle round 2
+        _row("Carlton", round_number=5, disposals=30),  # -> would be Squiggle round 4 (round 3 skipped)
+    ]
+
+    result = ingest_player_stats(db_session, rows, season_year=2026)
+
+    assert result.stats_created == 0
+    assert result.fallback_resolved == 0
+    assert len(result.unmatched) == 3
+    assert all(s is None for s in [db_session.scalar(select(PlayerMatchStat).where(PlayerMatchStat.match_id == m.id)) for m in seed["matches"].values()])

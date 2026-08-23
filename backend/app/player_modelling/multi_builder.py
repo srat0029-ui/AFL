@@ -461,6 +461,13 @@ def option_as_dict(opt: dict) -> dict:
                 "confidence_tier": leg["confidence_tier"], "selection_status": leg.get("selection_status"),
                 "is_confirmed": leg.get("is_confirmed"), "odds_freshness": leg["odds_freshness"],
                 "warnings": leg.get("warnings", []), "reasons": _reasons_for(leg),
+                # Exposed so a leg can be frozen into a Placed Bets record
+                # (app/player_modelling/placed_bets.py) with the exact
+                # selection/line it represents - not used by any ranking
+                # or combo-validity logic, which already reads these
+                # straight off the underlying leg dict (see _combo_key).
+                "selection": leg.get("selection"), "threshold": leg.get("threshold"), "line_type": leg.get("line_type"),
+                "line_value": leg.get("line_value"),
             }
             for leg in opt["legs"]
         ],

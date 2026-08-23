@@ -33,6 +33,19 @@ from app.models.match_context import (
 )
 from app.models.model_run import ModelRun, ModelRunHistory, ModelValidationMetric
 from app.models.odds_quote import OddsQuote
+from app.models.placed_bet import (
+    SOURCE_MODE_BEST_OPPORTUNITY,
+    SOURCE_MODE_BEST_VALUE,
+    SOURCE_MODE_FINAL_SHORTLIST,
+    SOURCE_MODE_HIGH_PROBABILITY,
+    SOURCE_MODE_MANUAL,
+    STATUS_LOST,
+    STATUS_PENDING,
+    STATUS_PUSH,
+    STATUS_VOID,
+    STATUS_WON,
+    PlacedBet,
+)
 from app.models.player import Player
 from app.models.player_alias import PlayerAlias
 from app.models.player_match_stat import PlayerMatchStat
@@ -101,4 +114,15 @@ __all__ = [
     "CONTEXT_TYPE_LABELS",
     "CONTEXT_CONFIDENCE_LABELS",
     "VenueWeatherSnapshot",
+    "PlacedBet",
+    "STATUS_PENDING",
+    "STATUS_WON",
+    "STATUS_LOST",
+    "STATUS_PUSH",
+    "STATUS_VOID",
+    "SOURCE_MODE_HIGH_PROBABILITY",
+    "SOURCE_MODE_BEST_VALUE",
+    "SOURCE_MODE_BEST_OPPORTUNITY",
+    "SOURCE_MODE_FINAL_SHORTLIST",
+    "SOURCE_MODE_MANUAL",
 ]

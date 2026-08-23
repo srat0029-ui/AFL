@@ -22,6 +22,7 @@ from app.models import (
     WeeklyShortlistSnapshotItem,
 )
 from app.player_modelling.final_shortlist import DEFAULT_SHORTLIST_LIMIT, load_final_shortlist
+from app.player_modelling.prop_settlement import compute_team_market_result
 from app.player_modelling.upcoming_features import load_next_upcoming_round
 
 
@@ -117,29 +118,10 @@ def _settle_player_item(db: Session, item: WeeklyShortlistSnapshotItem) -> None:
 
 
 def _settle_team_item(db: Session, item: WeeklyShortlistSnapshotItem, match: Match) -> None:
-    if match.home_score is None or match.away_score is None:
+    result = compute_team_market_result(match, item.market_type, item.selection, item.line_value)
+    if result is None:
         return
-    margin = match.home_score - match.away_score  # positive = home won by this much
-    total = match.home_score + match.away_score
-    is_home_selection = item.selection == match.home_team.name
-
-    if item.market_type == "h2h":
-        home_won = margin > 0
-        won = home_won if is_home_selection else (not home_won and margin != 0)
-        item.actual_stat_value = float(margin)
-        item.match_result = "push" if margin == 0 else ("won" if won else "lost")
-    elif item.market_type == "line":
-        margin_for_selection = margin if is_home_selection else -margin
-        covers = margin_for_selection + item.line_value
-        item.actual_stat_value = float(margin_for_selection)
-        item.match_result = "push" if covers == 0 else ("won" if covers > 0 else "lost")
-    elif item.market_type == "total":
-        item.actual_stat_value = float(total)
-        if total == item.line_value:
-            item.match_result = "push"
-        else:
-            over_hit = total > item.line_value
-            item.match_result = "won" if (over_hit if item.selection == "over" else not over_hit) else "lost"
+    item.actual_stat_value, item.match_result = result
     item.settled_at = datetime.now(timezone.utc)
 
 

@@ -1,6 +1,19 @@
 import { useEffect, useState } from "react";
-import { fetchMatchMultiBuilder, type MatchMultiTiers, type MultiMode, type MultiOption, type MultiTierKey } from "../api/client";
+import {
+  fetchMatchMultiBuilder,
+  type MatchMultiTiers,
+  type MultiMode,
+  type MultiOption,
+  type MultiTierKey,
+  type PlacedBetSourceMode,
+} from "../api/client";
+import { AddBetButton } from "./AddBetButton";
 import "./MultiBuilderView.css";
+
+const SOURCE_MODE_BY_MULTI_MODE: Record<MultiMode, PlacedBetSourceMode> = {
+  high_probability: "high_probability",
+  value: "best_value",
+};
 
 const DEFAULT_MODE_BY_TIER: Record<MultiTierKey, MultiMode> = {
   conservative: "high_probability",
@@ -14,7 +27,17 @@ const MODE_LABEL: Record<MultiMode, string> = {
   value: "Best Value",
 };
 
-function MultiLegRow({ leg }: { leg: MultiOption["legs"][number] }) {
+function MultiLegRow({
+  leg,
+  matchId,
+  bookmaker,
+  sourceMode,
+}: {
+  leg: MultiOption["legs"][number];
+  matchId: number;
+  bookmaker: string;
+  sourceMode: PlacedBetSourceMode;
+}) {
   return (
     <div className="multi-leg">
       <div className="multi-leg__main">
@@ -40,11 +63,31 @@ function MultiLegRow({ leg }: { leg: MultiOption["legs"][number] }) {
       </div>
       {leg.warnings.length > 0 && <p className="hint multi-leg__warning">⚠ {leg.warnings[0]}</p>}
       <p className="hint multi-leg__reasons">{leg.reasons.join(" · ")}</p>
+      <AddBetButton
+        snapshot={{
+          matchId,
+          opportunityType: leg.opportunity_type,
+          label: leg.label,
+          selection: leg.selection ?? (leg.opportunity_type === "player" ? "over" : ""),
+          marketType: leg.market_type,
+          bookmaker,
+          oddsTaken: leg.bookmaker_price,
+          modelProbability: leg.model_probability,
+          modelFairOdds: leg.model_fair_odds,
+          confidenceTier: leg.confidence_tier,
+          sourceMode,
+          playerId: leg.player_id,
+          lineType: leg.line_type,
+          threshold: leg.threshold,
+          lineValue: leg.line_value,
+          lineupStatus: leg.selection_status,
+        }}
+      />
     </div>
   );
 }
 
-function MultiOptionCard({ tierLabel, option }: { tierLabel: string; option: MultiOption }) {
+function MultiOptionCard({ tierLabel, option, matchId }: { tierLabel: string; option: MultiOption; matchId: number }) {
   // Floor to the nearest 5% so the badge never overstates what the data
   // actually supports (e.g. 76.4% lowest -> "All legs >= 75%", not 76%).
   const badgeFloor = Math.floor((option.lowest_leg_probability * 100) / 5) * 5;
@@ -69,7 +112,7 @@ function MultiOptionCard({ tierLabel, option }: { tierLabel: string; option: Mul
 
       <div className="multi-card__legs">
         {option.legs.map((leg, i) => (
-          <MultiLegRow key={i} leg={leg} />
+          <MultiLegRow key={i} leg={leg} matchId={matchId} bookmaker={option.bookmaker} sourceMode={SOURCE_MODE_BY_MULTI_MODE[option.mode]} />
         ))}
       </div>
 
@@ -210,7 +253,7 @@ function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
                     </div>
                     <div className="multi-builder__tier-options">
                       {tier.options.map((opt) => (
-                        <MultiOptionCard key={opt.option_label} tierLabel={tier.label} option={opt} />
+                        <MultiOptionCard key={opt.option_label} tierLabel={tier.label} option={opt} matchId={matchId} />
                       ))}
                     </div>
                   </div>

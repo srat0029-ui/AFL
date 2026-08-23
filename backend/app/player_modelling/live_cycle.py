@@ -54,6 +54,7 @@ from app.player_modelling.live_change_detection import detect_matches_needing_re
 from app.player_modelling.live_engine import ModelsUnavailableError, PromotedModelsUnavailableError, generate_live_projections
 from app.player_modelling.live_persistence import persist_projection_run
 from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, run_all_sanity_checks
+from app.player_modelling.placed_bets import settle_placed_bets
 from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
 from app.player_modelling.prop_odds_quota import recommended_refresh_interval
@@ -241,6 +242,20 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
         report.add("settle_props", STEP_SUCCESS, detail)
     except Exception as exc:  # noqa: BLE001
         report.add("settle_props", STEP_RECOVERABLE_FAILURE, f"settlement failed: {exc}")
+
+    # Step 4b: settle any pending PlacedBet rows the same way, right after
+    # prop settlement and before new-data collection (same Section 14
+    # reasoning) - see app/player_modelling/placed_bets.py, which reuses
+    # this exact settlement math rather than duplicating it.
+    try:
+        bet_settlement = settle_placed_bets(db)
+        report.add(
+            "settle_placed_bets", STEP_SUCCESS,
+            f"settled {bet_settlement.bets_settled} (won={bet_settlement.bets_won} lost={bet_settlement.bets_lost} "
+            f"push={bet_settlement.bets_pushed} void={bet_settlement.bets_voided}), {bet_settlement.awaiting_data} awaiting data",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("settle_placed_bets", STEP_RECOVERABLE_FAILURE, f"placed-bet settlement failed: {exc}")
 
     # Step 5-6: detect stale projections and regenerate only those (reuses
     # exactly what `refresh-live` already does — see cli.py's _refresh_live).

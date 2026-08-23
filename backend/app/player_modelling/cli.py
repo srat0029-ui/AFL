@@ -67,6 +67,7 @@ from app.config import get_settings
 from app.database import SessionLocal
 from app.player_modelling.live_change_detection import detect_matches_needing_regeneration
 from app.player_modelling.live_cycle import run_live_cycle
+from app.player_modelling.scheduler import SchedulerAlreadyRunningError, is_paused, pause, resume, run_scheduler_loop
 from app.player_modelling.live_engine import (
     ModelsUnavailableError,
     PromotedModelsUnavailableError,
@@ -453,16 +454,44 @@ def _refresh_weather() -> int:
         db.close()
 
 
+def _run_scheduler(argv: list[str]) -> int:
+    interval_minutes: float | None = None
+    if "--interval-minutes" in argv:
+        idx = argv.index("--interval-minutes")
+        interval_minutes = float(argv[idx + 1])
+    try:
+        return run_scheduler_loop(interval_minutes=interval_minutes)
+    except SchedulerAlreadyRunningError as exc:
+        print(str(exc))
+        return 1
+    except KeyboardInterrupt:
+        print("\nScheduler stopped.")
+        return 0
+
+
+def _pause_scheduler() -> int:
+    pause()
+    print("Scheduler paused — a running instance will skip ticks until you run `resume-scheduler`.")
+    return 0
+
+
+def _resume_scheduler() -> int:
+    resume()
+    print("Scheduler resumed." if not is_paused() else "Scheduler was not paused.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if not argv or argv[0] not in (
         "project-upcoming", "refresh-live", "refresh-prop-odds", "refresh-team-odds", "settle-props", "run-live-cycle",
-        "refresh-weather",
+        "refresh-weather", "run-scheduler", "pause-scheduler", "resume-scheduler",
     ):
         print(
             "Usage: python -m app.player_modelling.cli "
             "project-upcoming|refresh-live|refresh-prop-odds [--force] [--min-interval-minutes N]|"
-            "refresh-team-odds|settle-props|run-live-cycle|refresh-weather"
+            "refresh-team-odds|settle-props|run-live-cycle|refresh-weather|"
+            "run-scheduler [--interval-minutes N]|pause-scheduler|resume-scheduler"
         )
         return 2
     if argv[0] == "project-upcoming":
@@ -477,6 +506,12 @@ def main(argv: list[str] | None = None) -> int:
         return _run_live_cycle()
     if argv[0] == "refresh-weather":
         return _refresh_weather()
+    if argv[0] == "run-scheduler":
+        return _run_scheduler(argv[1:])
+    if argv[0] == "pause-scheduler":
+        return _pause_scheduler()
+    if argv[0] == "resume-scheduler":
+        return _resume_scheduler()
 
     force = "--force" in argv
     min_interval_minutes: float | None = None
