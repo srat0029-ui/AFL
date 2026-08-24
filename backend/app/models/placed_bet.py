@@ -65,6 +65,18 @@ class PlacedBet(TimestampMixin, Base):
     model_fair_odds: Mapped[float] = mapped_column(Float, nullable=False)
     confidence_tier: Mapped[str] = mapped_column(String(24), nullable=False)
     lineup_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    model_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+
+    # Finals Multi Quality stage, item 16: a whole multi is recorded as one
+    # PlacedBet row PER LEG, all sharing the same multi_group_id (a UUID
+    # generated once at add-time) - never a second table, since settlement
+    # already works correctly per-leg (see settle_placed_bets). multi_tier/
+    # multi_indicative_odds are the SAME value repeated on every leg of the
+    # group, frozen at add-time exactly like every other field here -
+    # later model or odds changes never rewrite what was actually recorded.
+    multi_group_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    multi_tier: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    multi_indicative_odds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
 

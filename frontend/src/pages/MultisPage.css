@@ -52,9 +52,39 @@
 }
 
 .multis-page__match-teams {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
   font-weight: 600;
   color: var(--text-h);
   font-size: 0.9rem;
+}
+
+.multis-page__tier-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.3rem 0.6rem;
+  margin-top: 0.3rem;
+}
+
+.multis-page__tier-summary-cell {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.7rem;
+}
+
+.multis-page__tier-summary-label {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.multis-page__tier-summary-value {
+  color: var(--text-h);
+}
+
+.multis-page__tier-summary-value--empty {
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .multis-page__tier-badges {

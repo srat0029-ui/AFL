@@ -24,6 +24,7 @@ export interface AddBetSnapshot {
   threshold?: number | null;
   lineValue?: number | null;
   lineupStatus?: string | null;
+  modelVersion?: string | null;
 }
 
 export function AddBetButton({ snapshot }: { snapshot: AddBetSnapshot }) {
@@ -57,6 +58,7 @@ export function AddBetButton({ snapshot }: { snapshot: AddBetSnapshot }) {
       threshold: snapshot.threshold ?? null,
       line_value: snapshot.lineValue ?? null,
       lineup_status: snapshot.lineupStatus ?? null,
+      model_version: snapshot.modelVersion ?? null,
       stake: stake.trim() === "" ? null : Number(stake),
     };
     try {

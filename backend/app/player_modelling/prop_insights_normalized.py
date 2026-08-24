@@ -286,6 +286,8 @@ def _load_normalized_prop_insights_uncached(
                 "threshold": key.threshold,
                 "model_probability": comparison.model_probability,
                 "model_fair_odds": comparison.model_fair_odds,
+                "model_name": proj.model_name,
+                "model_version": proj.model_version,
                 "best_price": best_entry["price_decimal"],
                 "best_bookmaker": best_entry["bookmaker_name"],
                 "best_price_is_exchange": best_entry["is_exchange"],

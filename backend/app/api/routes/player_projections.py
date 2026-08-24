@@ -31,6 +31,7 @@ from app.api.schemas import (
     GoalProjectionRead,
     LineupSummaryRead,
     MatchProjectionsRead,
+    MatchReadinessRead,
     ModelMarketDisagreementRead,
     MatchMultiTiersRead,
     NormalizedPropInsightRead,
@@ -53,7 +54,8 @@ from app.player_modelling.elite_disposal_diagnostic import bucket_diagnostic_as_
 from app.player_modelling.final_shortlist import DEFAULT_SHORTLIST_LIMIT, load_final_shortlist
 from app.player_modelling.live_engine import ModelsUnavailableError, PromotedModelsUnavailableError, generate_live_projections
 from app.player_modelling.live_persistence import persist_projection_run
-from app.player_modelling.multi_builder import DEFAULT_MODE, MODE_HIGH_PROBABILITY, MODE_VALUE, TIER_ORDER as MULTI_TIER_ORDER, build_match_multis, match_multi_tiers_as_dict
+from app.player_modelling.multi_builder import DEFAULT_MODE, MODE_HIGH_PROBABILITY, MODE_VALUE, TIER_ORDER as MULTI_TIER_ORDER, build_match_multis, match_multi_tiers_as_dict, option_as_dict
+from app.player_modelling.match_readiness import compute_match_readiness
 from app.player_modelling.opportunity_tiers import (
     DEFAULT_ALL_AVAILABLE_LIMIT,
     DEFAULT_BEST_LIMIT,
@@ -563,24 +565,31 @@ def get_match_multi_builder(
     if db.get(Match, match_id) is None:
         raise HTTPException(status_code=404, detail="Match not found")
     result = build_match_multis(db, match_id, confirmed_only=confirmed_only, mode=mode)
-    return MatchMultiTiersRead(**match_multi_tiers_as_dict(result))
+    readiness = compute_match_readiness(db, match_id)
+    return MatchMultiTiersRead(**match_multi_tiers_as_dict(result), readiness=MatchReadinessRead(**readiness.__dict__))
 
 
 @router.get("/multi-builder/round-summary", response_model=RoundMultiSummaryRead)
 def get_round_multi_summary(confirmed_only: bool = Query(default=True), db: Session = Depends(get_db)) -> RoundMultiSummaryRead:
-    """Compact round-wide view for the Multis page — one row per upcoming
-    match, so a user can see which matches currently support a multi
-    without opening every Match Centre."""
+    """Finals overview (item 17): one row per upcoming match with readiness
+    and the single best High Probability option per tier already inline —
+    a user should never have to open every Match Centre just to see what's
+    currently available."""
     upcoming = load_next_upcoming_round(db)
     rows = []
     for m in upcoming:
         match = db.get(Match, m.match_id)
-        result = build_match_multis(db, m.match_id, confirmed_only=confirmed_only)
-        tiers_available = [t for t in MULTI_TIER_ORDER if result.tiers.get(t)]
+        result = build_match_multis(db, m.match_id, confirmed_only=confirmed_only, mode=MODE_HIGH_PROBABILITY)
+        tiers_available = [t for t in MULTI_TIER_ORDER if result.tiers[t].options]
+        best_options_by_tier = {
+            t: option_as_dict(result.tiers[t].options[0]) if result.tiers[t].options else None for t in MULTI_TIER_ORDER
+        }
+        readiness = compute_match_readiness(db, m.match_id)
         rows.append(RoundMultiSummaryRowRead(
             match_id=m.match_id, home_team_name=match.home_team.name, away_team_name=match.away_team.name,
             scheduled_start=match.scheduled_start, n_eligible_legs=result.n_eligible_legs,
             n_bookmakers_available=len(result.bookmakers_available), tiers_available=tiers_available,
+            readiness=MatchReadinessRead(**readiness.__dict__), best_options_by_tier=best_options_by_tier,
         ))
     return RoundMultiSummaryRead(matches=rows)
 

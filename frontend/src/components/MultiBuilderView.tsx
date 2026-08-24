@@ -2,13 +2,30 @@ import { useEffect, useState } from "react";
 import {
   fetchMatchMultiBuilder,
   type MatchMultiTiers,
+  type MatchReadiness,
   type MultiMode,
   type MultiOption,
+  type MultiTier,
   type MultiTierKey,
   type PlacedBetSourceMode,
 } from "../api/client";
 import { AddBetButton } from "./AddBetButton";
+import { AddMultiButton } from "./AddMultiButton";
 import "./MultiBuilderView.css";
+
+const READINESS_LABEL: Record<MatchReadiness["state"], string> = {
+  READY: "Ready",
+  PROVISIONAL: "Provisional",
+  NOT_READY: "Not ready",
+};
+
+export function ReadinessBadge({ readiness }: { readiness: MatchReadiness }) {
+  return (
+    <span className={`readiness-badge readiness-badge--${readiness.state.toLowerCase()}`} title={readiness.reasons.join(" ")}>
+      {READINESS_LABEL[readiness.state]}
+    </span>
+  );
+}
 
 const SOURCE_MODE_BY_MULTI_MODE: Record<MultiMode, PlacedBetSourceMode> = {
   high_probability: "high_probability",
@@ -54,6 +71,9 @@ function MultiLegRow({
         <span className={`confidence-badge confidence-badge--${leg.confidence_tier.replace("_confidence", "").replace("insufficient_history", "insufficient_data")}`}>
           {leg.confidence_tier.replace("_confidence", "")}
         </span>
+        <span className="multi-leg__calibration" title="Whether this threshold has historical calibration data behind it">
+          {leg.calibration_known ? "Calibration checked" : "No calibration data"}
+        </span>
         {leg.opportunity_type === "player" && (
           <span className={leg.is_confirmed ? "multi-leg__lineup multi-leg__lineup--confirmed" : "multi-leg__lineup multi-leg__lineup--unconfirmed"}>
             {leg.is_confirmed ? "Confirmed" : "Unconfirmed"}
@@ -66,8 +86,14 @@ function MultiLegRow({
           </span>
         )}
       </div>
-      {leg.warnings.length > 0 && <p className="hint multi-leg__warning">⚠ {leg.warnings[0]}</p>}
-      <p className="hint multi-leg__reasons">{leg.reasons.join(" · ")}</p>
+      {leg.warning_codes.length > 0 && (
+        <p className="hint multi-leg__warning" title={leg.warning_codes.map((w) => w.code).join(", ")}>
+          ⚠ {leg.warning_codes[0].label}
+        </p>
+      )}
+      <p className="hint multi-leg__reasons" title={leg.reasons.map((r) => r.code).join(", ")}>
+        {leg.reasons.map((r) => r.label).join(" · ")}
+      </p>
       <AddBetButton
         snapshot={{
           matchId,
@@ -86,13 +112,14 @@ function MultiLegRow({
           threshold: leg.threshold,
           lineValue: leg.line_value,
           lineupStatus: leg.selection_status,
+          modelVersion: leg.model_version,
         }}
       />
     </div>
   );
 }
 
-function MultiOptionCard({ tierLabel, option, matchId }: { tierLabel: string; option: MultiOption; matchId: number }) {
+function MultiOptionCard({ tierKey, tierLabel, option, matchId }: { tierKey: string; tierLabel: string; option: MultiOption; matchId: number }) {
   // Floor to the nearest 5% so the badge never overstates what the data
   // actually supports (e.g. 76.4% lowest -> "All legs >= 75%", not 76%).
   const badgeFloor = Math.floor((option.lowest_leg_probability * 100) / 5) * 5;
@@ -111,6 +138,7 @@ function MultiOptionCard({ tierLabel, option, matchId }: { tierLabel: string; op
           {option.mode === "high_probability" && badgeFloor >= 50 && (
             <span className="multi-card__probability-badge">All legs ≥ {badgeFloor}%</span>
           )}
+          {option.reason_codes.includes("LOW_CORRELATION") && <span className="multi-card__low-correlation-badge">Low correlation</span>}
           {option.provisional && <span className="multi-card__provisional-badge">Provisional</span>}
         </div>
       </div>
@@ -141,6 +169,8 @@ function MultiOptionCard({ tierLabel, option, matchId }: { tierLabel: string; op
           ))}
         </div>
       )}
+
+      <AddMultiButton matchId={matchId} tier={tierKey} option={option} sourceMode={SOURCE_MODE_BY_MULTI_MODE[option.mode]} />
     </div>
   );
 }
@@ -196,11 +226,15 @@ function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
     <section className="multi-builder">
       <div className="multi-builder__header">
         <h2>Multi Builder</h2>
+        {primary && <ReadinessBadge readiness={primary.readiness} />}
         <label className="multi-builder__toggle">
           <input type="checkbox" checked={confirmedOnly} onChange={(e) => setConfirmedOnly(e.target.checked)} />
           Confirmed players only
         </label>
       </div>
+      {primary && primary.readiness.state !== "READY" && (
+        <p className="hint multi-builder__readiness-reasons">{primary.readiness.reasons.join(" ")}</p>
+      )}
       <p className="hint">
         Model-informed multi-leg combinations built from existing projections and live bookmaker markets — not a
         prediction of the result, and never guaranteed, safe, or a lock. Every leg passes the same hard integrity
@@ -226,17 +260,13 @@ function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
             </p>
           )}
 
-          {primary.n_eligible_legs > 0 && !anyOptions && !confirmedOnly && (
-            <p className="empty-state">No sensible multi could be built from the currently available markets.</p>
-          )}
-
-          {anyOptions && (
+          {primary.n_eligible_legs > 0 && (
             <div className="multi-builder__tiers">
               {primary.tiers.map((tierMeta) => {
                 const tierKey = tierMeta.tier;
                 const effectiveMode = tierModeOverride[tierKey] ?? DEFAULT_MODE_BY_TIER[tierKey];
                 const tier = dataByMode[effectiveMode].tiers.find((t) => t.tier === tierKey);
-                if (!tier || tier.options.length === 0) return null;
+                if (!tier) return null;
                 return (
                   <div key={tierKey} className="multi-builder__tier-group">
                     <div className="multi-builder__tier-mode-switch">
@@ -256,11 +286,29 @@ function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
                         </button>
                       ))}
                     </div>
-                    <div className="multi-builder__tier-options">
-                      {tier.options.map((opt) => (
-                        <MultiOptionCard key={opt.option_label} tierLabel={tier.label} option={opt} matchId={matchId} />
-                      ))}
-                    </div>
+                    {tier.options.length === 0 ? (
+                      <p className="empty-state">{tier.unavailable_reason}</p>
+                    ) : (
+                      <>
+                        {tier.bookmaker_comparison.length > 1 && (
+                          <p className="hint multi-builder__bookmaker-comparison">
+                            Best available component pricing:{" "}
+                            <strong>{tier.bookmaker_comparison[tier.bookmaker_comparison.length - 1].bookmaker}</strong> (
+                            {tier.bookmaker_comparison
+                              .slice()
+                              .reverse()
+                              .map((c) => `${c.bookmaker} $${c.indicative_combined_odds.toFixed(2)}`)
+                              .join(" · ")}
+                            ) — actual bookmaker Same Game Multi pricing may differ from multiplying standalone legs.
+                          </p>
+                        )}
+                        <div className="multi-builder__tier-options">
+                          {tier.options.map((opt) => (
+                            <MultiOptionCard key={opt.option_label} tierKey={tierKey} tierLabel={tier.label} option={opt} matchId={matchId} />
+                          ))}
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}

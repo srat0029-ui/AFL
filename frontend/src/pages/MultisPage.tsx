@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { fetchRoundMultiSummary, type RoundMultiSummaryRow } from "../api/client";
-import MultiBuilderView from "../components/MultiBuilderView";
+import { fetchRoundMultiSummary, type MultiTierKey, type RoundMultiSummaryRow } from "../api/client";
+import MultiBuilderView, { ReadinessBadge } from "../components/MultiBuilderView";
 import Disclaimer from "../components/Disclaimer";
 import { formatCompactDateTime } from "../lib/datetime";
 import "./MultisPage.css";
@@ -8,31 +8,46 @@ import "./MultisPage.css";
 const TIER_LABELS: Record<string, string> = {
   conservative: "Conservative", balanced: "Balanced", higher_return: "Higher Return", longer_shot: "Longer Shot",
 };
+const TIER_ORDER: MultiTierKey[] = ["conservative", "balanced", "higher_return", "longer_shot"];
+
+// Item 17: every finals match's best (default High Probability) option per
+// tier, inline in the overview list — never requiring a click into each
+// match just to see what's available.
+function TierSummaryGrid({ row }: { row: RoundMultiSummaryRow }) {
+  return (
+    <div className="multis-page__tier-summary-grid">
+      {TIER_ORDER.map((t) => {
+        const opt = row.best_options_by_tier[t];
+        return (
+          <div key={t} className="multis-page__tier-summary-cell">
+            <span className="multis-page__tier-summary-label">{TIER_LABELS[t]}</span>
+            {opt ? (
+              <span className="multis-page__tier-summary-value">
+                ${opt.indicative_combined_odds.toFixed(2)} · {opt.n_legs} legs · {opt.bookmaker}
+              </span>
+            ) : (
+              <span className="multis-page__tier-summary-value multis-page__tier-summary-value--empty">Not available</span>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function MatchRow({ row, selected, onSelect }: { row: RoundMultiSummaryRow; selected: boolean; onSelect: () => void }) {
   return (
     <button type="button" className={`multis-page__match-row${selected ? " multis-page__match-row--active" : ""}`} onClick={onSelect}>
       <div className="multis-page__match-teams">
         {row.home_team_name} v {row.away_team_name}
+        <ReadinessBadge readiness={row.readiness} />
       </div>
       <div className="hint">{formatCompactDateTime(row.scheduled_start)}</div>
       <div className="multis-page__match-stats hint">
         {row.n_eligible_legs} eligible legs · {row.n_bookmakers_available} bookmaker(s) support a multi
       </div>
-      <div className="multis-page__tier-badges">
-        {row.tiers_available.length === 0 ? (
-          <span className="hint">No tiers currently buildable, even provisionally</span>
-        ) : (
-          <>
-            {row.tiers_available.map((t) => (
-              <span key={t} className="multis-page__tier-badge">
-                {TIER_LABELS[t] ?? t}
-              </span>
-            ))}
-            <span className="hint multis-page__tier-note">provisional — teams not yet confirmed in this app</span>
-          </>
-        )}
-      </div>
+      <TierSummaryGrid row={row} />
+      {row.tiers_available.length === 0 && <p className="hint">No tiers currently buildable, even provisionally</p>}
     </button>
   );
 }

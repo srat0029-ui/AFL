@@ -13,14 +13,14 @@ from app.modelling.elo import EloConfig
 from app.modelling.model_run_persistence import persist_model_run
 from app.modelling.poisson_model import PoissonConfig
 from app.models import (
-    Bookmaker, ExpectedLineup, Match, MatchStatus, OddsQuote, Player, PlayerDisposalProjection,
+    Bookmaker, ExpectedLineup, Match, MatchStatus, OddsQuote, Player, PlayerDisposalProjection, PlayerGoalProjection,
     PlayerModelRun, PlayerPropMarket, Round, Season, Sport, Team,
 )
 from app.player_modelling.market import PlayerMarket
 from app.player_modelling.request_cache import clear_ttl_cache
 from app.player_modelling.multi_builder import (
-    INDICATIVE_ODDS_LABEL, MODE_VALUE, TIER_BALANCED, TIER_CONSERVATIVE, TIER_HIGHER_RETURN, TIER_LONGER_SHOT,
-    build_match_multis,
+    INDICATIVE_ODDS_LABEL, MIN_LEG_PROBABILITY_VALUE, MODE_HIGH_PROBABILITY, MODE_VALUE, TIER_BALANCED,
+    TIER_CONSERVATIVE, TIER_HIGHER_RETURN, TIER_LONGER_SHOT, _all_alternate_legs, _match_legs, build_match_multis,
 )
 
 NOW = datetime.now(timezone.utc)
@@ -154,7 +154,58 @@ def _add_player_leg(
 
 
 def _all_options(result):
-    return [opt for options in result.tiers.values() for opt in options]
+    return [opt for tier_result in result.tiers.values() for opt in tier_result.options]
+
+
+def _ensure_promoted_goal_model(db):
+    run = db.scalar(select(PlayerModelRun).where(PlayerModelRun.model_name == "goals_hurdle"))
+    if run is None:
+        run = PlayerModelRun(
+            model_name="goals_hurdle", market=PlayerMarket.GOALS.value, feature_names=[], config_json={},
+            distribution_method="nb", tune_start_year=2016, tune_end_year=2018, evaluation_start_year=2019,
+            evaluation_end_year=2025, is_promoted=True, run_at=NOW,
+        )
+        db.add(run)
+        db.commit()
+    return run
+
+
+def _add_goal_leg(
+    db, match, team, *, player_name, threshold=1.0, predicted_mean=2.0, nb_alpha=0.5, prices,
+    confirmed=True, games_of_history=40, usage_regime=None,
+):
+    """Goals-market counterpart to _add_player_leg — line_type is
+    "multi_plus" (1+/2+/3+ goals), matching real bookmaker goalscorer
+    markets. `usage_regime="changed"` attaches the same real risk flag
+    goal_usage_risk_flags produces for the "changed" regime (item 7's
+    stricter-goals-handling test target)."""
+    player = db.scalar(select(Player).where(Player.display_name == player_name))
+    if player is None:
+        player = Player(sport_id=match.sport_id, display_name=player_name, source="afltables", source_player_id=player_name, current_team_id=team.id)
+        db.add(player)
+        db.flush()
+        _ensure_promoted_goal_model(db)
+        db.add(PlayerGoalProjection(
+            match_id=match.id, player_id=player.id, team_id=team.id, model_name="goals_hurdle", model_version="v1",
+            generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=games_of_history,
+            predicted_mean=predicted_mean, distribution_kind="nb", nb_alpha=nb_alpha, scoring_archetype="forward",
+            confidence_tier="higher_confidence" if games_of_history >= 10 else "insufficient_history",
+            warnings=[], input_features={}, usage_regime=usage_regime,
+        ))
+        db.add(ExpectedLineup(
+            match_id=match.id, player_id=player.id, team_id=team.id, status="expected_in",
+            selection_status="confirmed_selected" if confirmed else "uncertain", is_confirmed=confirmed,
+            recorded_at=NOW, source="manual",
+        ))
+    for bookmaker_name, price in prices:
+        bookmaker = _bookmaker(db, bookmaker_name)
+        db.add(PlayerPropMarket(
+            match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id, market_type=PlayerMarket.GOALS.value,
+            line_type="multi_plus", threshold=threshold, selection="over", price_decimal=price,
+            recorded_at=NOW, source="the_odds_api",
+        ))
+    db.commit()
+    return player
 
 
 def test_same_bookmaker_requirement(db_session):
@@ -182,11 +233,11 @@ def test_target_odds_range_respected(db_session):
     # 1.60 * 2.20 = 3.52 -> squarely in Balanced (3.00-5.00)
 
     result = build_match_multis(db_session, match.id, confirmed_only=True)
-    balanced = result.tiers[TIER_BALANCED]
+    balanced = result.tiers[TIER_BALANCED].options
     assert balanced, "expected a Balanced option"
     for opt in balanced:
         assert 3.00 <= opt["indicative_combined_odds"] <= 5.00
-    assert result.tiers[TIER_CONSERVATIVE] == []  # 3.52 never fits 1.80-2.50
+    assert result.tiers[TIER_CONSERVATIVE].options == []  # 3.52 never fits 1.80-2.50
 
 
 def test_stale_leg_excluded(db_session):
@@ -320,7 +371,7 @@ def test_conservative_tier_prefers_the_safest_alternate_line_over_the_headline_v
     # safe(1.30) * partner(1.50) = 1.95 -> Conservative; value(3.00) * partner(1.50) = 4.50 -> Balanced, not Conservative.
 
     result = build_match_multis(db_session, match.id, confirmed_only=True)
-    conservative = result.tiers[TIER_CONSERVATIVE]
+    conservative = result.tiers[TIER_CONSERVATIVE].options
     assert conservative, "expected a Conservative option using the safer alternate line"
     for opt in conservative:
         player_a_leg = next(leg for leg in opt["legs"] if leg["player_name"] == "Player A")
@@ -421,7 +472,7 @@ def test_conservative_can_use_more_than_two_legs_when_that_fits_better(db_sessio
     # 1.20^2=1.44, 1.20^3=1.728 (both below 1.80); 1.20^4=2.0736 (inside 1.80-2.50).
 
     result = build_match_multis(db_session, match.id, confirmed_only=True)
-    conservative = result.tiers[TIER_CONSERVATIVE]
+    conservative = result.tiers[TIER_CONSERVATIVE].options
     assert conservative, "expected a 4-leg Conservative combination"
     assert conservative[0]["n_legs"] == 4
     assert 1.80 <= conservative[0]["indicative_combined_odds"] <= 2.50
@@ -632,3 +683,138 @@ def test_multi_leg_dict_exposes_usage_regime_and_model_risk_flags(db_session):
     assert "usage_regime" in leg
     assert "model_risk_flags" in leg
     assert leg["model_risk_flags"] == []  # these disposal legs carry no goal risk flag
+
+
+# --- Item 7: goals need stricter handling -------------------------------------
+
+
+def test_goals_2plus_with_active_risk_flag_excluded_from_conservative_and_balanced(db_session):
+    from app.player_modelling.multi_builder import _candidate_pool
+
+    match, home, away = _seed_match(db_session)
+    _add_goal_leg(db_session, match, home, player_name="Risky Forward", threshold=2.0, predicted_mean=4.5, nb_alpha=0.3, prices=[("SportsBet", 1.50)], usage_regime="changed")
+    legs = _all_alternate_legs(db_session, match.id)
+    risky_leg = next(leg for leg in legs if leg["player_name"] == "Risky Forward")
+    assert risky_leg["model_probability"] >= 0.75  # genuinely clears Conservative's floor on raw probability alone
+    assert risky_leg["model_risk_flags"]  # carries the usage-regime-change flag
+
+    conservative_pool = _candidate_pool([risky_leg], TIER_CONSERVATIVE, MODE_HIGH_PROBABILITY, confirmed_only=True)
+    balanced_pool = _candidate_pool([risky_leg], TIER_BALANCED, MODE_HIGH_PROBABILITY, confirmed_only=True)
+    higher_return_pool = _candidate_pool([risky_leg], TIER_HIGHER_RETURN, MODE_HIGH_PROBABILITY, confirmed_only=True)
+    assert conservative_pool == []
+    assert balanced_pool == []
+    assert higher_return_pool == [risky_leg]  # only the two "safer" tiers are stricter
+
+
+def test_goals_1plus_with_risk_flag_not_excluded(db_session):
+    """The strict exclusion is threshold-specific (2+/3+), never disposals
+    or 1+ goals, regardless of the risk flag."""
+    from app.player_modelling.multi_builder import _candidate_pool
+
+    match, home, away = _seed_match(db_session)
+    _add_goal_leg(db_session, match, home, player_name="Steady Forward", threshold=1.0, predicted_mean=4.5, nb_alpha=0.3, prices=[("SportsBet", 1.20)], usage_regime="changed")
+    legs = _all_alternate_legs(db_session, match.id)
+    leg = next(l for l in legs if l["player_name"] == "Steady Forward")
+    assert leg["model_risk_flags"]
+
+    conservative_pool = _candidate_pool([leg], TIER_CONSERVATIVE, MODE_HIGH_PROBABILITY, confirmed_only=True)
+    assert conservative_pool == [leg]
+
+
+def test_goals_2plus_without_risk_flag_not_excluded(db_session):
+    from app.player_modelling.multi_builder import _candidate_pool
+
+    match, home, away = _seed_match(db_session)
+    _add_goal_leg(db_session, match, home, player_name="Stable Forward", threshold=2.0, predicted_mean=4.5, nb_alpha=0.3, prices=[("SportsBet", 1.50)], usage_regime="stable")
+    legs = _all_alternate_legs(db_session, match.id)
+    leg = next(l for l in legs if l["player_name"] == "Stable Forward")
+    assert not leg["model_risk_flags"]
+
+    conservative_pool = _candidate_pool([leg], TIER_CONSERVATIVE, MODE_HIGH_PROBABILITY, confirmed_only=True)
+    assert conservative_pool == [leg]
+
+
+# --- Item 3: Best Value's own sensible minimum probability --------------------
+
+
+def test_value_mode_excludes_legs_below_its_probability_floor(db_session):
+    from app.player_modelling.multi_builder import _candidate_pool
+
+    match, home, away = _seed_match(db_session)
+    # Model probability sits well below the Value floor (~27%), but the
+    # bookmaker price is even longer (implied ~20%) - a genuine POSITIVE
+    # edge, which is exactly the case Value mode's own floor must still
+    # refuse (a real edge is not enough if the underlying chance is this low).
+    _add_player_leg(db_session, match, home, player_name="Long Shot", threshold=25.5, predicted_mean=22.0, nb_alpha=1.0, prices=[("SportsBet", 5.00)])
+    legs = _match_legs(db_session, match.id)
+    leg = next(l for l in legs if l["player_name"] == "Long Shot")
+    assert leg["difference_pp"] > 0  # a real edge exists
+    assert leg["model_probability"] < MIN_LEG_PROBABILITY_VALUE
+
+    value_pool = _candidate_pool([leg], TIER_LONGER_SHOT, MODE_VALUE, confirmed_only=True)
+    assert value_pool == []
+
+
+# --- Item 15: explain why, rather than force, an empty tier -------------------
+
+
+def test_empty_tier_carries_an_unavailable_reason_not_just_silence(db_session):
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", prices=[("SportsBet", 1.60)])
+    # Only one usable leg exists at all -> Conservative (needs >= 2 legs) can never be built.
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    conservative = result.tiers[TIER_CONSERVATIVE]
+    assert conservative.options == []
+    assert conservative.unavailable_reason is not None
+    assert "Conservative" in conservative.unavailable_reason
+
+
+# --- Item 9: bookmaker comparison for multis -----------------------------------
+
+
+def test_bookmaker_comparison_lists_every_bookmaker_that_can_build_the_tier(db_session):
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", prices=[("SportsBet", 1.60), ("TAB", 1.55)])
+    _add_player_leg(db_session, match, home, player_name="Player B", prices=[("SportsBet", 1.30), ("TAB", 1.35)])
+    # SportsBet: 1.60*1.30=2.08; TAB: 1.55*1.35=2.0925 -> both land in Conservative (1.80-2.50).
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    conservative = result.tiers[TIER_CONSERVATIVE]
+    assert conservative.options
+    comparison_books = {c["bookmaker"] for c in conservative.bookmaker_comparison}
+    assert comparison_books == {"SportsBet", "TAB"}
+
+
+# --- Item 14: structured reason/warning codes ----------------------------------
+
+
+def test_reasons_and_warnings_are_structured_codes(db_session):
+    from app.player_modelling.multi_builder import _reasons_for, _warnings_for
+
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", prices=[("SportsBet", 1.60)], confirmed=True)
+    legs = _all_alternate_legs(db_session, match.id)
+    leg = next(l for l in legs if l["player_name"] == "Player A")
+
+    reasons = _reasons_for(leg)
+    assert all({"code", "label"} <= set(r) for r in reasons)
+    codes = {r["code"] for r in reasons}
+    assert "CONFIRMED_SELECTED" in codes
+    assert "HIGH_MODEL_PROBABILITY" in codes
+
+    warnings = _warnings_for(leg)
+    assert all({"code", "label"} <= set(w) for w in warnings)
+    assert any(w["code"] == "SINGLE_BOOK_MARKET" for w in warnings)  # only one bookmaker quotes this leg
+
+
+def test_unconfirmed_player_leg_carries_teams_not_confirmed_warning(db_session):
+    from app.player_modelling.multi_builder import _warnings_for
+
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", prices=[("SportsBet", 1.60)], confirmed=False)
+    legs = _all_alternate_legs(db_session, match.id)
+    leg = next(l for l in legs if l["player_name"] == "Player A")
+
+    warning_codes = {w["code"] for w in _warnings_for(leg)}
+    assert "TEAMS_NOT_CONFIRMED" in warning_codes

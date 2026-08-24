@@ -38,6 +38,7 @@ from sqlalchemy.orm import Session
 from app.edges.calculator import ModelContext, ModelsUnavailableError, build_model_context, compute_match_edges
 from app.models import Match, OddsQuote
 from app.models.bookmaker import ELIGIBILITY_INCLUDED
+from app.pricing.team_pricing import TEAM_MODEL_NAME, TEAM_MODEL_VERSION
 from app.player_modelling.bookmaker_classification import annotate_price_entries, best_prices, load_bookmaker_info
 from app.player_modelling.market_maturity import classify_market_maturity, hours_until, maturity_as_dict
 from app.player_modelling.opportunity_explanation import why_team_edge_exists
@@ -129,6 +130,8 @@ def _player_opportunities(db: Session, match_ids: set[int], *, include_uncertain
                 "line_value": None,
                 "model_probability": r["model_probability"],
                 "model_fair_odds": r["model_fair_odds"],
+                "model_name": r["model_name"],
+                "model_version": r["model_version"],
                 "best_price": r["best_price"],
                 "best_bookmaker": r["best_bookmaker"],
                 "best_price_is_exchange": r["best_price_is_exchange"],
@@ -268,6 +271,8 @@ def _team_opportunities(
                     "line_value": key.line_value,
                     "model_probability": best.model_probability,
                     "model_fair_odds": best.fair_odds,
+                    "model_name": TEAM_MODEL_NAME,
+                    "model_version": TEAM_MODEL_VERSION,
                     "best_price": best.price_decimal,
                     "best_bookmaker": best.bookmaker_name,
                     "best_price_is_exchange": best_entry["is_exchange"],

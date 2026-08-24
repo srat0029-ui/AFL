@@ -1704,6 +1704,11 @@ export function fetchOpportunityTiers(
 
 // --- Multi Builder (product feature stage) ----------------------------------
 
+export interface MultiReason {
+  code: string;
+  label: string;
+}
+
 export interface MultiLeg {
   opportunity_type: "player" | "team";
   label: string;
@@ -1720,9 +1725,13 @@ export interface MultiLeg {
   is_confirmed: boolean | null;
   odds_freshness: string;
   warnings: string[];
-  reasons: string[];
+  reasons: MultiReason[];
+  warning_codes: MultiReason[];
   usage_regime: string | null;
   model_risk_flags: ModelRiskFlagV1[];
+  model_name: string | null;
+  model_version: string | null;
+  calibration_known: boolean;
   // null for player legs by convention (every player-market opportunity IS
   // the "over" side by construction — see backend best_opportunities.py) —
   // callers that need a selection string for a player leg (e.g. adding it
@@ -1746,6 +1755,7 @@ export interface MultiOption {
   provisional: boolean;
   lineup_ready: boolean;
   correlation_warnings: string[];
+  reason_codes: string[];
   average_confidence_component: number;
   lowest_leg_probability: number;
   average_leg_probability: number;
@@ -1754,10 +1764,30 @@ export interface MultiOption {
 
 export type MultiTierKey = "conservative" | "balanced" | "higher_return" | "longer_shot";
 
+export interface BookmakerComparisonEntry {
+  bookmaker: string;
+  indicative_combined_odds: number;
+  n_legs: number;
+}
+
 export interface MultiTier {
   tier: MultiTierKey;
   label: string;
   options: MultiOption[];
+  unavailable_reason: string | null;
+  bookmaker_comparison: BookmakerComparisonEntry[];
+}
+
+export type MatchReadinessState = "NOT_READY" | "PROVISIONAL" | "READY";
+
+export interface MatchReadiness {
+  match_id: number;
+  state: MatchReadinessState;
+  reasons: string[];
+  has_fresh_odds: boolean;
+  has_projections: boolean;
+  projections_current: boolean;
+  teams_confirmed: boolean;
 }
 
 export interface MatchMultiTiers {
@@ -1765,6 +1795,7 @@ export interface MatchMultiTiers {
   n_eligible_legs: number;
   bookmakers_available: string[];
   tiers: MultiTier[];
+  readiness: MatchReadiness;
 }
 
 export function fetchMatchMultiBuilder(matchId: number, params: { confirmedOnly?: boolean; mode?: MultiMode } = {}): Promise<MatchMultiTiers> {
@@ -1783,6 +1814,8 @@ export interface RoundMultiSummaryRow {
   n_eligible_legs: number;
   n_bookmakers_available: number;
   tiers_available: MultiTierKey[];
+  readiness: MatchReadiness;
+  best_options_by_tier: Partial<Record<MultiTierKey, MultiOption | null>>;
 }
 
 export interface RoundMultiSummary {
@@ -2615,6 +2648,10 @@ export interface PlacedBetCreateInput {
   lineup_status?: string | null;
   notes?: string | null;
   placed_at?: string | null;
+  model_version?: string | null;
+  multi_group_id?: string | null;
+  multi_tier?: string | null;
+  multi_indicative_odds?: number | null;
 }
 
 export interface PlacedBet extends PlacedBetCreateInput {

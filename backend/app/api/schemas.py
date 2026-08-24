@@ -1576,6 +1576,11 @@ class ExcludedOpportunityRead(BaseModel):
 # --- Multi Builder (product feature stage) ----------------------------------
 
 
+class MultiReasonRead(BaseModel):
+    code: str
+    label: str
+
+
 class MultiLegRead(BaseModel):
     opportunity_type: str
     label: str
@@ -1592,9 +1597,13 @@ class MultiLegRead(BaseModel):
     is_confirmed: bool | None
     odds_freshness: str
     warnings: list[str]
-    reasons: list[str]
+    reasons: list[MultiReasonRead]
+    warning_codes: list[MultiReasonRead] = []
     usage_regime: str | None = None
     model_risk_flags: list[ModelRiskFlagRead] = []
+    model_name: str | None = None
+    model_version: str | None = None
+    calibration_known: bool = False
     selection: str | None = None
     threshold: float | None = None
     line_type: str | None = None
@@ -1612,16 +1621,35 @@ class MultiOptionRead(BaseModel):
     provisional: bool
     lineup_ready: bool
     correlation_warnings: list[str]
+    reason_codes: list[str] = []
     average_confidence_component: float
     lowest_leg_probability: float
     average_leg_probability: float
     legs: list[MultiLegRead]
 
 
+class BookmakerComparisonEntryRead(BaseModel):
+    bookmaker: str
+    indicative_combined_odds: float
+    n_legs: int
+
+
 class MultiTierRead(BaseModel):
     tier: str
     label: str
     options: list[MultiOptionRead]
+    unavailable_reason: str | None = None
+    bookmaker_comparison: list[BookmakerComparisonEntryRead] = []
+
+
+class MatchReadinessRead(BaseModel):
+    match_id: int
+    state: str  # NOT_READY | PROVISIONAL | READY
+    reasons: list[str]
+    has_fresh_odds: bool
+    has_projections: bool
+    projections_current: bool
+    teams_confirmed: bool
 
 
 class MatchMultiTiersRead(BaseModel):
@@ -1629,6 +1657,7 @@ class MatchMultiTiersRead(BaseModel):
     n_eligible_legs: int
     bookmakers_available: list[str]
     tiers: list[MultiTierRead]
+    readiness: MatchReadinessRead
 
 
 class RoundMultiSummaryRowRead(BaseModel):
@@ -1639,6 +1668,11 @@ class RoundMultiSummaryRowRead(BaseModel):
     n_eligible_legs: int
     n_bookmakers_available: int
     tiers_available: list[str]
+    readiness: MatchReadinessRead
+    # Item 17: the finals overview should never require opening each match's
+    # own page just to see what's available - the single best High
+    # Probability option per tier, right here.
+    best_options_by_tier: dict[str, MultiOptionRead | None] = {}
 
 
 class RoundMultiSummaryRead(BaseModel):
@@ -2230,6 +2264,14 @@ class PlacedBetCreate(BaseModel):
     lineup_status: str | None = None
     notes: str | None = None
     placed_at: UtcDatetime | None = None
+    model_version: str | None = None
+    # Finals Multi Quality stage, item 16: set on every leg the frontend
+    # posts as part of "Add this whole multi" - a client-generated UUID
+    # shared across all legs of one multi, plus the tier/indicative-odds
+    # context frozen at that exact moment (see PlacedBet.multi_group_id).
+    multi_group_id: str | None = None
+    multi_tier: str | None = None
+    multi_indicative_odds: float | None = None
 
 
 class PlacedBetSplitRead(BaseModel):
@@ -2285,3 +2327,7 @@ class PlacedBetRead(BaseModel):
     status: str
     actual_stat_value: float | None
     settled_at: UtcDatetime | None
+    model_version: str | None = None
+    multi_group_id: str | None = None
+    multi_tier: str | None = None
+    multi_indicative_odds: float | None = None

@@ -60,6 +60,10 @@ class PlacedBetInput:
     lineup_status: str | None = None
     notes: str | None = None
     placed_at: datetime | None = None
+    model_version: str | None = None
+    multi_group_id: str | None = None
+    multi_tier: str | None = None
+    multi_indicative_odds: float | None = None
 
 
 def create_placed_bet(db: Session, data: PlacedBetInput) -> PlacedBet:
@@ -76,6 +80,8 @@ def create_placed_bet(db: Session, data: PlacedBetInput) -> PlacedBet:
         placed_at=data.placed_at or datetime.now(timezone.utc), source_mode=data.source_mode,
         model_probability=data.model_probability, model_fair_odds=data.model_fair_odds,
         confidence_tier=data.confidence_tier, lineup_status=data.lineup_status, notes=data.notes,
+        model_version=data.model_version, multi_group_id=data.multi_group_id, multi_tier=data.multi_tier,
+        multi_indicative_odds=data.multi_indicative_odds,
         status=STATUS_PENDING,
     )
     db.add(bet)

@@ -61,6 +61,7 @@ from sqlalchemy.orm import Session
 
 from app.models.bookmaker import ELIGIBILITY_INCLUDED
 from app.player_modelling.best_opportunities import load_best_opportunities
+from app.player_modelling.market import PlayerMarket
 from app.player_modelling.market_correlation import CORRELATION_STRENGTH, _pair_correlation
 from app.player_modelling.opportunity_families import family_key, group_into_families, representative_score
 from app.player_modelling.quality_tiers import TIER_DO_NOT_HEADLINE
@@ -110,6 +111,24 @@ MIN_LEG_PROBABILITY: dict[str, float] = {
 # preference rather than this floor.
 MIN_EDGE_FLOOR_HIGH_PROBABILITY = -0.02
 
+# Value mode's own "sensible minimum individual probability" (item 3) - a
+# flat sanity floor, deliberately looser than High-Probability's per-tier
+# floors since Value mode's whole point is ranking by edge/EV, not
+# probability. Still never lets a near-coinflip-or-worse leg into a
+# "value" multi just because its EV is good.
+MIN_LEG_PROBABILITY_VALUE = 0.40
+
+# Item 7: goals need stricter handling than disposals. 2+/3+ goals legs
+# already can't reach Conservative/Balanced on probability alone in most
+# cases (their floors are 75%/65%), but a leg that DOES clear the floor
+# while the goal model itself is flagging a recent usage-regime change
+# (see goal_usage_risk_flags) is still excluded from the two "safer" tiers
+# specifically - the model's own calibration warning is a reason for
+# caution the raw probability number doesn't capture. Higher Return/Longer
+# Shot tiers may still use these legs; this never touches raw probability.
+GOALS_STRICT_TIERS = (TIER_CONSERVATIVE, TIER_BALANCED)
+GOALS_STRICT_MIN_THRESHOLD = 2.0
+
 MAX_OPTIONS_PER_TIER = 3
 MAX_APPEARANCES_PER_PLAYER = 2  # across the WHOLE match's multi set (every tier, every option) - no single player dominates
 _MAX_POOL_SIZE = 16  # candidate legs considered per bookmaker, per tier+mode - keeps combination search fast without changing which legs WIN
@@ -149,23 +168,55 @@ def _safest_family_member(fam) -> dict | None:
     return max(candidates, key=lambda o: o["model_probability"])
 
 
-def _reasons_for(leg: dict) -> list[str]:
+# Structured reason/warning codes (item 14) - every code below is derived
+# straight from already-computed leg fields, never a new judgement. Kept as
+# {code, label} pairs so a consumer can branch on `code` (stable) while
+# still getting a ready-to-display `label` (may include a computed number).
+REASON_HIGH_MODEL_PROBABILITY = "HIGH_MODEL_PROBABILITY"
+REASON_CONFIRMED_SELECTED = "CONFIRMED_SELECTED"
+REASON_WELL_CALIBRATED_THRESHOLD = "WELL_CALIBRATED_THRESHOLD"
+REASON_FRESH_MARKET = "FRESH_MARKET"
+REASON_POSITIVE_MODEL_EDGE = "POSITIVE_MODEL_EDGE"
+REASON_GOOD_CONFIDENCE = "GOOD_CONFIDENCE"
+REASON_MULTIPLE_BOOKMAKERS = "MULTIPLE_BOOKMAKERS"
+REASON_PASSES_INTEGRITY_CHECKS = "PASSES_INTEGRITY_CHECKS"
+
+WARNING_TEAMS_NOT_CONFIRMED = "TEAMS_NOT_CONFIRMED"
+WARNING_RECENT_USAGE_REGIME_CHANGE = "RECENT_USAGE_REGIME_CHANGE"
+WARNING_LOWER_CONFIDENCE = "LOWER_CONFIDENCE"
+WARNING_SINGLE_BOOK_MARKET = "SINGLE_BOOK_MARKET"
+
+
+def _reasons_for(leg: dict) -> list[dict]:
     reasons = []
     if leg["quality_tier"]["tier"] == "strong_candidate":
-        reasons.append("Strong candidate on its own merits")
+        reasons.append({"code": REASON_WELL_CALIBRATED_THRESHOLD, "label": "Strong candidate on its own merits"})
     if leg.get("is_confirmed"):
-        reasons.append("Lineup confirmed")
+        reasons.append({"code": REASON_CONFIRMED_SELECTED, "label": "Lineup confirmed"})
     if leg["odds_freshness"] == "fresh":
-        reasons.append("Fresh odds")
+        reasons.append({"code": REASON_FRESH_MARKET, "label": "Fresh odds"})
     if leg["confidence_tier"] in ("higher_confidence", "moderate_confidence"):
-        reasons.append("Good model confidence")
+        reasons.append({"code": REASON_GOOD_CONFIDENCE, "label": "Good model confidence"})
     if leg.get("n_bookmakers", 0) > 1:
-        reasons.append("Multiple bookmakers quote this market")
+        reasons.append({"code": REASON_MULTIPLE_BOOKMAKERS, "label": "Multiple bookmakers quote this market"})
     if leg["model_probability"] >= 0.70:
-        reasons.append(f"High model probability ({leg['model_probability'] * 100:.0f}%)")
+        reasons.append({"code": REASON_HIGH_MODEL_PROBABILITY, "label": f"High model probability ({leg['model_probability'] * 100:.0f}%)"})
     if leg["difference_pp"] > 0:
-        reasons.append(f"Model favours this by {leg['difference_pp'] * 100:.1f}pp")
-    return reasons or ["Passes hard integrity checks"]
+        reasons.append({"code": REASON_POSITIVE_MODEL_EDGE, "label": f"Model favours this by {leg['difference_pp'] * 100:.1f}pp"})
+    return reasons or [{"code": REASON_PASSES_INTEGRITY_CHECKS, "label": "Passes hard integrity checks"}]
+
+
+def _warnings_for(leg: dict) -> list[dict]:
+    warnings = []
+    if leg["opportunity_type"] == "player" and not leg.get("is_confirmed"):
+        warnings.append({"code": WARNING_TEAMS_NOT_CONFIRMED, "label": "Teams not confirmed for this match yet."})
+    if leg.get("model_risk_flags"):
+        warnings.append({"code": WARNING_RECENT_USAGE_REGIME_CHANGE, "label": "; ".join(f["description"] for f in leg["model_risk_flags"])})
+    if leg["confidence_tier"] == "lower_confidence":
+        warnings.append({"code": WARNING_LOWER_CONFIDENCE, "label": "Lower model confidence for this leg."})
+    if leg.get("n_bookmakers", 0) <= 1:
+        warnings.append({"code": WARNING_SINGLE_BOOK_MARKET, "label": "Only one bookmaker quotes this market."})
+    return warnings
 
 
 def _match_legs(db: Session, match_id: int) -> list[dict]:
@@ -257,15 +308,36 @@ def _high_probability_score(leg: dict) -> tuple:
     )
 
 
+def _is_strict_goals_excluded(leg: dict, tier_key: str) -> bool:
+    """Item 7: a goals leg at 2+ or higher, carrying an active model-risk
+    flag (recent usage-regime change), is excluded from the two "safer"
+    tiers even if its raw probability clears the floor - the model's own
+    calibration warning is exactly the kind of caution those tiers exist
+    to respect. Disposals and 1+ goals are never affected."""
+    if tier_key not in GOALS_STRICT_TIERS:
+        return False
+    if leg["market_type"] != PlayerMarket.GOALS.value:
+        return False
+    threshold = leg.get("threshold")
+    if threshold is None or threshold < GOALS_STRICT_MIN_THRESHOLD:
+        return False
+    return bool(leg.get("model_risk_flags"))
+
+
 def _candidate_pool(legs: list[dict], tier_key: str, mode: str, *, confirmed_only: bool) -> list[dict]:
     pool = legs
     if confirmed_only:
         pool = [leg for leg in pool if leg["opportunity_type"] != "player" or leg.get("is_confirmed")]
     if mode == MODE_HIGH_PROBABILITY:
         min_prob = MIN_LEG_PROBABILITY[tier_key]
-        pool = [leg for leg in pool if leg["model_probability"] >= min_prob and leg["difference_pp"] >= MIN_EDGE_FLOOR_HIGH_PROBABILITY]
+        pool = [
+            leg for leg in pool
+            if leg["model_probability"] >= min_prob and leg["difference_pp"] >= MIN_EDGE_FLOOR_HIGH_PROBABILITY
+            and not _is_strict_goals_excluded(leg, tier_key)
+        ]
         pool = sorted(pool, key=_high_probability_score, reverse=True)
     else:
+        pool = [leg for leg in pool if leg["model_probability"] >= MIN_LEG_PROBABILITY_VALUE]
         pool = sorted(pool, key=representative_score, reverse=True)
     return pool[:_MAX_POOL_SIZE]
 
@@ -356,9 +428,16 @@ def _search_tier_bookmaker(
     return best
 
 
+@dataclass(frozen=True)
+class TierResult:
+    options: list[dict]
+    unavailable_reason: str | None
+    bookmaker_comparison: list[dict]  # item 9: every bookmaker's own best achievable combo for this tier, not just the winner
+
+
 def _options_for_tier(
     legs_by_bookmaker: dict[str, list[dict]], tier_key: str, mode: str, *, confirmed_only: bool, player_counts: dict[int, int],
-) -> list[dict]:
+) -> TierResult:
     lo, hi = TIER_RANGES[tier_key]
     min_legs, max_legs = MIN_LEGS[tier_key], MAX_LEGS[tier_key]
 
@@ -370,15 +449,34 @@ def _options_for_tier(
         key=lambda kv: len(kv[1]), reverse=True,
     )[:_MAX_BOOKMAKERS_SEARCHED]
 
+    if not ranked_bookmakers:
+        min_prob = MIN_LEG_PROBABILITY.get(tier_key) if mode == MODE_HIGH_PROBABILITY else MIN_LEG_PROBABILITY_VALUE
+        reason = (
+            f"No {TIER_LABELS[tier_key]} multi currently meets the required individual-leg probabilities "
+            f"(needs at least {min_legs} legs each {min_prob * 100:.0f}%+, from the same bookmaker)."
+            if mode == MODE_HIGH_PROBABILITY else
+            f"No {TIER_LABELS[tier_key]} multi currently has enough sensible-probability value legs from a single bookmaker."
+        )
+        return TierResult(options=[], unavailable_reason=reason, bookmaker_comparison=[])
+
     options: list[dict] = []
+    bookmaker_comparison: list[dict] = []
     exclude_ids: set[tuple] = set()
     exclude_family_keys: set[tuple] = set()
-    for _ in range(MAX_OPTIONS_PER_TIER):
+    for pass_index in range(MAX_OPTIONS_PER_TIER):
         best_overall = None
         best_overall_key = None
         best_bookmaker = None
         for bookmaker_name, pool in ranked_bookmakers:
             found = _search_tier_bookmaker(pool, lo, hi, min_legs, max_legs, mode, exclude_ids, exclude_family_keys, player_counts)
+            if pass_index == 0:
+                # Item 9: capture every bookmaker's OWN best combo on this
+                # first pass (before any leg exclusions from chosen options
+                # apply), so "which bookmaker offers the best indicative
+                # combination" can be answered even for bookmakers that
+                # don't end up winning.
+                if found is not None:
+                    bookmaker_comparison.append({"bookmaker": bookmaker_name, "indicative_combined_odds": found[1], "n_legs": len(found[0])})
             if found is None:
                 continue
             combo, combined_odds, warnings = found
@@ -415,7 +513,15 @@ def _options_for_tier(
 
     for i, opt in enumerate(options):
         opt["option_label"] = f"Option {chr(65 + i)}"
-    return options
+
+    unavailable_reason = None
+    if not options:
+        unavailable_reason = (
+            f"Enough {TIER_LABELS[tier_key].lower()}-eligible legs exist, but none combine to reach the "
+            f"${lo:.2f}{f'-${hi:.2f}' if hi else '+'} odds band from a single bookmaker without breaking a correlation rule."
+        )
+    bookmaker_comparison.sort(key=lambda c: c["indicative_combined_odds"])
+    return TierResult(options=options, unavailable_reason=unavailable_reason, bookmaker_comparison=bookmaker_comparison)
 
 
 @dataclass(frozen=True)
@@ -423,7 +529,7 @@ class MatchMultiTiers:
     match_id: int
     n_eligible_legs: int
     bookmakers_available: list[str]
-    tiers: dict[str, list[dict]] = field(default_factory=dict)
+    tiers: dict[str, TierResult] = field(default_factory=dict)
 
 
 def build_match_multis(db: Session, match_id: int, *, confirmed_only: bool = True, mode: str = DEFAULT_MODE) -> MatchMultiTiers:
@@ -434,7 +540,7 @@ def build_match_multis(db: Session, match_id: int, *, confirmed_only: bool = Tru
     by_bookmaker = _legs_by_bookmaker(legs)
     player_counts: dict[int, int] = {}
 
-    tiers: dict[str, list[dict]] = {}
+    tiers: dict[str, TierResult] = {}
     for tier_key in TIER_ORDER:
         tiers[tier_key] = _options_for_tier(by_bookmaker, tier_key, mode, confirmed_only=confirmed_only, player_counts=player_counts)
 
@@ -457,6 +563,9 @@ def option_as_dict(opt: dict) -> dict:
         "provisional": opt["provisional"],
         "lineup_ready": opt["lineup_ready"],
         "correlation_warnings": opt["correlation_warnings"],
+        # Item 14: LOW_CORRELATION is a whole-combination property (no
+        # pairwise flag fired), not any one leg's own trait.
+        "reason_codes": [] if opt["correlation_warnings"] else ["LOW_CORRELATION"],
         "lowest_leg_probability": opt["lowest_leg_probability"],
         "average_leg_probability": opt["average_leg_probability"],
         "average_confidence_component": sum(leg["opportunity_components"]["confidence"] for leg in opt["legs"]) / len(opt["legs"]),
@@ -468,8 +577,10 @@ def option_as_dict(opt: dict) -> dict:
                 "model_fair_odds": leg["model_fair_odds"], "difference_pp": leg["difference_pp"],
                 "confidence_tier": leg["confidence_tier"], "selection_status": leg.get("selection_status"),
                 "is_confirmed": leg.get("is_confirmed"), "odds_freshness": leg["odds_freshness"],
-                "warnings": leg.get("warnings", []), "reasons": _reasons_for(leg),
+                "warnings": leg.get("warnings", []), "reasons": _reasons_for(leg), "warning_codes": _warnings_for(leg),
                 "usage_regime": leg.get("usage_regime"), "model_risk_flags": leg.get("model_risk_flags", []),
+                "model_name": leg.get("model_name"), "model_version": leg.get("model_version"),
+                "calibration_known": leg.get("calibration") is not None,
                 # Exposed so a leg can be frozen into a Placed Bets record
                 # (app/player_modelling/placed_bets.py) with the exact
                 # selection/line it represents - not used by any ranking
@@ -489,7 +600,12 @@ def match_multi_tiers_as_dict(result: MatchMultiTiers) -> dict:
         "n_eligible_legs": result.n_eligible_legs,
         "bookmakers_available": result.bookmakers_available,
         "tiers": [
-            {"tier": tier_key, "label": TIER_LABELS[tier_key], "options": [option_as_dict(o) for o in result.tiers.get(tier_key, [])]}
+            {
+                "tier": tier_key, "label": TIER_LABELS[tier_key],
+                "options": [option_as_dict(o) for o in result.tiers[tier_key].options] if tier_key in result.tiers else [],
+                "unavailable_reason": result.tiers[tier_key].unavailable_reason if tier_key in result.tiers else None,
+                "bookmaker_comparison": result.tiers[tier_key].bookmaker_comparison if tier_key in result.tiers else [],
+            }
             for tier_key in TIER_ORDER
         ],
     }
