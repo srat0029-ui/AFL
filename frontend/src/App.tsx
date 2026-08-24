@@ -5,6 +5,7 @@ import BacktestPage from "./pages/BacktestPage";
 import DashboardPage from "./pages/DashboardPage";
 import MatchDetailPage from "./pages/MatchDetailPage";
 import MultisPage from "./pages/MultisPage";
+import MarketMonitorPage from "./pages/MarketMonitorPage";
 import ModelRegistryPage from "./pages/ModelRegistryPage";
 import PlacedBetsPage from "./pages/PlacedBetsPage";
 import PlayerInsightsPage from "./pages/PlayerInsightsPage";
@@ -52,6 +53,9 @@ function App() {
         <NavLink to="/b2b-demo" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           B2B Demo
         </NavLink>
+        <NavLink to="/market-monitor" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          Market Monitor
+        </NavLink>
         <NavLink to="/real-market-tracking" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Real Market Tracking
         </NavLink>
@@ -78,6 +82,7 @@ function App() {
         <Route path="/placed-bets" element={<PlacedBetsPage />} />
         <Route path="/model-registry" element={<ModelRegistryPage />} />
         <Route path="/b2b-demo" element={<B2BDemoPage />} />
+        <Route path="/market-monitor" element={<MarketMonitorPage />} />
         <Route path="/real-market-tracking" element={<RealMarketTrackingPage />} />
         <Route path="/live-status" element={<LiveStatusPage />} />
         <Route path="/backtest" element={<BacktestPage />} />

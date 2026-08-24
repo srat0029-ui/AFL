@@ -2964,3 +2964,92 @@ export interface IntegrationHealth {
 export function fetchIntegrationHealth(): Promise<IntegrationHealth> {
   return request("/api/v1/integration-health");
 }
+
+// --- B2B Market Anomaly / Trading QA Engine (/api/v1/market-monitor/*) -----
+
+export interface AnomalyBookmakerPrice {
+  bookmaker_name: string;
+  price_decimal: number;
+  recorded_at: string;
+  eligibility: string;
+}
+
+export interface AnomalyAlert {
+  alert_type: string;
+  severity: string;
+  reason_code: string;
+  detail: string;
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  player_id: number | null;
+  player_name: string | null;
+  team_id: number | null;
+  market_type: string;
+  selection: string | null;
+  threshold: number | null;
+  line_value: number | null;
+  model_probability: number | null;
+  model_fair_odds: number | null;
+  market_consensus_probability: number | null;
+  bookmaker_prices: AnomalyBookmakerPrice[];
+  freshness: string | null;
+  model_version: string | null;
+  lineup_status: string | null;
+  context_state: string | null;
+  model_risk_flags: ModelRiskFlagV1[];
+  generated_at: string;
+}
+
+export interface AnomalyListResponse {
+  generated_at: string;
+  n_matches_scanned: number;
+  total: number;
+  alerts: AnomalyAlert[];
+}
+
+export interface MatchAnomaliesResponse {
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  alerts: AnomalyAlert[];
+}
+
+export interface AnomalyTypeCount {
+  alert_type: string;
+  count: number;
+}
+
+export interface SeverityCount {
+  severity: string;
+  count: number;
+}
+
+export interface AnomalySummary {
+  generated_at: string;
+  n_matches_scanned: number;
+  total_anomalies: number;
+  by_type: AnomalyTypeCount[];
+  by_severity: SeverityCount[];
+}
+
+export function fetchAnomalies(
+  params: { alertType?: string; severity?: string; matchId?: number; bookmakerName?: string; limit?: number } = {}
+): Promise<AnomalyListResponse> {
+  const qs = new URLSearchParams();
+  if (params.alertType) qs.set("alert_type", params.alertType);
+  if (params.severity) qs.set("severity", params.severity);
+  if (params.matchId !== undefined) qs.set("match_id", String(params.matchId));
+  if (params.bookmakerName) qs.set("bookmaker_name", params.bookmakerName);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  const q = qs.toString();
+  return request(`/api/v1/market-monitor/anomalies${q ? `?${q}` : ""}`);
+}
+
+export function fetchMatchAnomalies(matchId: number): Promise<MatchAnomaliesResponse> {
+  return request(`/api/v1/market-monitor/matches/${matchId}`);
+}
+
+export function fetchAnomalySummary(): Promise<AnomalySummary> {
+  return request("/api/v1/market-monitor/summary");
+}

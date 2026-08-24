@@ -11,6 +11,7 @@ from app.api.routes import (
     goal_models,
     health,
     live_status,
+    market_monitor_v1,
     matches,
     model_registry_v1,
     odds,
@@ -80,3 +81,4 @@ app.include_router(pricing_v1.pricing_router)
 app.include_router(pricing_v1.market_intel_router)
 app.include_router(pricing_v1.integration_router)
 app.include_router(model_registry_v1.router)
+app.include_router(market_monitor_v1.router)

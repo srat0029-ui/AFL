@@ -2,6 +2,7 @@
 autogenerate and for create_all() in tests.
 """
 
+from app.models.anomaly_alert_snapshot import AnomalyAlertSnapshot
 from app.models.bookmaker import Bookmaker
 from app.models.elo_rating import EloRating
 from app.models.expected_lineup import (
@@ -129,4 +130,5 @@ __all__ = [
     "SOURCE_MODE_MANUAL",
     "PricingSnapshot",
     "ModelPromotionEvent",
+    "AnomalyAlertSnapshot",
 ]
