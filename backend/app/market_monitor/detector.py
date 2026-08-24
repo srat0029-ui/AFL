@@ -99,7 +99,7 @@ def _alert(
     model_probability: float | None = None, model_fair_odds: float | None = None,
     market_consensus_probability: float | None = None, bookmaker_prices=(), freshness: str | None = None,
     model_version: str | None = None, lineup_status: str | None = None, context_state: str | None = None,
-    model_risk_flags=(),
+    model_risk_flags=(), magnitude: float | None = None,
 ) -> Alert:
     return Alert(
         alert_type=alert_type, severity=severity, reason_code=reason_code, detail=detail,
@@ -109,7 +109,7 @@ def _alert(
         model_probability=model_probability, model_fair_odds=model_fair_odds,
         market_consensus_probability=market_consensus_probability, bookmaker_prices=list(bookmaker_prices),
         freshness=freshness, model_version=model_version, lineup_status=lineup_status, context_state=context_state,
-        model_risk_flags=list(model_risk_flags), generated_at=common.generated_at,
+        model_risk_flags=list(model_risk_flags), generated_at=common.generated_at, magnitude=magnitude,
     )
 
 
@@ -133,6 +133,7 @@ def _divergence_and_outlier_and_dispersion_alerts(
             threshold=threshold, line_value=line_value, model_probability=intel.model_probability, model_fair_odds=model_fair_odds,
             market_consensus_probability=intel.market_implied_probability, bookmaker_prices=books, freshness=freshness,
             model_version=model_version, lineup_status=lineup_status, model_risk_flags=model_risk_flags,
+            magnitude=abs(intel.difference_pp),
         ))
 
     if intel.outlier is not None and intel.outlier.is_outlier:
@@ -144,6 +145,7 @@ def _divergence_and_outlier_and_dispersion_alerts(
             threshold=threshold, line_value=line_value, model_probability=intel.model_probability, model_fair_odds=model_fair_odds,
             market_consensus_probability=intel.market_implied_probability, bookmaker_prices=books, freshness=freshness,
             model_version=model_version, lineup_status=lineup_status, model_risk_flags=model_risk_flags,
+            magnitude=intel.outlier.pct_difference,
         ))
 
     if intel.consensus is not None and intel.consensus.spread >= DISPERSION_WARN_PP:
@@ -155,6 +157,7 @@ def _divergence_and_outlier_and_dispersion_alerts(
             threshold=threshold, line_value=line_value, model_probability=intel.model_probability, model_fair_odds=model_fair_odds,
             market_consensus_probability=intel.market_implied_probability, bookmaker_prices=books, freshness=freshness,
             model_version=model_version, lineup_status=lineup_status, model_risk_flags=model_risk_flags,
+            magnitude=intel.consensus.spread,
         ))
     return alerts
 
@@ -175,6 +178,7 @@ def _movement_alerts(
                 detail=f"Consensus implied probability moved from {f.consensus_first_pp:.3f} to {f.consensus_latest_pp:.3f} while the model's current probability is {model_probability:.3f}.",
                 market_type=market_type, player_id=player_id, player_name=player_name, team_id=team_id, selection=selection,
                 threshold=threshold, line_value=line_value, model_probability=model_probability, model_fair_odds=model_fair_odds,
+                magnitude=move,
             ))
         elif f.kind == "bookmaker_diverges":
             b = f.bookmaker
@@ -185,9 +189,11 @@ def _movement_alerts(
                 market_type=market_type, player_id=player_id, player_name=player_name, team_id=team_id, selection=selection,
                 threshold=threshold, line_value=line_value, model_probability=model_probability, model_fair_odds=model_fair_odds,
                 bookmaker_prices=[BookmakerPriceEntry(b.bookmaker_name, b.latest_price, b.latest_at, "included")],
+                magnitude=b.moved_pp,
             ))
         elif f.kind == "bookmaker_stale_vs_consensus":
             b = f.bookmaker
+            move = abs(f.consensus_latest_pp - f.consensus_first_pp)
             alerts.append(_alert(
                 common, alert_type=CONSENSUS_MOVED_VS_STALE_BOOKMAKER, severity=SEVERITY_WARNING,
                 reason_code=f"{b.bookmaker_name}_stale_vs_consensus",
@@ -195,6 +201,7 @@ def _movement_alerts(
                 market_type=market_type, player_id=player_id, player_name=player_name, team_id=team_id, selection=selection,
                 threshold=threshold, line_value=line_value, model_probability=model_probability, model_fair_odds=model_fair_odds,
                 bookmaker_prices=[BookmakerPriceEntry(b.bookmaker_name, b.latest_price, b.latest_at, "included")],
+                magnitude=move,
             ))
     return alerts
 
@@ -216,6 +223,7 @@ def _curve_alerts(
                 detail=f"{label.capitalize()} P(>= {hi.threshold:g}) = {hi.probability:.3f} is higher than P(>= {lo.threshold:g}) = {lo.probability:.3f} — a lower threshold must never have a lower probability than a higher one.",
                 market_type=market_type, player_id=player_id, player_name=player_name, threshold=hi.threshold,
                 model_version=model_version, lineup_status=lineup_status, model_risk_flags=model_risk_flags,
+                magnitude=hi.probability - lo.probability,
             ))
         if label != "market":
             # A smooth NB/hurdle survival function's gaps track wherever
@@ -237,6 +245,7 @@ def _curve_alerts(
                 detail=f"{label.capitalize()} probability drops {jump.gap * 100:.1f}pp between {jump.lower.threshold:g} and {jump.upper.threshold:g} — {jump.gap / jump.other_gaps_median:.1f}x its neighbouring gap(s) ({jump.other_gaps_median * 100:.1f}pp) on this same curve.",
                 market_type=market_type, player_id=player_id, player_name=player_name, threshold=jump.upper.threshold,
                 model_version=model_version, lineup_status=lineup_status, model_risk_flags=model_risk_flags,
+                magnitude=jump.gap / jump.other_gaps_median,  # item 8's "neighbouring-line support" ratio, unchanged from the fix
             ))
     return alerts
 
@@ -368,7 +377,7 @@ def detect_team_match_anomalies(db: Session, team: TeamMarketPrice, common: _Com
                     BookmakerPriceEntry(name, home_q.price_decimal, home_q.recorded_at, "included"),
                     BookmakerPriceEntry(name, away_q.price_decimal, away_q.recorded_at, "included"),
                 ],
-                model_version=team.model_version,
+                model_version=team.model_version, magnitude=abs(1.0 - pair.combined_probability),
             ))
     return alerts
 

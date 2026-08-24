@@ -1,15 +1,130 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchAnomalies, fetchAnomalySummary, type AnomalyAlert, type AnomalySummary } from "../api/client";
+import {
+  fetchAnomalies,
+  fetchCases,
+  setCaseStatus,
+  type AnomalyAlert,
+  type AnomalyCase,
+  type TraderInbox,
+} from "../api/client";
 import "./MarketMonitorPage.css";
 
-const SEVERITY_ORDER: Record<string, number> = { critical: 0, warning: 1, info: 2 };
+type TabKey = "priority" | "context" | "outliers" | "divergence" | "curve" | "all";
+
+const TABS: { key: TabKey; label: string; alertType?: string }[] = [
+  { key: "priority", label: "Priority Review" },
+  { key: "context", label: "Context / Stale" },
+  { key: "outliers", label: "Bookmaker Outliers", alertType: "BOOKMAKER_VS_CONSENSUS_OUTLIER" },
+  { key: "divergence", label: "Model vs Consensus", alertType: "MODEL_VS_MARKET_DIVERGENCE" },
+  { key: "curve", label: "Pricing Curve QA" },
+  { key: "all", label: "All Detections" },
+];
 
 function fmtPct(v: number | null): string {
   return v === null ? "—" : `${(v * 100).toFixed(1)}%`;
 }
 
-function SeverityBadge({ severity }: { severity: string }) {
-  return <span className={`market-monitor__severity market-monitor__severity--${severity}`}>{severity}</span>;
+function SeverityBadge({ label }: { label: string }) {
+  return <span className={`market-monitor__severity market-monitor__severity--${label}`}>{label.replace("_", " ")}</span>;
+}
+
+function LifecycleBadge({ lifecycle }: { lifecycle: string }) {
+  return <span className={`market-monitor__lifecycle market-monitor__lifecycle--${lifecycle}`}>{lifecycle.replace("_", " ")}</span>;
+}
+
+function CaseDrawer({ c, onStatusChange }: { c: AnomalyCase; onStatusChange: (status: string | null) => void }) {
+  return (
+    <div className="market-monitor__case-drawer">
+      <p className="market-monitor__detail">{c.primary_alert.detail}</p>
+      {c.supporting_alert_types.length > 0 && (
+        <p className="hint">Supporting evidence: {c.supporting_alert_types.join(", ")}</p>
+      )}
+      <div className="market-monitor__meta">
+        <span>persistence: {c.persistence_label} ({c.n_snapshots} snapshot(s))</span>
+        <span>lifecycle: {c.lifecycle}</span>
+        {c.model_support !== null && <span>{c.model_support ? "model-supported outlier" : "market-only anomaly"}</span>}
+        <span>first detected: {new Date(c.first_detected).toLocaleString()}</span>
+        <span>latest detected: {new Date(c.latest_detected).toLocaleString()}</span>
+      </div>
+
+      <table className="market-monitor__components">
+        <thead>
+          <tr>
+            <th>Score component</th>
+            <th>Raw</th>
+            <th>Contribution</th>
+            <th>Why</th>
+          </tr>
+        </thead>
+        <tbody>
+          {c.components
+            .filter((comp) => comp.contribution > 0.01)
+            .sort((a, b) => b.contribution - a.contribution)
+            .map((comp) => (
+              <tr key={comp.name}>
+                <td>{comp.name}</td>
+                <td>{comp.raw_value === null ? "—" : comp.raw_value.toFixed(2)}</td>
+                <td>+{comp.contribution.toFixed(1)}</td>
+                <td className="market-monitor__component-explain">{comp.explanation}</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+
+      {c.bookmakers.length > 0 && (
+        <p className="hint">Bookmaker(s) involved: {c.bookmakers.join(", ")}</p>
+      )}
+
+      <div className="market-monitor__status-actions">
+        <span className="hint">Mark this case:</span>
+        {["reviewed", "acknowledged", "dismissed"].map((s) => (
+          <button key={s} className={c.manual_status === s ? "market-monitor__status-btn market-monitor__status-btn--active" : "market-monitor__status-btn"} onClick={() => onStatusChange(s)}>
+            {s}
+          </button>
+        ))}
+        {c.manual_status && (
+          <button className="market-monitor__status-btn" onClick={() => onStatusChange(null)}>
+            clear
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CaseRow({ c, expanded, onToggle, onStatusChange }: { c: AnomalyCase; expanded: boolean; onToggle: () => void; onStatusChange: (status: string | null) => void }) {
+  return (
+    <>
+      <tr className="market-monitor__row" onClick={onToggle}>
+        <td>
+          <SeverityBadge label={c.tier} />
+        </td>
+        <td>{c.priority_score.toFixed(1)}</td>
+        <td className="market-monitor__type">{c.primary_alert.alert_type}</td>
+        <td>
+          {c.home_team} v {c.away_team}
+        </td>
+        <td>{c.player_name ?? c.selection ?? "—"}</td>
+        <td>
+          {c.market_type}
+          {c.threshold !== null ? ` ${c.threshold}+` : ""}
+        </td>
+        <td>{fmtPct(c.primary_alert.model_probability)}</td>
+        <td>{fmtPct(c.primary_alert.market_consensus_probability)}</td>
+        <td>
+          <LifecycleBadge lifecycle={c.lifecycle} />
+        </td>
+        <td>{c.manual_status ?? "—"}</td>
+      </tr>
+      {expanded && (
+        <tr className="market-monitor__drawer">
+          <td colSpan={10}>
+            <CaseDrawer c={c} onStatusChange={onStatusChange} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
 }
 
 function AlertRow({ alert, expanded, onToggle }: { alert: AnomalyAlert; expanded: boolean; onToggle: () => void }) {
@@ -17,7 +132,7 @@ function AlertRow({ alert, expanded, onToggle }: { alert: AnomalyAlert; expanded
     <>
       <tr className="market-monitor__row" onClick={onToggle}>
         <td>
-          <SeverityBadge severity={alert.severity} />
+          <SeverityBadge label={alert.severity} />
         </td>
         <td className="market-monitor__type">{alert.alert_type}</td>
         <td>
@@ -43,37 +158,6 @@ function AlertRow({ alert, expanded, onToggle }: { alert: AnomalyAlert; expanded
               <span>lineup_status: {alert.lineup_status ?? "—"}</span>
               {alert.context_state && <span>context: {alert.context_state}</span>}
             </div>
-            {alert.model_risk_flags.length > 0 && (
-              <div className="market-monitor__risk-flags">
-                {alert.model_risk_flags.map((f, i) => (
-                  <span key={i} className="market-monitor__risk-flag">
-                    {f.code}: {f.description}
-                  </span>
-                ))}
-              </div>
-            )}
-            {alert.bookmaker_prices.length > 0 && (
-              <table className="market-monitor__books">
-                <thead>
-                  <tr>
-                    <th>Bookmaker</th>
-                    <th>Price</th>
-                    <th>Recorded</th>
-                    <th>Eligibility</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {alert.bookmaker_prices.map((b, i) => (
-                    <tr key={i}>
-                      <td>{b.bookmaker_name}</td>
-                      <td>${b.price_decimal.toFixed(2)}</td>
-                      <td>{new Date(b.recorded_at).toLocaleString()}</td>
-                      <td>{b.eligibility}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
           </td>
         </tr>
       )}
@@ -82,158 +166,138 @@ function AlertRow({ alert, expanded, onToggle }: { alert: AnomalyAlert; expanded
 }
 
 function MarketMonitorPage() {
-  const [summary, setSummary] = useState<AnomalySummary | null>(null);
-  const [alerts, setAlerts] = useState<AnomalyAlert[]>([]);
+  const [tab, setTab] = useState<TabKey>("priority");
+  const [inbox, setInbox] = useState<TraderInbox | null>(null);
+  const [allAlerts, setAllAlerts] = useState<AnomalyAlert[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
 
-  const [typeFilter, setTypeFilter] = useState<string>("");
-  const [severityFilter, setSeverityFilter] = useState<string>("");
-  const [matchFilter, setMatchFilter] = useState<string>("");
-  const [bookmakerFilter, setBookmakerFilter] = useState<string>("");
-
   useEffect(() => {
     setLoading(true);
-    Promise.all([fetchAnomalySummary(), fetchAnomalies({ limit: 2000 })])
-      .then(([s, a]) => {
-        setSummary(s);
-        setAlerts(a.alerts);
+    setExpandedKey(null);
+    setError(null);
+    if (tab === "all") {
+      fetchAnomalies({ limit: 2000 })
+        .then((r) => setAllAlerts(r.alerts))
+        .catch((err) => setError(err instanceof Error ? err.message : "Failed to load detections"))
+        .finally(() => setLoading(false));
+      return;
+    }
+    const tabDef = TABS.find((t) => t.key === tab)!;
+    const params = tab === "context" ? {} : tabDef.alertType ? { alertType: tabDef.alertType, limit: 100 } : { limit: 20 };
+    fetchCases(params)
+      .then((r) => {
+        if (tab === "context") {
+          r.cases = r.cases.filter((c) => c.primary_alert.alert_type.startsWith("STALE_") || c.supporting_alert_types.some((t) => t.startsWith("STALE_")));
+        }
+        if (tab === "curve") {
+          r.cases = r.cases.filter((c) => ["NON_MONOTONIC_PLAYER_PRICE_CURVE", "ADJACENT_THRESHOLD_JUMP"].some((t) => c.primary_alert.alert_type === t || c.supporting_alert_types.includes(t)));
+        }
+        setInbox(r);
       })
-      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load market monitor data"))
+      .catch((err) => setError(err instanceof Error ? err.message : "Failed to load cases"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [tab]);
 
-  const matches = useMemo(() => {
-    const seen = new Map<number, string>();
-    for (const a of alerts) seen.set(a.match_id, `${a.home_team} v ${a.away_team}`);
-    return [...seen.entries()];
-  }, [alerts]);
+  const handleStatusChange = (caseId: string, status: string | null) => {
+    setCaseStatus(caseId, status).then((r) => {
+      setInbox((prev) => (prev ? { ...prev, cases: prev.cases.map((c) => (c.case_id === caseId ? { ...c, manual_status: r.manual_status } : c)) } : prev));
+    });
+  };
 
-  const bookmakers = useMemo(() => {
-    const seen = new Set<string>();
-    for (const a of alerts) for (const b of a.bookmaker_prices) seen.add(b.bookmaker_name);
-    return [...seen].sort();
-  }, [alerts]);
-
-  const filtered = useMemo(() => {
-    return alerts
-      .filter((a) => !typeFilter || a.alert_type === typeFilter)
-      .filter((a) => !severityFilter || a.severity === severityFilter)
-      .filter((a) => !matchFilter || String(a.match_id) === matchFilter)
-      .filter((a) => !bookmakerFilter || a.bookmaker_prices.some((b) => b.bookmaker_name === bookmakerFilter))
-      .sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
-  }, [alerts, typeFilter, severityFilter, matchFilter, bookmakerFilter]);
+  const isCaseTab = tab !== "all";
+  const cases = useMemo(() => (tab === "context" || tab === "curve" ? inbox?.cases.slice(0, tab === "context" ? 100 : 100) : inbox?.cases) ?? [], [inbox, tab]);
 
   return (
     <main className="market-monitor-page">
-      <h1>Market Monitor — Trading QA</h1>
+      <h1>Trader Inbox — Market Monitor</h1>
       <p className="subtitle">
-        A neutral, read-only comparison of this engine's own pricing against real bookmaker markets — an
-        independent second set of eyes for a trading desk, not a "find me a bet" surface. No probability or
-        confidence shown anywhere on this page is adjusted by anything here.
+        A neutral, read-only comparison of this engine's own pricing against real bookmaker markets — deduplicated
+        into cases and ranked by a transparent, rule-based priority score (every component visible below). Not a
+        "find me a bet" surface, and nothing here adjusts a probability or confidence value.
       </p>
+
+      {inbox && (
+        <p className="hint">
+          {inbox.total_raw_alerts} raw detections → {inbox.total_cases} cases ·{" "}
+          {inbox.tier_counts.map((t) => `${t.count} ${t.tier}`).join(" · ")} · generated{" "}
+          {new Date(inbox.generated_at).toLocaleString()}
+        </p>
+      )}
+
+      <div className="market-monitor__tabs">
+        {TABS.map((t) => (
+          <button key={t.key} className={tab === t.key ? "market-monitor__tab market-monitor__tab--active" : "market-monitor__tab"} onClick={() => setTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
 
       {error && <p className="market-monitor-page__error">{error}</p>}
       {loading && <p>Loading…</p>}
 
-      {summary && (
-        <section className="market-monitor-section">
-          <h2>Summary</h2>
-          <p className="hint">
-            {summary.total_anomalies} active anomalies across {summary.n_matches_scanned} scheduled match(es) with
-            live pricing · generated {new Date(summary.generated_at).toLocaleString()}
-          </p>
-          <div className="market-monitor__summary-grid">
-            <div>
-              <h3>By type</h3>
-              {summary.by_type.map((t) => (
-                <div key={t.alert_type} className="market-monitor__summary-row">
-                  <span>{t.alert_type}</span>
-                  <span>{t.count}</span>
-                </div>
-              ))}
-              {summary.by_type.length === 0 && <p className="hint">No active anomalies right now.</p>}
+      {isCaseTab && !loading && (
+        <>
+          {cases.length === 0 && <p className="empty-state">No cases in this view right now.</p>}
+          {cases.length > 0 && (
+            <div className="market-monitor__table-wrap">
+              <table className="market-monitor__table">
+                <thead>
+                  <tr>
+                    <th>Tier</th>
+                    <th>Score</th>
+                    <th>Primary type</th>
+                    <th>Match</th>
+                    <th>Player/Selection</th>
+                    <th>Market</th>
+                    <th>Model %</th>
+                    <th>Consensus %</th>
+                    <th>Lifecycle</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cases.map((c) => (
+                    <CaseRow key={c.case_id} c={c} expanded={expandedKey === c.case_id} onToggle={() => setExpandedKey(expandedKey === c.case_id ? null : c.case_id)} onStatusChange={(s) => handleStatusChange(c.case_id, s)} />
+                  ))}
+                </tbody>
+              </table>
             </div>
-            <div>
-              <h3>By severity</h3>
-              {summary.by_severity.map((s) => (
-                <div key={s.severity} className="market-monitor__summary-row">
-                  <SeverityBadge severity={s.severity} />
-                  <span>{s.count}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+          )}
+        </>
       )}
 
-      <section className="market-monitor-section">
-        <h2>Active anomalies</h2>
-        <div className="market-monitor__filters">
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
-            <option value="">All types</option>
-            {[...new Set(alerts.map((a) => a.alert_type))].sort().map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <select value={severityFilter} onChange={(e) => setSeverityFilter(e.target.value)}>
-            <option value="">All severities</option>
-            <option value="critical">Critical</option>
-            <option value="warning">Warning</option>
-            <option value="info">Info</option>
-          </select>
-          <select value={matchFilter} onChange={(e) => setMatchFilter(e.target.value)}>
-            <option value="">All matches</option>
-            {matches.map(([id, label]) => (
-              <option key={id} value={id}>
-                {label}
-              </option>
-            ))}
-          </select>
-          <select value={bookmakerFilter} onChange={(e) => setBookmakerFilter(e.target.value)}>
-            <option value="">All bookmakers</option>
-            {bookmakers.map((b) => (
-              <option key={b} value={b}>
-                {b}
-              </option>
-            ))}
-          </select>
-          <span className="hint">
-            {filtered.length} of {alerts.length}
-          </span>
-        </div>
-
-        {filtered.length === 0 && !loading && <p className="empty-state">No anomalies match these filters.</p>}
-
-        {filtered.length > 0 && (
-          <div className="market-monitor__table-wrap">
-            <table className="market-monitor__table">
-              <thead>
-                <tr>
-                  <th>Severity</th>
-                  <th>Type</th>
-                  <th>Match</th>
-                  <th>Player/Selection</th>
-                  <th>Market</th>
-                  <th>Model %</th>
-                  <th>Consensus %</th>
-                  <th>Freshness</th>
-                  <th>Generated</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((a, i) => {
-                  const key = `${a.match_id}-${a.alert_type}-${a.reason_code}-${i}`;
-                  return <AlertRow key={key} alert={a} expanded={expandedKey === key} onToggle={() => setExpandedKey(expandedKey === key ? null : key)} />;
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {tab === "all" && !loading && (
+        <>
+          <p className="hint">{allAlerts.length} raw detections (every underlying finding is preserved here, never deleted).</p>
+          {allAlerts.length > 0 && (
+            <div className="market-monitor__table-wrap">
+              <table className="market-monitor__table">
+                <thead>
+                  <tr>
+                    <th>Severity</th>
+                    <th>Type</th>
+                    <th>Match</th>
+                    <th>Player/Selection</th>
+                    <th>Market</th>
+                    <th>Model %</th>
+                    <th>Consensus %</th>
+                    <th>Freshness</th>
+                    <th>Generated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allAlerts.map((a, i) => {
+                    const key = `${a.match_id}-${a.alert_type}-${a.reason_code}-${i}`;
+                    return <AlertRow key={key} alert={a} expanded={expandedKey === key} onToggle={() => setExpandedKey(expandedKey === key ? null : key)} />;
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
     </main>
   );
 }

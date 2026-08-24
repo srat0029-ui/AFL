@@ -8,15 +8,22 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.api.market_monitor_schemas import (
     AnomalyAlertRead,
+    AnomalyCaseRead,
     AnomalyListRead,
     AnomalySummaryRead,
     AnomalyTypeCount,
     BookmakerPriceRead,
     MatchAnomaliesRead,
     ModelRiskFlagRead,
+    PriorityComponentRead,
+    SetCaseStatusRequest,
     SeverityCount,
+    TierCount,
+    TraderInboxRead,
 )
+from app.market_monitor.case_persistence import set_manual_status
 from app.market_monitor.detector import active_match_ids, detect_match_anomalies
+from app.market_monitor.inbox import RankedCase, build_trader_inbox
 from app.market_monitor.types import Alert
 from app.models import Match
 
@@ -95,3 +102,68 @@ def get_summary(db: Session = Depends(get_db)) -> AnomalySummaryRead:
         by_type=[AnomalyTypeCount(alert_type=t, count=c) for t, c in sorted(by_type.items(), key=lambda kv: -kv[1])],
         by_severity=[SeverityCount(severity=s, count=c) for s, c in sorted(by_severity.items(), key=lambda kv: -kv[1])],
     )
+
+
+def _case_read(r: RankedCase) -> AnomalyCaseRead:
+    c = r.case
+    return AnomalyCaseRead(
+        case_id=c.case_id, match_id=c.match_id, home_team=c.home_team, away_team=c.away_team, player_id=c.player_id,
+        player_name=c.player_name, team_id=c.team_id, market_type=c.market_type, selection=c.selection,
+        threshold=c.threshold, line_value=c.line_value, primary_alert=_alert_read(c.primary_alert),
+        supporting_alert_types=c.supporting_alert_types, alerts=[_alert_read(a) for a in c.alerts], bookmakers=c.bookmakers,
+        first_detected=c.first_detected, latest_detected=c.latest_detected, priority_score=r.priority.total_score,
+        tier=r.priority.tier,
+        components=[PriorityComponentRead(name=comp.name, raw_value=comp.raw_value, normalized=comp.normalized, weight=comp.weight, contribution=comp.contribution, explanation=comp.explanation) for comp in r.priority.components],
+        persistence_label=r.priority.persistence_label, n_snapshots=r.priority.n_snapshots, model_support=r.priority.model_support,
+        lifecycle=r.lifecycle, manual_status=r.manual_status,
+    )
+
+
+@router.get("/cases", response_model=TraderInboxRead)
+def get_cases(
+    tier: str | None = Query(default=None),
+    alert_type: str | None = Query(default=None),
+    match_id: int | None = Query(default=None),
+    bookmaker_name: str | None = Query(default=None),
+    limit: int = Query(default=20, ge=1, le=500),
+    db: Session = Depends(get_db),
+) -> TraderInboxRead:
+    """item 9's default data source — ranked, deduplicated cases, NOT raw
+    alerts (see /anomalies for the raw feed). Defaults to the top 20 by
+    priority score; filters narrow the same ranked list, never a separate
+    query path."""
+    from collections import Counter
+    from datetime import datetime, timezone
+
+    match_ids = active_match_ids(db)
+    ranked = build_trader_inbox(db, match_ids, track_persistence=True, full_scan=True)
+    total_raw = sum(len(r.case.alerts) for r in ranked)
+
+    filtered = ranked
+    if tier:
+        filtered = [r for r in filtered if r.priority.tier == tier]
+    if alert_type:
+        filtered = [r for r in filtered if r.case.primary_alert.alert_type == alert_type or alert_type in r.case.supporting_alert_types]
+    if match_id is not None:
+        filtered = [r for r in filtered if r.case.match_id == match_id]
+    if bookmaker_name:
+        filtered = [r for r in filtered if bookmaker_name in r.case.bookmakers]
+
+    tier_counts = Counter(r.priority.tier for r in ranked)
+    return TraderInboxRead(
+        generated_at=datetime.now(timezone.utc), n_matches_scanned=len(match_ids), total_raw_alerts=total_raw,
+        total_cases=len(ranked), tier_counts=[TierCount(tier=t, count=c) for t, c in sorted(tier_counts.items(), key=lambda kv: -kv[1])],
+        cases=[_case_read(r) for r in filtered[:limit]],
+    )
+
+
+@router.patch("/cases/{case_id}/status")
+def patch_case_status(case_id: str, body: SetCaseStatusRequest, db: Session = Depends(get_db)) -> dict:
+    """Read-only/system statuses (new/persisting/resolved_naturally) are
+    never set here — only the manual field (item 10's explicit allowance:
+    "do not require authentication/workflow permissions yet")."""
+    record = set_manual_status(db, case_id, body.status)
+    if record is None:
+        raise HTTPException(status_code=404, detail="no tracked case with this case_id yet — call GET /cases first so it's been observed at least once")
+    db.commit()
+    return {"case_id": case_id, "manual_status": record.manual_status}

@@ -107,6 +107,17 @@ class Alert:
 
     generated_at: datetime
 
+    # The single number the detector used to decide this alert's severity
+    # (see detector.py's _severity() call sites) - carried through
+    # unchanged so the Alert Precision + Trader Prioritisation stage's
+    # priority score (app/market_monitor/priority.py) can use the EXACT
+    # same evidence the raw detection already computed, rather than
+    # re-deriving or parsing it back out of `detail`/`reason_code` text.
+    # Units vary by alert_type (probability points for divergence/dispersion/
+    # movement, a ratio for adjacent-threshold jumps, etc.) - always
+    # documented at the call site that sets it.
+    magnitude: float | None = None
+
 
 def alert_as_dict(a: Alert) -> dict:
     return {
@@ -137,4 +148,5 @@ def alert_as_dict(a: Alert) -> dict:
         "context_state": a.context_state,
         "model_risk_flags": [{"code": f.code, "description": f.description} for f in a.model_risk_flags],
         "generated_at": a.generated_at,
+        "magnitude": a.magnitude,
     }

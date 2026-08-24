@@ -3053,3 +3053,76 @@ export function fetchMatchAnomalies(matchId: number): Promise<MatchAnomaliesResp
 export function fetchAnomalySummary(): Promise<AnomalySummary> {
   return request("/api/v1/market-monitor/summary");
 }
+
+// --- Alert Precision + Trader Prioritisation (cases) ------------------------
+
+export interface PriorityComponent {
+  name: string;
+  raw_value: number | null;
+  normalized: number;
+  weight: number;
+  contribution: number;
+  explanation: string;
+}
+
+export interface AnomalyCase {
+  case_id: string;
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  player_id: number | null;
+  player_name: string | null;
+  team_id: number | null;
+  market_type: string;
+  selection: string | null;
+  threshold: number | null;
+  line_value: number | null;
+  primary_alert: AnomalyAlert;
+  supporting_alert_types: string[];
+  alerts: AnomalyAlert[];
+  bookmakers: string[];
+  first_detected: string;
+  latest_detected: string;
+  priority_score: number;
+  tier: string;
+  components: PriorityComponent[];
+  persistence_label: string;
+  n_snapshots: number;
+  model_support: boolean | null;
+  lifecycle: string;
+  manual_status: string | null;
+}
+
+export interface TierCount {
+  tier: string;
+  count: number;
+}
+
+export interface TraderInbox {
+  generated_at: string;
+  n_matches_scanned: number;
+  total_raw_alerts: number;
+  total_cases: number;
+  tier_counts: TierCount[];
+  cases: AnomalyCase[];
+}
+
+export function fetchCases(
+  params: { tier?: string; alertType?: string; matchId?: number; bookmakerName?: string; limit?: number } = {}
+): Promise<TraderInbox> {
+  const qs = new URLSearchParams();
+  if (params.tier) qs.set("tier", params.tier);
+  if (params.alertType) qs.set("alert_type", params.alertType);
+  if (params.matchId !== undefined) qs.set("match_id", String(params.matchId));
+  if (params.bookmakerName) qs.set("bookmaker_name", params.bookmakerName);
+  if (params.limit !== undefined) qs.set("limit", String(params.limit));
+  const q = qs.toString();
+  return request(`/api/v1/market-monitor/cases${q ? `?${q}` : ""}`);
+}
+
+export function setCaseStatus(caseId: string, status: string | null): Promise<{ case_id: string; manual_status: string | null }> {
+  return request(`/api/v1/market-monitor/cases/${encodeURIComponent(caseId)}/status`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+  });
+}

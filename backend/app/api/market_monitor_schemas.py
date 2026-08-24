@@ -78,3 +78,65 @@ class AnomalyListRead(BaseModel):
     n_matches_scanned: int
     total: int
     alerts: list[AnomalyAlertRead]
+
+
+# --- Alert Precision + Trader Prioritisation (cases, item 9's data source) -
+
+
+class PriorityComponentRead(BaseModel):
+    name: str
+    raw_value: float | None
+    normalized: float
+    weight: float
+    contribution: float
+    explanation: str
+
+
+class AnomalyCaseRead(BaseModel):
+    case_id: str
+    match_id: int
+    home_team: str
+    away_team: str
+    player_id: int | None
+    player_name: str | None
+    team_id: int | None
+    market_type: str
+    selection: str | None
+    threshold: float | None
+    line_value: float | None
+
+    primary_alert: AnomalyAlertRead
+    supporting_alert_types: list[str]
+    alerts: list[AnomalyAlertRead]
+    bookmakers: list[str]
+
+    first_detected: UtcDatetime
+    latest_detected: UtcDatetime
+
+    priority_score: float
+    tier: str
+    components: list[PriorityComponentRead]
+    persistence_label: str
+    n_snapshots: int
+    model_support: bool | None
+
+    lifecycle: str
+    manual_status: str | None
+
+
+class TierCount(BaseModel):
+    tier: str
+    count: int
+
+
+class TraderInboxRead(BaseModel):
+    generated_at: UtcDatetime
+    n_matches_scanned: int
+    total_raw_alerts: int
+    total_cases: int
+    tier_counts: list[TierCount]
+    cases: list[AnomalyCaseRead]
+
+
+class SetCaseStatusRequest(BaseModel):
+    status: str | None
