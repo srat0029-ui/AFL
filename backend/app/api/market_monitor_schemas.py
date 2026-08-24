@@ -140,3 +140,38 @@ class TraderInboxRead(BaseModel):
 
 class SetCaseStatusRequest(BaseModel):
     status: str | None
+
+
+# --- Prospective Alert Validation + Root-Cause Intelligence (items 7-8) ----
+
+
+class EffectivenessSummaryRead(BaseModel):
+    n_frozen_cases: int
+    n_unique_markets: int
+    n_resolved: int
+    sample_label: str
+
+    pct_outlier_converged: float | None
+    n_outlier_eligible: int
+    pct_consensus_moved_toward_model: float | None
+    pct_consensus_moved_away_from_model: float | None
+    pct_stale_context_repriced: float | None
+    n_stale_context_eligible: int
+    median_time_to_resolution_hours: float | None
+    pct_persisted_to_kickoff: float | None
+
+
+class AlertTypeEffectivenessRead(BaseModel):
+    alert_type_family: str
+    n_resolved: int
+    sample_label: str
+    pct_market_moved_toward_model: float | None
+    pct_market_moved_away_from_model: float | None
+    pct_persisted_to_kickoff: float | None
+    pct_inconclusive: float | None
+
+
+class EffectivenessDashboardRead(BaseModel):
+    generated_at: UtcDatetime
+    summary: EffectivenessSummaryRead
+    by_alert_type: list[AlertTypeEffectivenessRead]

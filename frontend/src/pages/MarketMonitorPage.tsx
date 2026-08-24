@@ -2,14 +2,16 @@ import { useEffect, useMemo, useState } from "react";
 import {
   fetchAnomalies,
   fetchCases,
+  fetchEffectiveness,
   setCaseStatus,
   type AnomalyAlert,
   type AnomalyCase,
+  type EffectivenessDashboard,
   type TraderInbox,
 } from "../api/client";
 import "./MarketMonitorPage.css";
 
-type TabKey = "priority" | "context" | "outliers" | "divergence" | "curve" | "all";
+type TabKey = "priority" | "context" | "outliers" | "divergence" | "curve" | "all" | "effectiveness";
 
 const TABS: { key: TabKey; label: string; alertType?: string }[] = [
   { key: "priority", label: "Priority Review" },
@@ -18,7 +20,115 @@ const TABS: { key: TabKey; label: string; alertType?: string }[] = [
   { key: "divergence", label: "Model vs Consensus", alertType: "MODEL_VS_MARKET_DIVERGENCE" },
   { key: "curve", label: "Pricing Curve QA" },
   { key: "all", label: "All Detections" },
+  { key: "effectiveness", label: "Effectiveness" },
 ];
+
+function fmtPct1(v: number | null): string {
+  return v === null ? "—" : `${v.toFixed(1)}%`;
+}
+
+const ALERT_TYPE_FAMILY_LABELS: Record<string, string> = {
+  model_vs_market_divergence: "Model vs market divergence",
+  bookmaker_outlier: "Bookmaker outlier",
+  stale_after_context: "Stale after context",
+  curve_anomaly: "Curve anomaly",
+  dispersion: "Dispersion",
+  movement_anomaly: "Movement anomaly",
+};
+
+function EffectivenessPanel({ data }: { data: EffectivenessDashboard }) {
+  const s = data.summary;
+  return (
+    <>
+      <p className="hint">
+        Prospective validation, not backtesting: every metric below is computed only from cases that were frozen{" "}
+        <em>before</em> kickoff and settled afterward. Nothing here retunes a threshold, weight, or model
+        probability — it measures whether high-priority alerts actually told a trader something useful.
+      </p>
+
+      <section className="market-monitor-section">
+        <h2>
+          Summary {s.sample_label && <span className="market-monitor__severity market-monitor__severity--warning">{s.sample_label}</span>}
+        </h2>
+        <div className="market-monitor__summary-grid">
+          <div>
+            <div className="market-monitor__summary-row">
+              <span>Frozen high-priority cases</span>
+              <span>{s.n_frozen_cases}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Unique markets</span>
+              <span>{s.n_unique_markets}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Resolved (settled)</span>
+              <span>{s.n_resolved}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Median time to resolution</span>
+              <span>{s.median_time_to_resolution_hours === null ? "—" : `${s.median_time_to_resolution_hours.toFixed(1)}h`}</span>
+            </div>
+          </div>
+          <div>
+            <div className="market-monitor__summary-row">
+              <span>Consensus moved toward model</span>
+              <span>{fmtPct1(s.pct_consensus_moved_toward_model)}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Consensus moved away from model</span>
+              <span>{fmtPct1(s.pct_consensus_moved_away_from_model)}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Persisted to kickoff</span>
+              <span>{fmtPct1(s.pct_persisted_to_kickoff)}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Outlier bookmaker converged ({s.n_outlier_eligible} eligible)</span>
+              <span>{fmtPct1(s.pct_outlier_converged)}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Stale-after-context repriced ({s.n_stale_context_eligible} eligible)</span>
+              <span>{fmtPct1(s.pct_stale_context_repriced)}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="market-monitor-section">
+        <h2>By alert type</h2>
+        <div className="market-monitor__table-wrap">
+          <table className="market-monitor__table">
+            <thead>
+              <tr>
+                <th>Alert type</th>
+                <th>n</th>
+                <th>Toward model</th>
+                <th>Away from model</th>
+                <th>Persisted</th>
+                <th>Inconclusive</th>
+              </tr>
+            </thead>
+            <tbody>
+              {data.by_alert_type.map((a) => (
+                <tr key={a.alert_type_family}>
+                  <td>
+                    {ALERT_TYPE_FAMILY_LABELS[a.alert_type_family] ?? a.alert_type_family}{" "}
+                    {a.sample_label && <span className="market-monitor__severity market-monitor__severity--warning">{a.sample_label}</span>}
+                  </td>
+                  <td>{a.n_resolved}</td>
+                  <td>{fmtPct1(a.pct_market_moved_toward_model)}</td>
+                  <td>{fmtPct1(a.pct_market_moved_away_from_model)}</td>
+                  <td>{fmtPct1(a.pct_persisted_to_kickoff)}</td>
+                  <td>{fmtPct1(a.pct_inconclusive)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}
 
 function fmtPct(v: number | null): string {
   return v === null ? "—" : `${(v * 100).toFixed(1)}%`;
@@ -169,6 +279,7 @@ function MarketMonitorPage() {
   const [tab, setTab] = useState<TabKey>("priority");
   const [inbox, setInbox] = useState<TraderInbox | null>(null);
   const [allAlerts, setAllAlerts] = useState<AnomalyAlert[]>([]);
+  const [effectiveness, setEffectiveness] = useState<EffectivenessDashboard | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [expandedKey, setExpandedKey] = useState<string | null>(null);
@@ -177,6 +288,13 @@ function MarketMonitorPage() {
     setLoading(true);
     setExpandedKey(null);
     setError(null);
+    if (tab === "effectiveness") {
+      fetchEffectiveness()
+        .then(setEffectiveness)
+        .catch((err) => setError(err instanceof Error ? err.message : "Failed to load effectiveness metrics"))
+        .finally(() => setLoading(false));
+      return;
+    }
     if (tab === "all") {
       fetchAnomalies({ limit: 2000 })
         .then((r) => setAllAlerts(r.alerts))
@@ -206,7 +324,7 @@ function MarketMonitorPage() {
     });
   };
 
-  const isCaseTab = tab !== "all";
+  const isCaseTab = tab !== "all" && tab !== "effectiveness";
   const cases = useMemo(() => (tab === "context" || tab === "curve" ? inbox?.cases.slice(0, tab === "context" ? 100 : 100) : inbox?.cases) ?? [], [inbox, tab]);
 
   return (
@@ -298,6 +416,8 @@ function MarketMonitorPage() {
           )}
         </>
       )}
+
+      {tab === "effectiveness" && !loading && effectiveness && <EffectivenessPanel data={effectiveness} />}
     </main>
   );
 }

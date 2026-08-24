@@ -3126,3 +3126,40 @@ export function setCaseStatus(caseId: string, status: string | null): Promise<{ 
     body: JSON.stringify({ status }),
   });
 }
+
+// --- Prospective Alert Validation + Root-Cause Intelligence (effectiveness) -
+
+export interface EffectivenessSummary {
+  n_frozen_cases: number;
+  n_unique_markets: number;
+  n_resolved: number;
+  sample_label: string;
+  pct_outlier_converged: number | null;
+  n_outlier_eligible: number;
+  pct_consensus_moved_toward_model: number | null;
+  pct_consensus_moved_away_from_model: number | null;
+  pct_stale_context_repriced: number | null;
+  n_stale_context_eligible: number;
+  median_time_to_resolution_hours: number | null;
+  pct_persisted_to_kickoff: number | null;
+}
+
+export interface AlertTypeEffectiveness {
+  alert_type_family: string;
+  n_resolved: number;
+  sample_label: string;
+  pct_market_moved_toward_model: number | null;
+  pct_market_moved_away_from_model: number | null;
+  pct_persisted_to_kickoff: number | null;
+  pct_inconclusive: number | null;
+}
+
+export interface EffectivenessDashboard {
+  generated_at: string;
+  summary: EffectivenessSummary;
+  by_alert_type: AlertTypeEffectiveness[];
+}
+
+export function fetchEffectiveness(): Promise<EffectivenessDashboard> {
+  return request("/api/v1/market-monitor/effectiveness");
+}

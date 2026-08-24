@@ -7,12 +7,15 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.api.market_monitor_schemas import (
+    AlertTypeEffectivenessRead,
     AnomalyAlertRead,
     AnomalyCaseRead,
     AnomalyListRead,
     AnomalySummaryRead,
     AnomalyTypeCount,
     BookmakerPriceRead,
+    EffectivenessDashboardRead,
+    EffectivenessSummaryRead,
     MatchAnomaliesRead,
     ModelRiskFlagRead,
     PriorityComponentRead,
@@ -23,6 +26,7 @@ from app.api.market_monitor_schemas import (
 )
 from app.market_monitor.case_persistence import set_manual_status
 from app.market_monitor.detector import active_match_ids, detect_match_anomalies
+from app.market_monitor.effectiveness import compute_alert_type_effectiveness, compute_effectiveness_summary
 from app.market_monitor.inbox import RankedCase, build_trader_inbox
 from app.market_monitor.types import Alert
 from app.models import Match
@@ -167,3 +171,22 @@ def patch_case_status(case_id: str, body: SetCaseStatusRequest, db: Session = De
         raise HTTPException(status_code=404, detail="no tracked case with this case_id yet — call GET /cases first so it's been observed at least once")
     db.commit()
     return {"case_id": case_id, "manual_status": record.manual_status}
+
+
+@router.get("/effectiveness", response_model=EffectivenessDashboardRead)
+def get_effectiveness(db: Session = Depends(get_db)) -> EffectivenessDashboardRead:
+    """Prospective Alert Validation dashboard (items 7-8): read-only,
+    purely descriptive aggregation over already-settled AnomalyCaseSnapshot
+    rows — never a live re-detection, never touches a threshold/weight/
+    probability. Always reports sample size alongside every rate; a
+    denominator below effectiveness.EARLY_EVIDENCE_MIN_N carries
+    sample_label="Early evidence" instead of being presented as stable."""
+    from datetime import datetime, timezone
+
+    summary = compute_effectiveness_summary(db)
+    by_type = compute_alert_type_effectiveness(db)
+    return EffectivenessDashboardRead(
+        generated_at=datetime.now(timezone.utc),
+        summary=EffectivenessSummaryRead(**summary.__dict__),
+        by_alert_type=[AlertTypeEffectivenessRead(**a.__dict__) for a in by_type],
+    )

@@ -27,6 +27,20 @@ def bookmaker_price_entries(books: list[BookLine]) -> list[BookmakerPriceEntry]:
     return [BookmakerPriceEntry(bookmaker_name=b.bookmaker_name, price_decimal=b.price_decimal, recorded_at=b.recorded_at, eligibility=b.eligibility) for b in books]
 
 
+def dedupe_bookmaker_prices(entries) -> list:
+    """Multiple alerts on the SAME case each carry their own copy of that
+    market's bookmaker list (see detector.py's _divergence_and_outlier_and_dispersion_alerts,
+    which attaches the same `books` to every alert type it produces) - a
+    case's merged evidence must show each bookmaker once, not once per
+    contributing alert. Keeps the latest-recorded entry per bookmaker."""
+    latest: dict[str, object] = {}
+    for e in entries:
+        cur = latest.get(e.bookmaker_name)
+        if cur is None or e.recorded_at > cur.recorded_at:
+            latest[e.bookmaker_name] = e
+    return sorted(latest.values(), key=lambda e: e.bookmaker_name)
+
+
 def model_risk_flag_entries(flags) -> list[ModelRiskFlagEntry]:
     return [ModelRiskFlagEntry(code=f.code, description=f.description) for f in flags]
 
