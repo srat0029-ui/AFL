@@ -10,6 +10,7 @@ single best guess for a compact summary view.
 from dataclasses import dataclass
 
 from app.market_monitor.case_builder import AnomalyCase
+from app.market_monitor.detector import DIVERGENCE_CRITICAL_PP
 from app.market_monitor.types import (
     ADJACENT_THRESHOLD_JUMP,
     BOOKMAKER_VS_CONSENSUS_OUTLIER,
@@ -38,6 +39,27 @@ _LABELS = {
 }
 
 DISPERSION_TIGHT_PP = 0.08  # below this, the eligible market is "tightly clustered" (see priority.py's own CLUSTER_TOLERANCE_PP for the same idea at the per-book level)
+
+# Genuine Prospective Operation stage, item 8: the "Matthew Kennedy" research
+# pattern - a single-book outlier is present, but the model-vs-market gap
+# survives even after excluding that outlier's price. Kept as its own tag
+# (rather than folded into SINGLE_BOOK_OUTLIER) so it can be tracked
+# separately across future live cases: does the residual gap persist or
+# converge once the outlier itself resolves.
+RESEARCH_CATEGORY_OUTLIER_WITH_RESIDUAL_DIVERGENCE = "single_book_outlier_residual_disagreement"
+
+
+def compute_research_category(model_probability: float | None, outlier) -> str | None:
+    """outlier: app.player_modelling.consensus_and_outliers.OutlierCheck | None.
+    Reuses outlier.median_eligible_price (the consensus of the OTHER books,
+    already computed by the same outlier check the detector itself uses) and
+    the detector's own DIVERGENCE_CRITICAL_PP - no new threshold invented."""
+    if outlier is None or not outlier.is_outlier or model_probability is None:
+        return None
+    residual_market_probability = 1.0 / outlier.median_eligible_price
+    if abs(residual_market_probability - model_probability) >= DIVERGENCE_CRITICAL_PP:
+        return RESEARCH_CATEGORY_OUTLIER_WITH_RESIDUAL_DIVERGENCE
+    return None
 
 
 @dataclass(frozen=True)

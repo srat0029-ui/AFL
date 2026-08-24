@@ -4,6 +4,7 @@ autogenerate and for create_all() in tests.
 
 from app.models.anomaly_alert_snapshot import AnomalyAlertSnapshot
 from app.models.anomaly_case_record import AnomalyCaseRecord
+from app.models.anomaly_case_followup import AnomalyCaseFollowUp
 from app.models.anomaly_case_snapshot import AnomalyCaseSnapshot
 from app.models.bookmaker import Bookmaker
 from app.models.elo_rating import EloRating
@@ -135,4 +136,5 @@ __all__ = [
     "AnomalyAlertSnapshot",
     "AnomalyCaseRecord",
     "AnomalyCaseSnapshot",
+    "AnomalyCaseFollowUp",
 ]

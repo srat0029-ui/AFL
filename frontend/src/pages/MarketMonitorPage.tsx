@@ -7,6 +7,7 @@ import {
   type AnomalyAlert,
   type AnomalyCase,
   type EffectivenessDashboard,
+  type EffectivenessView,
   type TraderInbox,
 } from "../api/client";
 import "./MarketMonitorPage.css";
@@ -36,20 +37,17 @@ const ALERT_TYPE_FAMILY_LABELS: Record<string, string> = {
   movement_anomaly: "Movement anomaly",
 };
 
-function EffectivenessPanel({ data }: { data: EffectivenessDashboard }) {
-  const s = data.summary;
+function EffectivenessViewSection({ title, view, note }: { title: string; view: EffectivenessView; note: string }) {
+  const s = view.summary;
   return (
     <>
-      <p className="hint">
-        Prospective validation, not backtesting: every metric below is computed only from cases that were frozen{" "}
-        <em>before</em> kickoff and settled afterward. Nothing here retunes a threshold, weight, or model
-        probability — it measures whether high-priority alerts actually told a trader something useful.
-      </p>
+      <h2 className="market-monitor__view-heading">
+        {title} {s.sample_label && <span className="market-monitor__severity market-monitor__severity--warning">{s.sample_label}</span>}
+      </h2>
+      <p className="hint">{note}</p>
 
       <section className="market-monitor-section">
-        <h2>
-          Summary {s.sample_label && <span className="market-monitor__severity market-monitor__severity--warning">{s.sample_label}</span>}
-        </h2>
+        <h3>Summary</h3>
         <div className="market-monitor__summary-grid">
           <div>
             <div className="market-monitor__summary-row">
@@ -95,7 +93,7 @@ function EffectivenessPanel({ data }: { data: EffectivenessDashboard }) {
       </section>
 
       <section className="market-monitor-section">
-        <h2>By alert type</h2>
+        <h3>By alert type</h3>
         <div className="market-monitor__table-wrap">
           <table className="market-monitor__table">
             <thead>
@@ -109,7 +107,7 @@ function EffectivenessPanel({ data }: { data: EffectivenessDashboard }) {
               </tr>
             </thead>
             <tbody>
-              {data.by_alert_type.map((a) => (
+              {view.by_alert_type.map((a) => (
                 <tr key={a.alert_type_family}>
                   <td>
                     {ALERT_TYPE_FAMILY_LABELS[a.alert_type_family] ?? a.alert_type_family}{" "}
@@ -126,6 +124,98 @@ function EffectivenessPanel({ data }: { data: EffectivenessDashboard }) {
           </table>
         </div>
       </section>
+    </>
+  );
+}
+
+function EffectivenessPanel({ data }: { data: EffectivenessDashboard }) {
+  const cov = data.coverage;
+  const rc = data.research_category;
+  return (
+    <>
+      <p className="hint">
+        Prospective validation, not backtesting: every metric below is computed only from cases that were frozen{" "}
+        <em>before</em> kickoff and settled afterward. Nothing here retunes a threshold, weight, or model
+        probability — it measures whether high-priority alerts actually told a trader something useful.
+      </p>
+
+      <section className="market-monitor-section">
+        <h2>Prospective Coverage</h2>
+        <div className="market-monitor__summary-grid">
+          <div>
+            <div className="market-monitor__summary-row">
+              <span>Upcoming matches monitored</span>
+              <span>{cov.n_upcoming_matches_monitored}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>High/Critical cases currently frozen</span>
+              <span>{cov.n_frozen_cases}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Cases with 2+ follow-up snapshots</span>
+              <span>{cov.n_cases_with_2plus_followups}</span>
+            </div>
+          </div>
+          <div>
+            <div className="market-monitor__summary-row">
+              <span>Cases with 3+ follow-up snapshots</span>
+              <span>{cov.n_cases_with_3plus_followups}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Earliest hours-before-kickoff captured</span>
+              <span>{cov.earliest_hours_before_kickoff_captured === null ? "—" : `${cov.earliest_hours_before_kickoff_captured.toFixed(1)}h`}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Latest pre-kickoff capture</span>
+              <span>{cov.latest_pre_kickoff_capture_hours === null ? "—" : `${cov.latest_pre_kickoff_capture_hours.toFixed(1)}h`}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <EffectivenessViewSection
+        title="Genuine Prospective"
+        view={data.prospective}
+        note="Cases frozen automatically by the live cycle while their match was still SCHEDULED — the only dataset that should ever inform judgements about real alert quality."
+      />
+
+      <section className="market-monitor-section">
+        <h2>Research category: single-book outlier with residual disagreement</h2>
+        <p className="hint">
+          The "Matthew Kennedy pattern" — a single bookmaker is an outlier, but the model-vs-market gap survives even
+          after excluding that outlier's price. Tracked separately to see whether this residual disagreement tends to
+          persist or converge across future genuinely-prospective cases.{" "}
+          {rc.sample_label && <span className="market-monitor__severity market-monitor__severity--warning">{rc.sample_label}</span>}
+        </p>
+        <div className="market-monitor__summary-grid">
+          <div>
+            <div className="market-monitor__summary-row">
+              <span>Tagged cases</span>
+              <span>{rc.n_tagged}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Resolved</span>
+              <span>{rc.n_resolved}</span>
+            </div>
+          </div>
+          <div>
+            <div className="market-monitor__summary-row">
+              <span>Converged</span>
+              <span>{fmtPct1(rc.pct_converged)}</span>
+            </div>
+            <div className="market-monitor__summary-row">
+              <span>Persisted</span>
+              <span>{fmtPct1(rc.pct_persisted)}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <EffectivenessViewSection
+        title="Retrospective Validation"
+        view={data.retrospective}
+        note="Cases backfilled by a one-off historical script against already-completed matches — useful for exercising the pipeline, but explicitly excluded from judgements about real alert quality (item 5)."
+      />
     </>
   );
 }

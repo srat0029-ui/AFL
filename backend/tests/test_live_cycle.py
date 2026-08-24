@@ -441,3 +441,150 @@ def test_run_live_cycle_freezes_a_pricing_snapshot_for_the_upcoming_round(db_ses
     assert "snapshot_pricing" in step_names
     snapshots = db_session.scalars(select(PricingSnapshot)).all()
     assert any(s.match_id == match.id and s.market_type == "h2h" for s in snapshots)
+
+
+# --- Per-alert prospective snapshots wired into the live cycle --------------
+# (operational-consistency fix: freeze_anomaly_alerts/evaluate_anomaly_snapshots
+# reuse existing functions unchanged — only the wiring into run_live_cycle is new.)
+
+
+def _seed_minimal_disposal_projection(db, match, home):
+    """active_match_ids() (reused unchanged by the new alert-snapshot step,
+    same as the case-level step) only considers matches with at least one
+    persisted projection - a bare SCHEDULED match with no projection at all
+    is invisible to it, matching real operational behaviour."""
+    from app.models import PlayerDisposalProjection, PlayerModelRun
+
+    player = Player(sport_id=match.sport_id, display_name="Test Player", source="afltables", source_player_id="alert-snap-p1", current_team_id=home.id)
+    db.add(player)
+    db.flush()
+    db.add(PlayerModelRun(
+        model_name="disposals_test", market="player_disposals", feature_names=[], config_json={},
+        distribution_method="nb", tune_start_year=2016, tune_end_year=2018, evaluation_start_year=2019,
+        evaluation_end_year=2025, is_promoted=True, run_at=NOW,
+    ))
+    db.add(PlayerDisposalProjection(
+        match_id=match.id, player_id=player.id, team_id=home.id, model_name="disposals_test", model_version="v1",
+        generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=40,
+        predicted_mean=25.0, distribution_method="nb", nb_alpha=1.5, confidence_tier="higher_confidence",
+        warnings=[], input_features={},
+    ))
+    db.commit()
+
+
+def _canned_alert(match, home, away) -> "Alert":
+    from app.market_monitor.types import MODEL_VS_MARKET_DIVERGENCE, Alert
+
+    return Alert(
+        alert_type=MODEL_VS_MARKET_DIVERGENCE, severity="warning", reason_code="divergence_10.0pp",
+        detail="test alert", match_id=match.id, home_team=home.name, away_team=away.name, player_id=None,
+        player_name=None, team_id=None, market_type="h2h", selection=home.name, threshold=None, line_value=None,
+        model_probability=0.60, model_fair_odds=1.67, market_consensus_probability=0.50, bookmaker_prices=[],
+        freshness="fresh", model_version="v1", lineup_status=None, context_state=None, model_risk_flags=[],
+        generated_at=NOW,
+    )
+
+
+def test_market_monitor_alert_snapshots_step_is_wired_into_the_live_cycle(db_session, monkeypatch):
+    match = _seed_scheduled_match(db_session)
+    home, away = match.home_team, match.away_team
+    _seed_minimal_disposal_projection(db_session, match, home)
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+    monkeypatch.setattr("app.market_monitor.detector.detect_match_anomalies", lambda db, match_id: [_canned_alert(match, home, away)] if match_id == match.id else [])
+
+    run = run_live_cycle(db_session)
+
+    step = next(s for s in run.steps if s["step"] == "market_monitor_alert_snapshots")
+    assert step["status"] == STEP_SUCCESS
+
+
+def test_alert_snapshot_frozen_pre_kickoff_and_rerun_is_idempotent(db_session, monkeypatch):
+    from sqlalchemy import select
+
+    from app.models import AnomalyAlertSnapshot
+
+    match = _seed_scheduled_match(db_session)
+    home, away = match.home_team, match.away_team
+    _seed_minimal_disposal_projection(db_session, match, home)
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+    monkeypatch.setattr("app.market_monitor.detector.detect_match_anomalies", lambda db, match_id: [_canned_alert(match, home, away)] if match_id == match.id else [])
+
+    run_live_cycle(db_session)
+    snaps = db_session.scalars(select(AnomalyAlertSnapshot).where(AnomalyAlertSnapshot.match_id == match.id)).all()
+    assert len(snaps) == 1
+    assert snaps[0].frozen_at is not None
+    assert snaps[0].evaluated_at is None  # match still SCHEDULED - not settled yet
+    frozen_id = snaps[0].id
+
+    # No new detection, no new fixtures - the same alert is re-detected
+    # every cycle; freezing it again must be a no-op, never a duplicate.
+    run_live_cycle(db_session)
+    snaps = db_session.scalars(select(AnomalyAlertSnapshot).where(AnomalyAlertSnapshot.match_id == match.id)).all()
+    assert len(snaps) == 1
+    assert snaps[0].id == frozen_id
+
+
+def test_alert_snapshot_evaluated_only_after_match_completes(db_session, monkeypatch):
+    from sqlalchemy import select
+
+    from app.models import AnomalyAlertSnapshot
+
+    match = _seed_scheduled_match(db_session)
+    home, away = match.home_team, match.away_team
+    _seed_minimal_disposal_projection(db_session, match, home)
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+    monkeypatch.setattr("app.market_monitor.detector.detect_match_anomalies", lambda db, match_id: [_canned_alert(match, home, away)] if match_id == match.id else [])
+
+    run_live_cycle(db_session)
+    snap = db_session.scalar(select(AnomalyAlertSnapshot).where(AnomalyAlertSnapshot.match_id == match.id))
+    assert snap.evaluated_at is None
+
+    match.status = MatchStatus.COMPLETED
+    # A second genuinely-upcoming match keeps identify_upcoming_round happy.
+    other = Match(
+        sport_id=match.sport_id, season_id=match.season_id, round_id=match.round_id,
+        home_team_id=match.home_team_id, away_team_id=match.away_team_id,
+        scheduled_start=NOW + timedelta(days=10), status=MatchStatus.SCHEDULED,
+    )
+    db_session.add(other)
+    db_session.commit()
+
+    run_live_cycle(db_session)
+    db_session.refresh(snap)
+    assert snap.evaluated_at is not None
+
+
+def test_alert_snapshots_are_never_frozen_for_an_already_completed_match(db_session, monkeypatch):
+    """Defense in depth with test_market_monitor.py's own unit-level
+    test_freeze_anomaly_alerts_only_freezes_scheduled_matches (which covers
+    freeze_anomaly_alerts' internal SCHEDULED-only guard): at the live-cycle
+    level too, a COMPLETED match's alerts are never even considered, since
+    the step only ever scans active_match_ids() (SCHEDULED-with-projections).
+    This table has no retrospective path at all, unlike AnomalyCaseSnapshot's
+    capture_mode-tagged one."""
+    from sqlalchemy import select
+
+    from app.models import AnomalyAlertSnapshot
+
+    scheduled = _seed_scheduled_match(db_session)
+    completed = _add_completed_match_without_stats(
+        db_session, scheduled.sport_id, scheduled.season_id, scheduled.home_team_id, scheduled.away_team_id
+    )
+    home, away = scheduled.home_team, scheduled.away_team
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+    monkeypatch.setattr(
+        "app.market_monitor.detector.detect_match_anomalies",
+        lambda db, match_id: [_canned_alert(completed, home, away)] if match_id == completed.id else [],
+    )
+
+    run_live_cycle(db_session)
+
+    assert db_session.scalars(select(AnomalyAlertSnapshot).where(AnomalyAlertSnapshot.match_id == completed.id)).all() == []

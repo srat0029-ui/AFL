@@ -7,10 +7,10 @@ finding is really just one section of the same audit.
 
 from dataclasses import dataclass, field
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import PlayerDisposalProjection, PlayerGoalProjection
+from app.models import AnomalyCaseFollowUp, AnomalyCaseSnapshot, PlayerDisposalProjection, PlayerGoalProjection
 from app.player_modelling.market import PlayerMarket
 from app.pricing.market_intelligence import player_market_intelligence
 from app.pricing.player_pricing import price_disposals, price_goals
@@ -53,6 +53,7 @@ class CaseAuditReport:
     curve_has_jumps: bool
 
     root_cause: RootCauseFinding
+    research_category: str | None
     notes: list[str] = field(default_factory=list)
 
 
@@ -94,7 +95,25 @@ def audit_case(db: Session, case: AnomalyCase, *, n_snapshots: int = 1) -> CaseA
 
     primary_intel = player_market_intelligence(db, case.match_id, case.player_id, case.market_type, "over_under", case.threshold, case.primary_alert.model_probability or 0.0) if case.player_id else None
 
-    root_cause = diagnose(case, n_snapshots=n_snapshots)
+    # Item 7: potential_model_limitation may only escalate from repeated
+    # GENUINE PROSPECTIVE evidence, never from a single case or from a
+    # retrospective backfill. Once a case has a frozen snapshot, the
+    # effective n_snapshots is self-derived from real follow-up history
+    # (1 = the freeze itself, +1 per distinct time-to-kickoff stage
+    # actually captured by a live-cycle run) - the caller-supplied
+    # n_snapshots is only used before a snapshot exists yet.
+    snap = db.scalar(select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.case_id == case.case_id))
+    research_category = None
+    effective_n_snapshots = n_snapshots
+    if snap is not None:
+        research_category = snap.research_category
+        if snap.capture_mode == "prospective":
+            n_followups = db.scalar(select(func.count()).select_from(AnomalyCaseFollowUp).where(AnomalyCaseFollowUp.snapshot_id == snap.id)) or 0
+            effective_n_snapshots = 1 + n_followups
+        else:
+            effective_n_snapshots = 1  # retrospective evidence never escalates
+
+    root_cause = diagnose(case, n_snapshots=effective_n_snapshots)
 
     return CaseAuditReport(
         case_id=case.case_id, player_name=case.player_name, match_id=case.match_id, market_type=case.market_type, threshold=case.threshold,
@@ -105,5 +124,5 @@ def audit_case(db: Session, case: AnomalyCase, *, n_snapshots: int = 1) -> CaseA
         n_bookmakers=primary_intel.n_bookmakers if primary_intel else 0,
         freshness=case.primary_alert.freshness,
         neighbouring_thresholds=neighbours, curve_is_monotonic=curve_monotonic, curve_has_jumps=curve_jumps,
-        root_cause=root_cause, notes=notes,
+        root_cause=root_cause, research_category=research_category, notes=notes,
     )

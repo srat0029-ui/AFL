@@ -16,9 +16,12 @@ from app.api.market_monitor_schemas import (
     BookmakerPriceRead,
     EffectivenessDashboardRead,
     EffectivenessSummaryRead,
+    EffectivenessViewRead,
     MatchAnomaliesRead,
     ModelRiskFlagRead,
     PriorityComponentRead,
+    ProspectiveCoverageRead,
+    ResearchCategorySummaryRead,
     SetCaseStatusRequest,
     SeverityCount,
     TierCount,
@@ -26,8 +29,9 @@ from app.api.market_monitor_schemas import (
 )
 from app.market_monitor.case_persistence import set_manual_status
 from app.market_monitor.detector import active_match_ids, detect_match_anomalies
-from app.market_monitor.effectiveness import compute_alert_type_effectiveness, compute_effectiveness_summary
+from app.market_monitor.effectiveness import compute_alert_type_effectiveness, compute_effectiveness_summary, compute_research_category_summary
 from app.market_monitor.inbox import RankedCase, build_trader_inbox
+from app.market_monitor.prospective_coverage import compute_prospective_coverage
 from app.market_monitor.types import Alert
 from app.models import Match
 
@@ -175,18 +179,28 @@ def patch_case_status(case_id: str, body: SetCaseStatusRequest, db: Session = De
 
 @router.get("/effectiveness", response_model=EffectivenessDashboardRead)
 def get_effectiveness(db: Session = Depends(get_db)) -> EffectivenessDashboardRead:
-    """Prospective Alert Validation dashboard (items 7-8): read-only,
-    purely descriptive aggregation over already-settled AnomalyCaseSnapshot
-    rows — never a live re-detection, never touches a threshold/weight/
-    probability. Always reports sample size alongside every rate; a
-    denominator below effectiveness.EARLY_EVIDENCE_MIN_N carries
-    sample_label="Early evidence" instead of being presented as stable."""
+    """Prospective Alert Validation dashboard (items 7-8, extended by the
+    Genuine Prospective Operation stage's items 4-5): read-only, purely
+    descriptive aggregation over already-settled AnomalyCaseSnapshot rows —
+    never a live re-detection, never touches a threshold/weight/probability.
+    `prospective` and `retrospective` are always kept as separate views
+    (item 5) — never blended into one number. Always reports sample size
+    alongside every rate; a denominator below effectiveness.EARLY_EVIDENCE_MIN_N
+    carries sample_label="Early evidence" instead of being presented as stable."""
     from datetime import datetime, timezone
 
-    summary = compute_effectiveness_summary(db)
-    by_type = compute_alert_type_effectiveness(db)
+    def _view(capture_mode: str) -> EffectivenessViewRead:
+        summary = compute_effectiveness_summary(db, capture_mode=capture_mode)
+        by_type = compute_alert_type_effectiveness(db, capture_mode=capture_mode)
+        return EffectivenessViewRead(
+            summary=EffectivenessSummaryRead(**summary.__dict__),
+            by_alert_type=[AlertTypeEffectivenessRead(**a.__dict__) for a in by_type],
+        )
+
     return EffectivenessDashboardRead(
         generated_at=datetime.now(timezone.utc),
-        summary=EffectivenessSummaryRead(**summary.__dict__),
-        by_alert_type=[AlertTypeEffectivenessRead(**a.__dict__) for a in by_type],
+        coverage=ProspectiveCoverageRead(**compute_prospective_coverage(db).__dict__),
+        prospective=_view("prospective"),
+        retrospective=_view("retrospective"),
+        research_category=ResearchCategorySummaryRead(**compute_research_category_summary(db, capture_mode="prospective").__dict__),
     )

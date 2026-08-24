@@ -171,7 +171,37 @@ class AlertTypeEffectivenessRead(BaseModel):
     pct_inconclusive: float | None
 
 
-class EffectivenessDashboardRead(BaseModel):
-    generated_at: UtcDatetime
+class EffectivenessViewRead(BaseModel):
+    """One capture_mode's worth of effectiveness metrics — see item 5:
+    genuinely prospective and retrospective-backfill evidence are always
+    kept as separate views, never blended."""
+
     summary: EffectivenessSummaryRead
     by_alert_type: list[AlertTypeEffectivenessRead]
+
+
+class ResearchCategorySummaryRead(BaseModel):
+    n_tagged: int
+    n_resolved: int
+    sample_label: str
+    n_converged: int
+    n_persisted: int
+    pct_converged: float | None
+    pct_persisted: float | None
+
+
+class ProspectiveCoverageRead(BaseModel):
+    n_upcoming_matches_monitored: int
+    n_frozen_cases: int
+    n_cases_with_2plus_followups: int
+    n_cases_with_3plus_followups: int
+    earliest_hours_before_kickoff_captured: float | None
+    latest_pre_kickoff_capture_hours: float | None
+
+
+class EffectivenessDashboardRead(BaseModel):
+    generated_at: UtcDatetime
+    coverage: ProspectiveCoverageRead
+    prospective: EffectivenessViewRead
+    retrospective: EffectivenessViewRead
+    research_category: ResearchCategorySummaryRead

@@ -1,9 +1,18 @@
-"""B2B effectiveness dashboard (items 7-8): purely descriptive aggregation
-over already-settled AnomalyCaseSnapshot rows — no new detection, no
-retuning, nothing here changes a threshold/weight/probability (item 9's
-explicit boundary). Every rate is reported alongside its sample size, and
-any denominator below EARLY_EVIDENCE_MIN_N is flagged so a reader never
-mistakes a handful of settled cases for a stable statistic.
+"""B2B effectiveness dashboard (items 7-8, extended by the Genuine
+Prospective Operation stage's item 5): purely descriptive aggregation over
+already-settled AnomalyCaseSnapshot rows — no new detection, no retuning,
+nothing here changes a threshold/weight/probability. Every rate is reported
+alongside its sample size, and any denominator below EARLY_EVIDENCE_MIN_N is
+flagged so a reader never mistakes a handful of settled cases for a stable
+statistic.
+
+Item 5's boundary: every aggregation function takes a `capture_mode` filter,
+defaulting to "prospective" - a snapshot frozen while its match was
+genuinely still SCHEDULED, the only outcome run_live_cycle's automatic
+freezing can produce (see case_snapshot_service.py). Passing
+capture_mode="retrospective" reproduces the exact same computation over the
+one-off historical-backfill dataset, kept as a clearly separate,
+clearly-labelled companion view, never blended into the primary metrics.
 """
 
 import statistics
@@ -15,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.market_monitor.outcome_taxonomy import (
     MARKET_MOVED_AWAY_FROM_MODEL,
     MARKET_MOVED_TOWARD_MODEL,
+    OUTLIER_CONVERGED,
     PERSISTED_TO_KICKOFF,
     INCONCLUSIVE,
 )
@@ -82,8 +92,8 @@ def _sample_label(n: int) -> str:
     return "Early evidence" if n < EARLY_EVIDENCE_MIN_N else ""
 
 
-def compute_effectiveness_summary(db: Session) -> EffectivenessSummary:
-    all_snaps = db.scalars(select(AnomalyCaseSnapshot)).all()
+def compute_effectiveness_summary(db: Session, *, capture_mode: str = "prospective") -> EffectivenessSummary:
+    all_snaps = db.scalars(select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode)).all()
     resolved = [s for s in all_snaps if s.resolved_at is not None]
     n_resolved = len(resolved)
 
@@ -107,8 +117,10 @@ def compute_effectiveness_summary(db: Session) -> EffectivenessSummary:
     )
 
 
-def compute_alert_type_effectiveness(db: Session) -> list[AlertTypeEffectiveness]:
-    resolved = db.scalars(select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.resolved_at.is_not(None))).all()
+def compute_alert_type_effectiveness(db: Session, *, capture_mode: str = "prospective") -> list[AlertTypeEffectiveness]:
+    resolved = db.scalars(
+        select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode, AnomalyCaseSnapshot.resolved_at.is_not(None))
+    ).all()
     out = []
     for family, codes in ALERT_TYPE_FAMILIES.items():
         cases = [s for s in resolved if any(c in (s.alert_types or []) for c in codes)]
@@ -121,3 +133,35 @@ def compute_alert_type_effectiveness(db: Session) -> list[AlertTypeEffectiveness
             pct_inconclusive=_pct(sum(1 for s in cases if INCONCLUSIVE in (s.outcome_codes or [])), n),
         ))
     return out
+
+
+@dataclass(frozen=True)
+class ResearchCategorySummary:
+    """Item 8: tracks the "Matthew Kennedy" research pattern — single-book
+    outlier present, model-vs-market gap survives excluding it — across all
+    prospective cases tagged with root_cause.RESEARCH_CATEGORY_OUTLIER_WITH_RESIDUAL_DIVERGENCE
+    at freeze time, and whether that gap persisted or converged once the
+    case actually resolved."""
+
+    n_tagged: int
+    n_resolved: int
+    sample_label: str
+    n_converged: int  # resolved with OUTLIER_CONVERGED or MARKET_MOVED_TOWARD_MODEL
+    n_persisted: int  # resolved with PERSISTED_TO_KICKOFF or MARKET_MOVED_AWAY_FROM_MODEL
+    pct_converged: float | None
+    pct_persisted: float | None
+
+
+def compute_research_category_summary(db: Session, *, capture_mode: str = "prospective") -> ResearchCategorySummary:
+    tagged = db.scalars(
+        select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode, AnomalyCaseSnapshot.research_category.is_not(None))
+    ).all()
+    resolved = [s for s in tagged if s.resolved_at is not None]
+    n_resolved = len(resolved)
+    n_converged = sum(1 for s in resolved if OUTLIER_CONVERGED in (s.outcome_codes or []) or MARKET_MOVED_TOWARD_MODEL in (s.outcome_codes or []))
+    n_persisted = sum(1 for s in resolved if PERSISTED_TO_KICKOFF in (s.outcome_codes or []) or MARKET_MOVED_AWAY_FROM_MODEL in (s.outcome_codes or []))
+    return ResearchCategorySummary(
+        n_tagged=len(tagged), n_resolved=n_resolved, sample_label=_sample_label(n_resolved),
+        n_converged=n_converged, n_persisted=n_persisted,
+        pct_converged=_pct(n_converged, n_resolved), pct_persisted=_pct(n_persisted, n_resolved),
+    )

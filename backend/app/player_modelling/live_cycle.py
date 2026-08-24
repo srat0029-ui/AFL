@@ -366,6 +366,57 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     except Exception as exc:  # noqa: BLE001
         report.add("snapshot_pricing", STEP_RECOVERABLE_FAILURE, f"pricing snapshot creation failed: {exc}")
 
+    # Step 10c: freeze/refresh/settle High Priority + Critical Market
+    # Monitor cases (Genuine Prospective Operation stage, item 1) - same
+    # placement reasoning as step 10b: after this cycle's odds refresh, so
+    # freshly-detected cases see this cycle's real market context. Scans
+    # every match active_match_ids() considers live (not just this round),
+    # matching the API's own /cases breadth - never a separate poll loop
+    # (item 3), just piggybacking on however often this cycle already runs.
+    try:
+        from app.market_monitor.case_snapshot_service import freeze_or_refresh_case_snapshots, settle_case_snapshots
+        from app.market_monitor.detector import active_match_ids as monitor_active_match_ids
+        from app.market_monitor.inbox import build_trader_inbox
+
+        monitor_match_ids = monitor_active_match_ids(db)
+        ranked_cases = build_trader_inbox(db, monitor_match_ids, track_persistence=True, full_scan=True, now=now)
+        n_new_cases, n_refreshed_cases = freeze_or_refresh_case_snapshots(db, ranked_cases, now=now)
+        n_settled_cases = settle_case_snapshots(db, now=now)
+        report.add(
+            "market_monitor_prospective_snapshots", STEP_SUCCESS,
+            f"{len(monitor_match_ids)} match(es) scanned: {n_new_cases} case(s) newly frozen, {n_refreshed_cases} refreshed, {n_settled_cases} settled",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("market_monitor_prospective_snapshots", STEP_RECOVERABLE_FAILURE, f"case snapshot freeze/settle failed: {exc}")
+
+    # Step 10d: freeze/evaluate the finer-grained per-ALERT prospective
+    # snapshots (B2B Market Anomaly / Trading QA Engine, item 8) - this
+    # table predates the case-level one above and was never wired into any
+    # scheduled flow; wiring it in now is a pure operational-consistency
+    # fix, not new logic. freeze_anomaly_alerts already only ever freezes
+    # matches it finds still SCHEDULED (so every row it writes is
+    # inherently genuinely prospective - no capture_mode needed, unlike the
+    # case-level table which also has a retrospective backfill path), is
+    # idempotent by identity (re-detecting the same alert is a no-op, never
+    # a duplicate or rewrite), and evaluate_anomaly_snapshots only ever
+    # settles a snapshot once its match has COMPLETED. Independent try
+    # block (not reusing step 10c's match list) so a failure in either
+    # prospective-snapshot step never masks the other, per this module's
+    # own failure-isolation design.
+    try:
+        from app.market_monitor.detector import active_match_ids as alert_active_match_ids
+        from app.market_monitor.snapshot_service import evaluate_anomaly_snapshots, freeze_anomaly_alerts
+
+        alert_match_ids = alert_active_match_ids(db)
+        n_alerts_frozen = freeze_anomaly_alerts(db, alert_match_ids)
+        n_alerts_evaluated = evaluate_anomaly_snapshots(db)
+        report.add(
+            "market_monitor_alert_snapshots", STEP_SUCCESS,
+            f"{len(alert_match_ids)} match(es) scanned: {n_alerts_frozen} alert(s) newly frozen, {n_alerts_evaluated} evaluated",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("market_monitor_alert_snapshots", STEP_RECOVERABLE_FAILURE, f"alert snapshot freeze/evaluate failed: {exc}")
+
     # Step 11: venue-local weather forecast refresh (free, keyless Open-Meteo
     # — reuses refresh_weather_for_matches exactly as `refresh-weather` does).
     try:

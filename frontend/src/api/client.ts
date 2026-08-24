@@ -3154,10 +3154,36 @@ export interface AlertTypeEffectiveness {
   pct_inconclusive: number | null;
 }
 
-export interface EffectivenessDashboard {
-  generated_at: string;
+export interface EffectivenessView {
   summary: EffectivenessSummary;
   by_alert_type: AlertTypeEffectiveness[];
+}
+
+export interface ProspectiveCoverage {
+  n_upcoming_matches_monitored: number;
+  n_frozen_cases: number;
+  n_cases_with_2plus_followups: number;
+  n_cases_with_3plus_followups: number;
+  earliest_hours_before_kickoff_captured: number | null;
+  latest_pre_kickoff_capture_hours: number | null;
+}
+
+export interface ResearchCategorySummary {
+  n_tagged: number;
+  n_resolved: number;
+  sample_label: string;
+  n_converged: number;
+  n_persisted: number;
+  pct_converged: number | null;
+  pct_persisted: number | null;
+}
+
+export interface EffectivenessDashboard {
+  generated_at: string;
+  coverage: ProspectiveCoverage;
+  prospective: EffectivenessView;
+  retrospective: EffectivenessView;
+  research_category: ResearchCategorySummary;
 }
 
 export function fetchEffectiveness(): Promise<EffectivenessDashboard> {

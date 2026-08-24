@@ -37,6 +37,24 @@ class AnomalyCaseSnapshot(Base, TimestampMixin):
     line_value: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # --- FROZEN at first HIGH_PRIORITY/CRITICAL detection — never rewritten ---
+    # capture_mode records whether the match was genuinely still SCHEDULED at
+    # the moment of freeze ("prospective", the only path run_live_cycle's
+    # automatic freezing can produce) or already COMPLETED ("retrospective",
+    # only ever produced by a deliberate historical backfill script) - the
+    # Genuine Prospective Operation stage's item 5 boundary: retrospective
+    # rows must never count toward primary effectiveness metrics.
+    capture_mode: Mapped[str] = mapped_column(String(16), nullable=False, default="prospective")
+    # Kennedy-pattern research tag (item 8): set once at freeze when a
+    # single-book outlier is present AND the model-vs-market gap remains at
+    # or above the detector's own DIVERGENCE_CRITICAL_PP even after
+    # excluding that outlier's price - see root_cause.compute_research_category.
+    research_category: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    # Per-player historical-volume/history-size metadata (item 6), frozen at
+    # case creation from the same persisted projection row case_audit.py
+    # already reads recent_form from - null for team-level (h2h) cases.
+    player_prior_games: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    player_season_avg: Mapped[float | None] = mapped_column(Float, nullable=True)
+    player_historical_volume_bucket: Mapped[str | None] = mapped_column(String(16), nullable=True)
     alert_types: Mapped[list] = mapped_column(JSON, nullable=False)
     priority_score: Mapped[float] = mapped_column(Float, nullable=False)
     priority_components: Mapped[list] = mapped_column(JSON, nullable=False)
@@ -61,6 +79,8 @@ class AnomalyCaseSnapshot(Base, TimestampMixin):
     n_bookmakers_latest: Mapped[int | None] = mapped_column(Integer, nullable=True)
     latest_observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     n_prekickoff_refreshes: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    context_state_latest: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    hours_to_kickoff_latest: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # --- OUTCOME — written exactly once, after settlement ---
     outcome_codes: Mapped[list | None] = mapped_column(JSON, nullable=True)

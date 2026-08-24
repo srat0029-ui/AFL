@@ -22,6 +22,10 @@
   margin-top: 0;
 }
 
+.market-monitor__view-heading {
+  margin: 1.5rem 0 0;
+}
+
 .market-monitor__summary-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

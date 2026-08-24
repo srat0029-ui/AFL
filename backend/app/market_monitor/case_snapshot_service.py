@@ -18,7 +18,19 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import AnomalyCaseSnapshot, Bookmaker, Match, MatchStatus, OddsQuote, PlayerMatchStat, PlayerPropMarket
+from app.models import (
+    AnomalyCaseFollowUp,
+    AnomalyCaseSnapshot,
+    Bookmaker,
+    Match,
+    MatchStatus,
+    OddsQuote,
+    PlayerDisposalProjection,
+    PlayerGoalProjection,
+    PlayerMatchStat,
+    PlayerPropMarket,
+)
+from app.models.anomaly_case_followup import STAGE_1_6H, STAGE_6_24H, STAGE_24H_PLUS, STAGE_UNDER_1H
 from app.player_modelling.market import PlayerMarket
 from app.player_modelling.match_context_service import current_context_for_match
 from app.player_modelling.live_report_query import current_lineup_for
@@ -29,10 +41,12 @@ from app.market_monitor.case_builder import AnomalyCase
 from app.market_monitor.common import aware, dedupe_bookmaker_prices
 from app.market_monitor.context_staleness import check_context_item_staleness, check_lineup_staleness
 from app.market_monitor.curve_integrity import CurvePoint, check_monotonicity, find_adjacent_jumps
+from app.market_monitor.divergence_analysis import VOLUME_EDGES, VOLUME_LABELS, _bucket
 from app.market_monitor.inbox import RankedCase
 from app.market_monitor.movement import build_bookmaker_series
 from app.market_monitor.outcome_taxonomy import classify_outcomes
 from app.market_monitor.priority import TIER_CRITICAL, TIER_HIGH_PRIORITY
+from app.market_monitor.root_cause import compute_research_category
 from app.market_monitor.types import (
     ADJACENT_THRESHOLD_JUMP,
     BOOKMAKER_VS_CONSENSUS_OUTLIER,
@@ -40,6 +54,35 @@ from app.market_monitor.types import (
     STALE_AFTER_CONTEXT_CHANGE,
     STALE_AFTER_LINEUP_CHANGE,
 )
+
+_SEASON_AVG_FEATURE_KEY = {PlayerMarket.DISPOSALS.value: "disposals_season_avg", PlayerMarket.GOALS.value: "goals_season_avg"}
+_PROJECTION_MODEL = {PlayerMarket.DISPOSALS.value: PlayerDisposalProjection, PlayerMarket.GOALS.value: PlayerGoalProjection}
+
+
+def _stage_bucket(hours_to_kickoff: float) -> str:
+    if hours_to_kickoff >= 24:
+        return STAGE_24H_PLUS
+    if hours_to_kickoff >= 6:
+        return STAGE_6_24H
+    if hours_to_kickoff >= 1:
+        return STAGE_1_6H
+    return STAGE_UNDER_1H
+
+
+def _player_history_metadata(db: Session, case: AnomalyCase) -> tuple[int | None, float | None, str | None]:
+    """Item 6: prior games + season average + historical-volume bucket,
+    frozen once at case creation from the same persisted projection row
+    case_audit.py already reads recent_form from. Reuses divergence_analysis's
+    own VOLUME_EDGES/VOLUME_LABELS bucketing — no new bucket boundaries."""
+    if case.player_id is None or case.market_type not in _PROJECTION_MODEL:
+        return None, None, None
+    model = _PROJECTION_MODEL[case.market_type]
+    row = db.scalar(select(model).where(model.match_id == case.match_id, model.player_id == case.player_id))
+    if row is None:
+        return None, None, None
+    season_avg = (row.input_features or {}).get(_SEASON_AVG_FEATURE_KEY[case.market_type])
+    bucket = _bucket(season_avg, VOLUME_EDGES, VOLUME_LABELS) if season_avg is not None else None
+    return row.games_of_history, season_avg, bucket
 
 
 def _market_quotes(db: Session, case: AnomalyCase, now: datetime) -> list:
@@ -101,9 +144,26 @@ def freeze_or_refresh_case_snapshots(db: Session, ranked_cases: list[RankedCase]
             hours_to_kickoff = None
             if match is not None:
                 hours_to_kickoff = max((aware(match.scheduled_start) - now).total_seconds() / 3600.0, 0.0)
+            # Provenance, not policy: capture_mode simply records whether the
+            # match was genuinely still SCHEDULED at this exact moment
+            # ("prospective" - the only outcome run_live_cycle's automatic
+            # freezing can ever produce) or already COMPLETED ("retrospective"
+            # - only ever produced by a deliberate historical backfill). See
+            # item 5: retrospective rows must never count toward primary
+            # prospective effectiveness metrics.
+            capture_mode = "prospective" if (match is not None and match.status == MatchStatus.SCHEDULED) else "retrospective"
+
+            research_category = None
+            if c.player_id is not None and c.threshold is not None:
+                intel = player_market_intelligence(db, c.match_id, c.player_id, c.market_type, "over_under", c.threshold, c.primary_alert.model_probability or 0.0)
+                research_category = compute_research_category(c.primary_alert.model_probability, intel.outlier)
+            prior_games, season_avg, volume_bucket = _player_history_metadata(db, c)
+
             snap = AnomalyCaseSnapshot(
                 case_id=c.case_id, match_id=c.match_id, player_id=c.player_id, team_id=c.team_id,
                 market_type=c.market_type, selection=c.selection, threshold=c.threshold, line_value=c.line_value,
+                capture_mode=capture_mode, research_category=research_category,
+                player_prior_games=prior_games, player_season_avg=season_avg, player_historical_volume_bucket=volume_bucket,
                 alert_types=[c.primary_alert.alert_type] + c.supporting_alert_types, priority_score=r.priority.total_score,
                 priority_components=[{"name": comp.name, "raw_value": comp.raw_value, "normalized": comp.normalized, "weight": comp.weight, "contribution": comp.contribution} for comp in r.priority.components],
                 model_probability=c.primary_alert.model_probability, model_version=c.primary_alert.model_version,
@@ -117,18 +177,38 @@ def freeze_or_refresh_case_snapshots(db: Session, ranked_cases: list[RankedCase]
                 market_consensus_probability_latest=latest_prob if latest_prob is not None else c.primary_alert.market_consensus_probability,
                 model_probability_latest=c.primary_alert.model_probability, n_bookmakers_latest=n_books,
                 latest_observed_at=now, n_prekickoff_refreshes=0,
+                context_state_latest=c.primary_alert.context_state, hours_to_kickoff_latest=hours_to_kickoff,
             )
             db.add(snap)
             db.flush()
             n_new += 1
         elif existing.resolved_at is None and match is not None and match.status == MatchStatus.SCHEDULED:
             _, latest_prob, _, latest_at, n_books = _consensus_span(db, c, now)
+            hours_to_kickoff_now = max((aware(match.scheduled_start) - now).total_seconds() / 3600.0, 0.0)
             existing.market_consensus_probability_latest = latest_prob if latest_prob is not None else existing.market_consensus_probability_latest
             existing.model_probability_latest = c.primary_alert.model_probability
             existing.n_bookmakers_latest = n_books or existing.n_bookmakers_latest
             existing.latest_observed_at = now
             existing.n_prekickoff_refreshes += 1
+            existing.context_state_latest = c.primary_alert.context_state
+            existing.hours_to_kickoff_latest = hours_to_kickoff_now
             n_refreshed += 1
+
+            # Items 3-4: capture at most one follow-up row per time-to-
+            # kickoff stage, keyed off whatever cadence the caller already
+            # runs at (see run_live_cycle) - never a separate poll loop.
+            bucket = _stage_bucket(hours_to_kickoff_now)
+            already_captured = db.scalar(
+                select(AnomalyCaseFollowUp).where(AnomalyCaseFollowUp.snapshot_id == existing.id, AnomalyCaseFollowUp.stage_bucket == bucket)
+            )
+            if already_captured is None:
+                db.add(AnomalyCaseFollowUp(
+                    snapshot_id=existing.id, case_id=c.case_id, stage_bucket=bucket, hours_to_kickoff=hours_to_kickoff_now,
+                    consensus_probability=existing.market_consensus_probability_latest, model_probability=existing.model_probability_latest,
+                    n_bookmakers=existing.n_bookmakers_latest,
+                    bookmaker_prices=[{"bookmaker_name": b.bookmaker_name, "price_decimal": b.price_decimal, "recorded_at": b.recorded_at.isoformat()} for b in dedupe_bookmaker_prices([b for a in c.alerts for b in a.bookmaker_prices])],
+                    lineup_status=c.primary_alert.lineup_status, context_state=c.primary_alert.context_state, captured_at=now,
+                ))
     db.commit()
     return n_new, n_refreshed
 
