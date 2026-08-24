@@ -1646,9 +1646,20 @@ class MatchReadinessRead(BaseModel):
     match_id: int
     state: str  # NOT_READY | PROVISIONAL | READY
     reasons: list[str]
+    missing_explanation: str = ""
+
+    team_odds_fresh: bool = False
+    player_props_exist: bool = False
+    player_props_fresh: bool = False
+    player_identities_resolved: bool = False
+    provisional_roster_available: bool = False
+    projections_generated: bool = False
+    projections_current: bool = False
+    official_teams_confirmed: bool = False
+    usable_multi_legs: int = 0
+
     has_fresh_odds: bool
     has_projections: bool
-    projections_current: bool
     teams_confirmed: bool
 
 

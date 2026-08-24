@@ -349,6 +349,43 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     except Exception as exc:  # noqa: BLE001
         report.add("refresh_team_odds", STEP_RECOVERABLE_FAILURE, f"team odds refresh failed: {exc}")
 
+    # Step 10a: Finals Market Readiness + Auto-Population stage, items 1-2,
+    # 5: turn freshly-refreshed, already-resolved player-prop evidence
+    # (resolve_prop_player already ran inside refresh_prop_odds above -
+    # never re-resolved or guessed here) into a provisional (unconfirmed)
+    # roster for any upcoming match still missing official/manual lineup
+    # data for that player, THEN regenerate projections for exactly the
+    # match(es) that gained new provisional players this cycle - so
+    # /multis can start showing provisional options without a manual
+    # restart or a second cycle. Reuses generate_live_projections/
+    # persist_projection_run identically to steps 5-6 above; this is a
+    # second, narrowly-targeted pass, never new model/projection logic.
+    try:
+        from app.player_modelling.provisional_roster import populate_provisional_roster
+
+        matches_with_new_provisional_players: set[int] = set()
+        total_players_added = 0
+        for m in upcoming_matches:
+            roster_report = populate_provisional_roster(db, m.match_id)
+            if roster_report.players_added > 0:
+                matches_with_new_provisional_players.add(m.match_id)
+                total_players_added += roster_report.players_added
+
+        if matches_with_new_provisional_players:
+            provisional_run = generate_live_projections(db, target_match_ids=matches_with_new_provisional_players)
+            n_disposals, n_goals = persist_projection_run(db, provisional_run)
+            report.add(
+                "populate_provisional_rosters", STEP_SUCCESS,
+                f"{total_players_added} provisional player(s) added across {len(matches_with_new_provisional_players)} match(es); "
+                f"{n_disposals} disposal + {n_goals} goal projection(s) regenerated",
+            )
+        else:
+            report.add("populate_provisional_rosters", STEP_SUCCESS, "no new provisional players found")
+    except (ModelsUnavailableError, PromotedModelsUnavailableError) as exc:
+        report.add("populate_provisional_rosters", STEP_RECOVERABLE_FAILURE, f"models unavailable: {exc}")
+    except Exception as exc:  # noqa: BLE001
+        report.add("populate_provisional_rosters", STEP_RECOVERABLE_FAILURE, f"provisional roster population failed: {exc}")
+
     # Step 10b: freeze this cycle's pricing into the prospective evaluation
     # dataset (B2B Pricing Engine item 5) - deliberately AFTER odds refresh
     # above, so whatever market context exists this cycle is captured

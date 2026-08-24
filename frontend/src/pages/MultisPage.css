@@ -87,6 +87,11 @@
   font-style: italic;
 }
 
+.multis-page__missing {
+  margin: 0.1rem 0 0;
+  font-style: italic;
+}
+
 .multis-page__tier-badges {
   display: flex;
   flex-wrap: wrap;

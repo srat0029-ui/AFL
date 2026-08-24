@@ -1784,9 +1784,20 @@ export interface MatchReadiness {
   match_id: number;
   state: MatchReadinessState;
   reasons: string[];
+  missing_explanation: string;
+
+  team_odds_fresh: boolean;
+  player_props_exist: boolean;
+  player_props_fresh: boolean;
+  player_identities_resolved: boolean;
+  provisional_roster_available: boolean;
+  projections_generated: boolean;
+  projections_current: boolean;
+  official_teams_confirmed: boolean;
+  usable_multi_legs: number;
+
   has_fresh_odds: boolean;
   has_projections: boolean;
-  projections_current: boolean;
   teams_confirmed: boolean;
 }
 

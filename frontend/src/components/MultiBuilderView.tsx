@@ -27,6 +27,36 @@ export function ReadinessBadge({ readiness }: { readiness: MatchReadiness }) {
   );
 }
 
+// Item 3: the full per-signal readiness checklist, plus item 4's single
+// "what is missing" sentence when the match isn't fully READY.
+export function ReadinessBreakdown({ readiness }: { readiness: MatchReadiness }) {
+  const checks: { label: string; ok: boolean }[] = [
+    { label: "Team odds fresh", ok: readiness.team_odds_fresh },
+    { label: "Player props available", ok: readiness.player_props_exist },
+    { label: "Player identities resolved", ok: readiness.player_identities_resolved },
+    { label: "Provisional roster available", ok: readiness.provisional_roster_available },
+    { label: "Projections generated", ok: readiness.projections_generated },
+    { label: "Official teams confirmed", ok: readiness.official_teams_confirmed },
+    { label: `Usable multi legs (${readiness.usable_multi_legs})`, ok: readiness.usable_multi_legs > 0 },
+  ];
+  return (
+    <div className="readiness-breakdown">
+      {readiness.state !== "READY" && readiness.missing_explanation && (
+        <p className="readiness-breakdown__missing">
+          <strong>What is missing?</strong> {readiness.missing_explanation}
+        </p>
+      )}
+      <ul className="readiness-breakdown__list">
+        {checks.map((c) => (
+          <li key={c.label} className={c.ok ? "readiness-breakdown__item readiness-breakdown__item--ok" : "readiness-breakdown__item readiness-breakdown__item--missing"}>
+            {c.ok ? "✓" : "✗"} {c.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 const SOURCE_MODE_BY_MULTI_MODE: Record<MultiMode, PlacedBetSourceMode> = {
   high_probability: "high_probability",
   value: "best_value",
@@ -232,9 +262,7 @@ function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
           Confirmed players only
         </label>
       </div>
-      {primary && primary.readiness.state !== "READY" && (
-        <p className="hint multi-builder__readiness-reasons">{primary.readiness.reasons.join(" ")}</p>
-      )}
+      {primary && <ReadinessBreakdown readiness={primary.readiness} />}
       <p className="hint">
         Model-informed multi-leg combinations built from existing projections and live bookmaker markets — not a
         prediction of the result, and never guaranteed, safe, or a lock. Every leg passes the same hard integrity

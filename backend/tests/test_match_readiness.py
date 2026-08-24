@@ -159,3 +159,81 @@ def test_ready_when_everything_current_and_confirmed(db_session):
     assert readiness.teams_confirmed
     assert readiness.projections_current
     assert readiness.reasons == []
+    assert readiness.missing_explanation == ""
+    assert readiness.usable_multi_legs >= 1
+
+
+# --- Item 3: full per-signal readiness breakdown -------------------------------
+
+
+def test_readiness_breakdown_fields_are_all_populated(db_session):
+    match, home, away = _seed_match(db_session)
+    bookmaker = _add_fresh_team_odds(db_session, match, home.name)
+    _add_player_with_projection(db_session, match, home, bookmaker, confirmed=True)
+
+    readiness = compute_match_readiness(db_session, match.id)
+    assert readiness.team_odds_fresh is True
+    assert readiness.player_props_exist is True
+    assert readiness.player_props_fresh is True
+    assert readiness.player_identities_resolved is True  # always equal to player_props_exist by construction
+    assert readiness.provisional_roster_available is True
+    assert readiness.projections_generated is True
+    assert readiness.official_teams_confirmed is True
+
+
+def test_provisional_roster_available_without_official_confirmation(db_session):
+    match, home, away = _seed_match(db_session)
+    bookmaker = _add_fresh_team_odds(db_session, match, home.name)
+    _add_player_with_projection(db_session, match, home, bookmaker, confirmed=False)
+
+    readiness = compute_match_readiness(db_session, match.id)
+    assert readiness.provisional_roster_available is True  # a placeholder/uncertain row still counts
+    assert readiness.official_teams_confirmed is False
+
+
+# --- Item 4: "What is missing?" ------------------------------------------------
+
+
+def test_missing_explanation_waiting_for_player_props(db_session):
+    match, home, away = _seed_match(db_session)
+    _add_fresh_team_odds(db_session, match, home.name)  # team odds fresh, but zero player props at all
+
+    readiness = compute_match_readiness(db_session, match.id)
+    assert readiness.state == NOT_READY
+    assert readiness.missing_explanation == "Waiting for player prop markets."
+
+
+def test_missing_explanation_props_available_projections_not_generated(db_session):
+    match, home, away = _seed_match(db_session)
+    bookmaker = _add_fresh_team_odds(db_session, match, home.name)
+    player = Player(sport_id=match.sport_id, display_name="Unprojected Player", source="afltables", source_player_id="up1", current_team_id=home.id)
+    db_session.add(player)
+    db_session.flush()
+    db_session.add(PlayerPropMarket(
+        match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id, market_type=PlayerMarket.DISPOSALS.value,
+        line_type="over_under", threshold=15.5, selection="over", price_decimal=1.8, recorded_at=NOW, source="the_odds_api",
+    ))
+    db_session.commit()
+
+    readiness = compute_match_readiness(db_session, match.id)
+    assert readiness.player_props_exist is True
+    assert readiness.player_props_fresh is True
+    assert readiness.projections_generated is False
+    assert readiness.state == NOT_READY
+    assert readiness.missing_explanation == "Player markets available, projections not generated."
+
+
+def test_missing_explanation_odds_stale_once_props_and_projections_exist(db_session):
+    match, home, away = _seed_match(db_session)
+    bookmaker = _add_fresh_team_odds(db_session, match, home.name)
+    _add_player_with_projection(db_session, match, home, bookmaker, confirmed=True)
+    # Now make team odds stale (the player prop market itself stays fresh).
+    quote = db_session.scalar(select(OddsQuote).where(OddsQuote.match_id == match.id))
+    quote.recorded_at = NOW - timedelta(days=5)
+    db_session.commit()
+
+    readiness = compute_match_readiness(db_session, match.id)
+    assert readiness.team_odds_fresh is False
+    assert readiness.player_props_fresh is True
+    assert readiness.projections_generated is True
+    assert readiness.missing_explanation == "Odds stale — refresh required."

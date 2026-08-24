@@ -46,6 +46,9 @@ function MatchRow({ row, selected, onSelect }: { row: RoundMultiSummaryRow; sele
       <div className="multis-page__match-stats hint">
         {row.n_eligible_legs} eligible legs · {row.n_bookmakers_available} bookmaker(s) support a multi
       </div>
+      {row.readiness.state !== "READY" && row.readiness.missing_explanation && (
+        <p className="hint multis-page__missing">{row.readiness.missing_explanation}</p>
+      )}
       <TierSummaryGrid row={row} />
       {row.tiers_available.length === 0 && <p className="hint">No tiers currently buildable, even provisionally</p>}
     </button>

@@ -588,3 +588,87 @@ def test_alert_snapshots_are_never_frozen_for_an_already_completed_match(db_sess
     run_live_cycle(db_session)
 
     assert db_session.scalars(select(AnomalyAlertSnapshot).where(AnomalyAlertSnapshot.match_id == completed.id)).all() == []
+
+
+# --- Finals Market Readiness + Auto-Population: provisional roster wiring ---
+
+
+def test_live_cycle_auto_populates_provisional_roster_and_regenerates_projections_same_cycle(db_session, monkeypatch):
+    """Item 5's own requirement: a player with a fresh, resolved prop-market
+    quote but no ExpectedLineup row must gain a placeholder row AND a real
+    projection in the SAME cycle run - never requiring a manual restart or
+    a second cycle."""
+    from sqlalchemy import select
+
+    from app.modelling.elo import EloConfig
+    from app.modelling.model_run_persistence import persist_model_run
+    from app.modelling.poisson_model import PoissonConfig
+    from app.models import (
+        ExpectedLineup, GoalModelRun, PlayerDisposalProjection, PlayerGoalProjection, PlayerModelRun, PlayerPropMarket,
+    )
+    from app.player_modelling.market import PlayerMarket
+
+    match = _seed_scheduled_match(db_session)
+    home, away = match.home_team, match.away_team
+
+    # generate_live_projections also needs the team Elo/Poisson context
+    # (build_model_context) to succeed, independent of the player models.
+    persist_model_run(db_session, "elo", EloConfig(), 2022, metrics=[{"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 10, "holdout_value": 0.2, "naive_baseline_value": 0.25, "has_edge_over_naive": True}])
+    persist_model_run(db_session, "poisson", PoissonConfig(), 2022, metrics=[{"market_type": "h2h", "metric_name": "brier_score", "holdout_n": 10, "holdout_value": 0.2, "naive_baseline_value": 0.25, "has_edge_over_naive": True}])
+
+    # "baseline_last5" is a real, supported live-model family (see
+    # disposal_baselines.py/goal_baselines.py's BASELINES dicts) - needs no
+    # feature-matrix fitting, unlike ridge/huber, so this test only exercises
+    # the auto-population wiring, never model behaviour.
+    db_session.add(PlayerModelRun(
+        model_name="disposals_baseline_last5", market=PlayerMarket.DISPOSALS.value, feature_names=[], config_json={},
+        distribution_method="nb", tune_start_year=2016, tune_end_year=2018, evaluation_start_year=2019,
+        evaluation_end_year=2025, is_promoted=True, run_at=NOW,
+    ))
+    db_session.add(GoalModelRun(
+        model_name="goals_baseline_last5", market=PlayerMarket.GOALS.value, feature_names=[], config_json={},
+        distribution_kind="nb", tune_start_year=2016, tune_end_year=2018, evaluation_start_year=2019,
+        evaluation_end_year=2025, is_promoted=True, run_at=NOW,
+    ))
+    player = Player(sport_id=match.sport_id, display_name="Provisional Player", source="afltables", source_player_id="prov1", current_team_id=home.id)
+    bookmaker = Bookmaker(name="SportsBet")
+    db_session.add_all([player, bookmaker])
+    db_session.flush()
+    # Current-season evidence: a real completed match this season with a stat row.
+    other_round = Round(season_id=match.season_id, round_number=20)
+    db_session.add(other_round)
+    db_session.flush()
+    other_match = Match(
+        sport_id=match.sport_id, season_id=match.season_id, round_id=other_round.id,
+        home_team_id=home.id, away_team_id=away.id, scheduled_start=NOW - timedelta(days=30), status=MatchStatus.COMPLETED,
+    )
+    db_session.add(other_match)
+    db_session.flush()
+    db_session.add(PlayerMatchStat(player_id=player.id, match_id=other_match.id, team_id=home.id, source="afltables", recorded_at=NOW - timedelta(days=30), disposals=22, goals=1))
+    # A fresh, resolved prop-market quote for the upcoming match - no ExpectedLineup row exists yet.
+    db_session.add(PlayerPropMarket(
+        match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id, market_type=PlayerMarket.DISPOSALS.value,
+        line_type="over_under", threshold=20.5, selection="over", price_decimal=1.9, recorded_at=NOW, source="the_odds_api",
+    ))
+    db_session.commit()
+    assert db_session.scalar(select(ExpectedLineup).where(ExpectedLineup.match_id == match.id)) is None
+
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakePlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+
+    run = run_live_cycle(db_session)
+
+    step = next(s for s in run.steps if s["step"] == "populate_provisional_rosters")
+    assert step["status"] == STEP_SUCCESS
+    assert "1 provisional player" in step["detail"]
+
+    lineup = db_session.scalar(select(ExpectedLineup).where(ExpectedLineup.match_id == match.id, ExpectedLineup.player_id == player.id))
+    assert lineup is not None
+    assert lineup.selection_status == "placeholder"
+    assert lineup.is_confirmed is False
+
+    projection = db_session.scalar(select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id == match.id, PlayerDisposalProjection.player_id == player.id))
+    assert projection is not None
+    goal_projection = db_session.scalar(select(PlayerGoalProjection).where(PlayerGoalProjection.match_id == match.id, PlayerGoalProjection.player_id == player.id))
+    assert goal_projection is not None

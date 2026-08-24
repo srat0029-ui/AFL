@@ -576,6 +576,15 @@ def get_round_multi_summary(confirmed_only: bool = Query(default=True), db: Sess
     a user should never have to open every Match Centre just to see what's
     currently available."""
     upcoming = load_next_upcoming_round(db)
+    # Fetched ONCE for the whole round, not once per match: compute_match_
+    # readiness's own load_best_opportunities(include_stale=True) scan is
+    # the expensive, largely-uncached part of this endpoint (Elo/Poisson
+    # context fit aside, which IS request-cached) - sharing one fetch across
+    # every match's readiness check keeps this endpoint's cost roughly flat
+    # instead of scaling with the number of upcoming matches.
+    raw_opportunities = load_best_opportunities(
+        db, market_scope="all", include_uncertain=True, include_stale=True, include_insufficient_history=True, limit=None,
+    )
     rows = []
     for m in upcoming:
         match = db.get(Match, m.match_id)
@@ -584,7 +593,7 @@ def get_round_multi_summary(confirmed_only: bool = Query(default=True), db: Sess
         best_options_by_tier = {
             t: option_as_dict(result.tiers[t].options[0]) if result.tiers[t].options else None for t in MULTI_TIER_ORDER
         }
-        readiness = compute_match_readiness(db, m.match_id)
+        readiness = compute_match_readiness(db, m.match_id, raw_opportunities=raw_opportunities)
         rows.append(RoundMultiSummaryRowRead(
             match_id=m.match_id, home_team_name=match.home_team.name, away_team_name=match.away_team.name,
             scheduled_start=match.scheduled_start, n_eligible_legs=result.n_eligible_legs,
