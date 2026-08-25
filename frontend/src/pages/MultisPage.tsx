@@ -75,14 +75,13 @@ function MultisPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  const selectedRow = rows.find((r) => r.match_id === selectedMatchId) ?? null;
+
   return (
     <main className="multis-page">
       <header className="multis-page__header">
-        <h1>Multis</h1>
-        <p className="hint">
-          Model-informed multi combinations across the round's matches — pick a match to see its Conservative,
-          Balanced, Higher Return, and Longer Shot options. Never guaranteed, safe, or a lock.
-        </p>
+        <h1 className="page-title">Finals / Multis</h1>
+        <p className="page-subtitle">Model-informed multi-leg combinations, built from live projections and current bookmaker markets. Never guaranteed, safe, or a lock.</p>
       </header>
 
       {loading && <p className="loading-state">Loading…</p>}
@@ -98,6 +97,14 @@ function MultisPage() {
             ))}
           </div>
           <div className="multis-page__detail">
+            {selectedRow && (
+              <div className="multis-page__detail-header">
+                <span className="multis-page__detail-teams">
+                  {selectedRow.home_team_name} vs {selectedRow.away_team_name}
+                </span>
+                <span className="hint">{formatCompactDateTime(selectedRow.scheduled_start)}</span>
+              </div>
+            )}
             {selectedMatchId !== null && <MultiBuilderView matchId={selectedMatchId} />}
           </div>
         </div>

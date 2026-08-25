@@ -419,7 +419,7 @@ function MarketMonitorPage() {
 
   return (
     <main className="market-monitor-page">
-      <h1>Trader Inbox — Market Monitor</h1>
+      <h1 className="page-title">Trader Inbox — Market Monitor</h1>
       <p className="subtitle">
         A neutral, read-only comparison of this engine's own pricing against real bookmaker markets — deduplicated
         into cases and ranked by a transparent, rule-based priority score (every component visible below). Not a

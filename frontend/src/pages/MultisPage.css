@@ -7,12 +7,6 @@
   gap: 1.25rem;
 }
 
-.multis-page__header h1 {
-  margin: 0 0 0.4rem;
-  font-size: 1.6rem;
-  color: var(--text-h);
-}
-
 .multis-page__layout {
   display: grid;
   grid-template-columns: minmax(260px, 320px) 1fr;
@@ -35,7 +29,7 @@
   text-align: left;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-sm);
   padding: 0.65rem 0.8rem;
   color: inherit;
   font: inherit;
@@ -57,7 +51,7 @@
   gap: 0.4rem;
   font-weight: 600;
   color: var(--text-h);
-  font-size: 0.9rem;
+  font-size: var(--fs-body);
 }
 
 .multis-page__tier-summary-grid {
@@ -70,7 +64,7 @@
 .multis-page__tier-summary-cell {
   display: flex;
   flex-direction: column;
-  font-size: 0.7rem;
+  font-size: var(--fs-micro);
 }
 
 .multis-page__tier-summary-label {
@@ -83,40 +77,34 @@
 }
 
 .multis-page__tier-summary-value--empty {
-  color: var(--text-muted);
-  font-style: italic;
+  color: var(--text-dim);
 }
 
 .multis-page__missing {
   margin: 0.1rem 0 0;
-  font-style: italic;
-}
-
-.multis-page__tier-badges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.3rem;
-  margin-top: 0.2rem;
-}
-
-.multis-page__tier-badge {
-  display: inline-block;
-  font-size: 0.68rem;
-  border-radius: 4px;
-  padding: 0.1rem 0.4rem;
-  background: var(--bg-inset);
-  color: var(--accent-light);
-}
-
-.multis-page__tier-note {
-  display: block;
-  width: 100%;
-  margin-top: 0.15rem;
-  font-size: 0.68rem;
+  color: var(--text-muted);
 }
 
 .multis-page__detail {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.multis-page__detail-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.multis-page__detail-teams {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-h);
 }
 
 @media (max-width: 768px) {

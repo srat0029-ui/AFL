@@ -32,39 +32,49 @@ import { formatCountdown, formatFullDateTime } from "../lib/datetime";
 function MatchOpportunitiesSection({ opportunities, loading }: { opportunities: DiversifiedOpportunity[]; loading: boolean }) {
   return (
     <section className="dashboard-section">
-      <h2>Top Player Opportunities</h2>
+      <h2 className="section-title">Best player opportunities</h2>
       {loading && <p className="loading-state">Loading…</p>}
       {!loading && opportunities.length === 0 && (
         <p className="empty-state">No player opportunities currently pass the quality gates for this match.</p>
       )}
       {!loading && opportunities.length > 0 && (
-        <div className="opportunity-list">
-          {opportunities.map((o, i) => (
-            <div key={`${o.opportunity_type}-${o.player_id ?? o.selection}-${o.threshold ?? o.line_value}`} className="opportunity-list__row">
-              <span className="opportunity-list__rank">{i + 1}</span>
-              <span className={`prop-insights-table__type-badge prop-insights-table__type-badge--${o.opportunity_type}`}>
-                {o.opportunity_type === "player" ? "Player" : "Team"}
-              </span>
-              <span className="opportunity-list__label">
-                {o.label}
-                {o.alternate_lines.length > 0 && (
-                  <span className="diversified-view__alt-count" title={`${o.alternate_lines.length} alternate line(s) in this family`}>
-                    +{o.alternate_lines.length} alt
-                  </span>
-                )}
-              </span>
-              <span className="opportunity-list__price">
-                ${o.best_price.toFixed(2)} <span className="hint">{o.best_bookmaker}</span>
-              </span>
-              <span className={o.difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>
-                {o.difference_pp >= 0 ? "+" : ""}
-                {(o.difference_pp * 100).toFixed(1)}pp
-              </span>
-              <span className={`confidence-badge confidence-badge--${o.confidence_tier.replace("_confidence", "").replace("insufficient_history", "insufficient_data")}`}>
-                {o.confidence_tier.replace("_confidence", "").replace("insufficient_history", "insufficient data")}
-              </span>
-            </div>
-          ))}
+        <div className="table-scroll">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Selection</th>
+                <th className="num">Price</th>
+                <th className="num">Edge</th>
+                <th>Confidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {opportunities.map((o) => (
+                <tr key={`${o.opportunity_type}-${o.player_id ?? o.selection}-${o.threshold ?? o.line_value}`}>
+                  <td>
+                    {o.label}
+                    {o.alternate_lines.length > 0 && (
+                      <span className="chip chip--accent" style={{ marginLeft: "0.4rem" }}>
+                        +{o.alternate_lines.length}
+                      </span>
+                    )}
+                  </td>
+                  <td className="num">
+                    ${o.best_price.toFixed(2)} <span className="hint">{o.best_bookmaker}</span>
+                  </td>
+                  <td className={o.difference_pp >= 0 ? "num prop-insights-table__diff-pos" : "num prop-insights-table__diff-neg"}>
+                    {o.difference_pp >= 0 ? "+" : ""}
+                    {(o.difference_pp * 100).toFixed(1)}pp
+                  </td>
+                  <td>
+                    <span className={`confidence-badge confidence-badge--${o.confidence_tier.replace("_confidence", "").replace("insufficient_history", "insufficient_data")}`}>
+                      {o.confidence_tier.replace("_confidence", "").replace("insufficient_history", "insufficient data")}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </section>
@@ -168,7 +178,7 @@ function MatchDetailPage() {
       <header className="match-header">
         <div className="match-header__teams">
           <span className="match-header__swatch" style={{ background: match.home_team.primary_colour ?? "#666" }} />
-          <h1>
+          <h1 className="page-title match-header__title">
             {match.home_team.name} vs {match.away_team.name}
           </h1>
           <span className="match-header__swatch" style={{ background: match.away_team.primary_colour ?? "#666" }} />
@@ -187,15 +197,19 @@ function MatchDetailPage() {
       </header>
 
       {match.status === "scheduled" && (
-        <div className="match-freshness">
-          <p className="hint match-freshness__caption">Data freshness for the current upcoming round.</p>
-          <DataFreshnessPanel />
-        </div>
+        <details className="system-status">
+          <summary>
+            <span className="section-title">Data freshness</span>
+          </summary>
+          <div className="system-status__body">
+            <DataFreshnessPanel />
+          </div>
+        </details>
       )}
 
       {predictions ? (
         <section className="model-panel">
-          <h2>Model probabilities</h2>
+          <h2 className="section-title">Model vs market</h2>
 
           <div className="model-panel__grid">
             <div className="model-stat">
@@ -269,7 +283,7 @@ function MatchDetailPage() {
           />
 
           <section className="backtest-panel">
-            <h2>Player Projections</h2>
+            <h2 className="section-title">Player projections</h2>
             <p className="hint">
               Projected disposals and goals for players marked expected-in or uncertain above, from the promoted
               disposal/goal models. Not live betting advice.
@@ -308,10 +322,10 @@ function MatchDetailPage() {
 
       {players && (players.home_team_players.length > 0 || players.away_team_players.length > 0) && (
         <section className="backtest-panel">
-          <h2>Player statistics</h2>
-          <h3>{match.home_team.name}</h3>
+          <h2 className="section-title">Player statistics</h2>
+          <h3 className="match-detail-subheading">{match.home_team.name}</h3>
           <PlayerStatsTable games={players.home_team_players} showPlayerColumn columns={MATCH_PLAYER_COLUMNS} />
-          <h3>{match.away_team.name}</h3>
+          <h3 className="match-detail-subheading">{match.away_team.name}</h3>
           <PlayerStatsTable games={players.away_team_players} showPlayerColumn columns={MATCH_PLAYER_COLUMNS} />
         </section>
       )}

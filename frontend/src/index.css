@@ -29,9 +29,19 @@
   --space-4: 1rem;
   --space-5: 1.5rem;
   --space-6: 2.5rem;
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 12px;
+
+  /* Type scale (Section 13 of the redesign brief) - every page title/
+     section title/body/metadata size should trace back to one of these,
+     not an arbitrary rem value chosen per-component. */
+  --fs-page-title: 1.625rem; /* ~26px */
+  --fs-section-title: 1.0625rem; /* ~17px */
+  --fs-body: 0.875rem; /* 14px */
+  --fs-meta: 0.8125rem; /* ~13px */
+  --fs-micro: 0.75rem; /* 12px */
 
   font: 16px/145% system-ui, "Segoe UI", Roboto, sans-serif;
   color-scheme: dark;

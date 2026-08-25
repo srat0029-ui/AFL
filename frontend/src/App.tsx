@@ -18,6 +18,54 @@ import StatusPage from "./pages/StatusPage";
 import TeamSelectionPage from "./pages/TeamSelectionPage";
 import WeeklyReviewPage from "./pages/WeeklyReviewPage";
 
+// Section 4: grouped nav, Multis pinned outside every group as the primary
+// during-finals destination. Groups map to the brief's suggested structure,
+// extended just enough to place every existing route somewhere sensible.
+const NAV_GROUPS: { label: string; links: { to: string; label: string }[] }[] = [
+  {
+    label: "Analysis",
+    links: [
+      { to: "/round-context", label: "Matches" },
+      { to: "/player-insights", label: "Player Insights" },
+      { to: "/prop-insights", label: "Prop Insights" },
+      { to: "/weekly-review", label: "Weekly Review" },
+      { to: "/team-selection", label: "Team Selection" },
+    ],
+  },
+  {
+    label: "Tracking",
+    links: [
+      { to: "/placed-bets", label: "Placed Bets" },
+      { to: "/live-status", label: "Live Status" },
+    ],
+  },
+  {
+    label: "Trading / B2B",
+    links: [
+      { to: "/market-monitor", label: "Market Monitor" },
+      { to: "/model-registry", label: "Model Evaluation" },
+      { to: "/b2b-demo", label: "B2B Demo" },
+      { to: "/real-market-tracking", label: "Real Market Tracking" },
+      { to: "/backtest", label: "Backtesting" },
+    ],
+  },
+];
+
+function NavGroup({ label, links }: { label: string; links: { to: string; label: string }[] }) {
+  return (
+    <details className="app-nav__group">
+      <summary>{label}</summary>
+      <div className="app-nav__group-menu">
+        {links.map((l) => (
+          <NavLink key={l.to} to={l.to} className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+            {l.label}
+          </NavLink>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 function App() {
   return (
     <>
@@ -26,45 +74,16 @@ function App() {
         <NavLink to="/" end className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Dashboard
         </NavLink>
-        <NavLink to="/weekly-review" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Weekly Review
+        <NavLink
+          to="/multis"
+          className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--pinned app-nav__link--active" : "app-nav__link app-nav__link--pinned")}
+        >
+          Finals / Multis
         </NavLink>
-        <NavLink to="/round-context" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Round Context
-        </NavLink>
-        <NavLink to="/team-selection" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Team Selection
-        </NavLink>
-        <NavLink to="/player-insights" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Player Insights
-        </NavLink>
-        <NavLink to="/prop-insights" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Prop Insights
-        </NavLink>
-        <NavLink to="/multis" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Multis
-        </NavLink>
-        <NavLink to="/placed-bets" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Placed Bets
-        </NavLink>
-        <NavLink to="/model-registry" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Model Registry
-        </NavLink>
-        <NavLink to="/b2b-demo" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          B2B Demo
-        </NavLink>
-        <NavLink to="/market-monitor" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Market Monitor
-        </NavLink>
-        <NavLink to="/real-market-tracking" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Real Market Tracking
-        </NavLink>
-        <NavLink to="/live-status" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Live Status
-        </NavLink>
-        <NavLink to="/backtest" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
-          Backtesting
-        </NavLink>
+        {NAV_GROUPS.map((g) => (
+          <NavGroup key={g.label} label={g.label} links={g.links} />
+        ))}
+        <span className="app-nav__spacer" />
         <NavLink to="/status" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Status
         </NavLink>

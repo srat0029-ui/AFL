@@ -69,7 +69,7 @@ export function AddMultiButton({
   if (!open) {
     return (
       <button type="button" className="add-bet-button add-bet-button--multi" onClick={() => setOpen(true)}>
-        + Add this whole multi to Placed Bets
+        + Add whole multi
       </button>
     );
   }

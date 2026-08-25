@@ -7,11 +7,181 @@
   line-height: 1.5;
 }
 
+/* --- Shared typography (Section 13) ------------------------------------- */
+
+.page-title {
+  font-size: var(--fs-page-title);
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.01em;
+}
+
+.page-subtitle {
+  color: var(--text-muted);
+  font-size: var(--fs-body);
+  margin: 0 0 var(--space-5);
+}
+
+.section-title {
+  font-size: var(--fs-section-title);
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0;
+}
+
+.section-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.section-row__link {
+  font-size: var(--fs-meta);
+  color: var(--accent-light);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.section-row__link:hover {
+  text-decoration: underline;
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Chips (Section 8, 16): one consistent small rectangular status
+   indicator, replacing the mix of full pills / 4px chips / oversized
+   badges scattered through earlier pages. Never a full pill (999px). ---- */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3em;
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: var(--radius-xs);
+  padding: 0.06rem 0.4rem;
+  white-space: nowrap;
+}
+
+.chip--neutral {
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.chip--accent {
+  background: #1e2a3a;
+  color: var(--accent-light);
+}
+
+.chip--success {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.chip--warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.chip--danger {
+  background: var(--danger-bg);
+  color: var(--danger-text);
+}
+
+/* --- Shared data table (Section 12) -------------------------------------- */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-meta);
+}
+
+.data-table th,
+.data-table td {
+  padding: 0.4rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+}
+
+.data-table th {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.data-table tbody tr:hover {
+  background: var(--bg-inset);
+}
+
+.data-table td.num,
+.data-table th.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table--sticky thead th {
+  position: sticky;
+  top: 0;
+  background: var(--card-bg);
+  z-index: 1;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+/* --- Compact horizontal stat strip (Dashboard round status, readiness) -- */
+
+.stat-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.7rem 1rem;
+}
+
+.stat-strip__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 6rem;
+}
+
+.stat-strip__label {
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+}
+
+.stat-strip__value {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Navigation (Section 4): compact grouped menu instead of one flat row
+   of 15 equal-weight links. Multis is pinned outside every group since
+   it's the primary during-finals destination; everything else lives under
+   a small set of <details> dropdowns so no single item competes with it
+   for attention. Native <details>/<summary> gives click-to-open on every
+   device (including touch) with no extra JS state to manage. ------------ */
+
 .app-nav {
   display: flex;
   align-items: center;
-  gap: 1.5rem;
-  padding: 0.9rem 1.5rem;
+  gap: 0.25rem;
+  padding: 0.6rem 1.25rem;
   border-bottom: 1px solid var(--border);
   background: var(--bg-nav);
   overflow-x: auto;
@@ -21,25 +191,107 @@
 
 .app-nav__brand {
   font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
   color: var(--text-h);
-  margin-right: 0.5rem;
+  margin-right: 0.75rem;
+  white-space: nowrap;
 }
 
-.app-nav__link {
+.app-nav__link,
+.app-nav__group > summary {
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.9rem;
-  padding: 0.3rem 0;
-  border-bottom: 2px solid transparent;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--radius-xs);
+  white-space: nowrap;
+  cursor: pointer;
+  list-style: none;
 }
 
-.app-nav__link:hover {
+.app-nav__link::-webkit-details-marker,
+.app-nav__group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.app-nav__link:hover,
+.app-nav__group > summary:hover {
   color: var(--text-h);
+  background: var(--bg-inset);
 }
 
 .app-nav__link--active {
   color: var(--text-h);
-  border-bottom-color: var(--accent);
+  background: var(--bg-inset);
+}
+
+.app-nav__link--pinned {
+  color: var(--text-h);
+  font-weight: 600;
+  border: 1px solid var(--border);
+}
+
+.app-nav__link--pinned.app-nav__link--active {
+  border-color: var(--accent);
+  background: #16233a;
+  color: var(--accent-light);
+}
+
+.app-nav__group {
+  position: relative;
+}
+
+.app-nav__group > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.app-nav__group > summary::after {
+  content: "";
+  width: 0;
+  height: 0;
+  border-left: 3px solid transparent;
+  border-right: 3px solid transparent;
+  border-top: 4px solid currentColor;
+  opacity: 0.6;
+  margin-top: 1px;
+}
+
+.app-nav__group[open] > summary {
+  color: var(--text-h);
+  background: var(--bg-inset);
+}
+
+.app-nav__group-menu {
+  position: absolute;
+  top: calc(100% + 0.3rem);
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+}
+
+.app-nav__group-menu .app-nav__link {
+  padding: 0.4rem 0.6rem;
+}
+
+.app-nav__spacer {
+  flex: 1;
+}
+
+@media (max-width: 640px) {
+  .app-nav {
+    gap: 0.15rem;
+    padding: 0.5rem 0.75rem;
+  }
 }
 
 /* Shared primitives reused across pages: cards, tabs, error/empty/loading states, buttons. */

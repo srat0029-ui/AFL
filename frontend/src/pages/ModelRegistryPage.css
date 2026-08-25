@@ -8,14 +8,14 @@
 }
 
 .model-registry-page__error {
-  color: #e57373;
+  color: var(--danger-text);
 }
 
 .model-registry-section,
 .model-registry-prospective {
   margin: 1.25rem 0;
   padding: 1rem 1.1rem;
-  border: 1px solid var(--border-color, #3a3f4b);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
@@ -39,7 +39,7 @@
 .model-registry-table td {
   padding: 0.35rem 0.55rem;
   text-align: left;
-  border-bottom: 1px solid var(--border-color, #3a3f4b);
+  border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
@@ -62,8 +62,8 @@
 }
 
 .model-registry-badge--champion {
-  background: rgba(76, 175, 80, 0.15);
-  color: #4caf50;
+  background: var(--success-bg);
+  color: var(--success-text);
 }
 
 .model-registry-badge--previous_champion {
@@ -72,8 +72,8 @@
 }
 
 .model-registry-badge--challenger {
-  background: rgba(100, 181, 246, 0.15);
-  color: #64b5f6;
+  background: #1e2a3a;
+  color: var(--accent-light);
 }
 
 .model-registry-badge--rejected {
@@ -87,7 +87,7 @@
 
 .model-registry-audit__event {
   padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border-color, #3a3f4b);
+  border-bottom: 1px solid var(--border);
 }
 
 .model-registry-audit__headline {
@@ -116,7 +116,7 @@
 
 .model-registry-accumulating {
   padding: 1rem;
-  border: 1px dashed var(--border-color, #3a3f4b);
+  border: 1px dashed var(--border);
   border-radius: 6px;
   text-align: center;
 }
