@@ -28,7 +28,7 @@ function ProvenanceBar({ p, isStale, staleReasons }: { p: { model_name: string; 
       <span className="hint">generated {new Date(p.generated_at).toLocaleString()}</span>
       <span className="hint">data cutoff {new Date(p.data_cutoff).toLocaleString()}</span>
       {isStale !== undefined && (
-        <span className={isStale ? "b2b-demo-freshness b2b-demo-freshness--stale" : "b2b-demo-freshness b2b-demo-freshness--fresh"}>
+        <span className={isStale ? "chip chip--warning" : "chip chip--success"}>
           {isStale ? `stale: ${staleReasons?.join("; ")}` : "fresh"}
         </span>
       )}
@@ -44,7 +44,7 @@ function MarketCompareInline({ intel }: { intel: MarketIntelligence | null | und
     <span className="b2b-demo-market-compare">
       model {fmtPct(intel.model_probability)} vs consensus {intel.market_implied_probability !== null ? fmtPct(intel.market_implied_probability) : "—"}
       {intel.difference_pp !== null && (
-        <span className={intel.difference_pp >= 0 ? "b2b-demo-diff-pos" : "b2b-demo-diff-neg"}>
+        <span className={intel.difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>
           {" "}
           ({intel.difference_pp >= 0 ? "+" : ""}
           {(intel.difference_pp * 100).toFixed(1)}pp)

@@ -56,12 +56,12 @@
 }
 
 .comparison-table__list--caution li {
-  color: #fdba74;
+  color: var(--caution-text);
 }
 
 .comparison-table__predates-warning {
   margin-top: 0.3rem;
-  color: #f87171;
+  color: var(--danger-text-strong);
   font-weight: 600;
   font-size: 0.78rem;
 }

@@ -17,7 +17,7 @@
 }
 
 .recent-form-chart__threshold-line {
-  stroke: #fdba74;
+  stroke: var(--caution-text);
   stroke-width: 1.5;
   stroke-dasharray: 4 3;
 }
@@ -35,7 +35,7 @@
 
 .recent-form-chart__line-label {
   font-size: 7px;
-  fill: #fdba74;
+  fill: var(--caution-text);
 }
 
 .recent-form-chart__mean-label {

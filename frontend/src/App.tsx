@@ -1,4 +1,5 @@
-import { NavLink, Route, Routes } from "react-router-dom";
+import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import "./App.css";
 import B2BDemoPage from "./pages/B2BDemoPage";
 import BacktestPage from "./pages/BacktestPage";
@@ -51,13 +52,55 @@ const NAV_GROUPS: { label: string; links: { to: string; label: string }[] }[] = 
   },
 ];
 
-function NavGroup({ label, links }: { label: string; links: { to: string; label: string }[] }) {
+function NavGroup({
+  label,
+  links,
+  isOpen,
+  onOpenChange,
+}: {
+  label: string;
+  links: { to: string; label: string }[];
+  isOpen: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const ref = useRef<HTMLDetailsElement>(null);
+  // Browsers fire a native "toggle" event even for a programmatic `.open =`
+  // assignment, not just user clicks - without this guard, closing a
+  // sibling group below re-enters onOpenChange(false) and immediately
+  // undoes whichever group the user just opened.
+  const ignoreNextToggle = useRef(false);
+
+  // Keep the native <details> element in sync with lifted state so only one
+  // group can be open at a time, and so the group closes on navigation or
+  // an outside click instead of staying open indefinitely (native <details>
+  // has no such behaviour on its own, which was the source of the "top bar
+  // doesn't work properly" complaint).
+  useEffect(() => {
+    if (ref.current && ref.current.open !== isOpen) {
+      ignoreNextToggle.current = true;
+      ref.current.open = isOpen;
+    }
+  }, [isOpen]);
+
+  function handleToggle(e: SyntheticEvent<HTMLDetailsElement>) {
+    if (ignoreNextToggle.current) {
+      ignoreNextToggle.current = false;
+      return;
+    }
+    onOpenChange(e.currentTarget.open);
+  }
+
   return (
-    <details className="app-nav__group">
+    <details ref={ref} className="app-nav__group" onToggle={handleToggle}>
       <summary>{label}</summary>
       <div className="app-nav__group-menu">
         {links.map((l) => (
-          <NavLink key={l.to} to={l.to} className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
+          <NavLink
+            key={l.to}
+            to={l.to}
+            className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}
+            onClick={() => onOpenChange(false)}
+          >
             {l.label}
           </NavLink>
         ))}
@@ -67,9 +110,30 @@ function NavGroup({ label, links }: { label: string; links: { to: string; label:
 }
 
 function App() {
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const location = useLocation();
+
+  // Close any open dropdown whenever the route changes (covers link clicks,
+  // back/forward navigation, and programmatic navigation alike).
+  useEffect(() => {
+    setOpenGroup(null);
+  }, [location.pathname]);
+
+  // Close on a click outside the nav bar.
+  useEffect(() => {
+    function handlePointerDown(e: PointerEvent) {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        setOpenGroup(null);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, []);
+
   return (
     <>
-      <nav className="app-nav">
+      <nav className="app-nav" ref={navRef}>
         <span className="app-nav__brand">AFL Analytics</span>
         <NavLink to="/" end className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>
           Dashboard
@@ -81,7 +145,13 @@ function App() {
           Finals / Multis
         </NavLink>
         {NAV_GROUPS.map((g) => (
-          <NavGroup key={g.label} label={g.label} links={g.links} />
+          <NavGroup
+            key={g.label}
+            label={g.label}
+            links={g.links}
+            isOpen={openGroup === g.label}
+            onOpenChange={(open) => setOpenGroup(open ? g.label : null)}
+          />
         ))}
         <span className="app-nav__spacer" />
         <NavLink to="/status" className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}>

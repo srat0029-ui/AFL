@@ -111,6 +111,47 @@ function RunCard({ run }: { run: LiveCycleRun }) {
   );
 }
 
+// Section 6: answer "is anything wrong?" in one glance, before the detail
+// below. Silent (a plain quiet strip) when the last cycle succeeded and
+// nothing is stale; only grows a warning banner when something needs
+// attention, so a healthy round doesn't compete for the eye with a broken one.
+function LiveStatusAttention({ report }: { report: LiveStatusReport }) {
+  const lastRun = report.recent_runs[0] ?? null;
+  const staleMatches = report.matches.filter((m) => m.simple_status === "stale");
+  const hasIssue = (lastRun && lastRun.overall_status !== "ok") || staleMatches.length > 0;
+
+  return (
+    <div className={hasIssue ? "live-status-attention live-status-attention--warning" : "live-status-attention"}>
+      <div className="stat-strip">
+        <div className="stat-strip__item">
+          <span className="stat-strip__label">Last cycle</span>
+          <span className="stat-strip__value">
+            {lastRun ? (
+              <span className={`live-status-badge live-status-badge--run-${lastRun.overall_status}`}>{lastRun.overall_status.toUpperCase()}</span>
+            ) : (
+              "No runs yet"
+            )}
+          </span>
+        </div>
+        <div className="stat-strip__item">
+          <span className="stat-strip__label">Last run at</span>
+          <span className="stat-strip__value">{formatDateTime(lastRun?.run_at ?? null)}</span>
+        </div>
+        <div className="stat-strip__item">
+          <span className="stat-strip__label">Stale matches</span>
+          <span className="stat-strip__value">{staleMatches.length}</span>
+        </div>
+      </div>
+      {hasIssue && (
+        <p className="live-status-attention__note">
+          {lastRun && lastRun.overall_status !== "ok" && "Last run-live-cycle did not complete cleanly — see Recent operational runs below. "}
+          {staleMatches.length > 0 && `${staleMatches.length} match(es) have stale data — see Match readiness below.`}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function LiveStatusPage() {
   const [report, setReport] = useState<LiveStatusReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -140,6 +181,8 @@ function LiveStatusPage() {
 
       {!loading && !error && report && (
         <>
+          <LiveStatusAttention report={report} />
+
           <div className="live-status-card">
             <h3>Round summary</h3>
             <div className="live-status-grid">

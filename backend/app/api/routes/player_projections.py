@@ -564,8 +564,15 @@ def get_match_multi_builder(
         raise HTTPException(status_code=422, detail=f"mode must be one of: {MODE_HIGH_PROBABILITY}, {MODE_VALUE}")
     if db.get(Match, match_id) is None:
         raise HTTPException(status_code=404, detail="Match not found")
-    result = build_match_multis(db, match_id, confirmed_only=confirmed_only, mode=mode)
-    readiness = compute_match_readiness(db, match_id)
+    # Fetched ONCE per request and shared between the multi builder and the
+    # readiness check - same fix already applied to the round-summary
+    # endpoint below, since both independently re-ran the same expensive
+    # load_best_opportunities() scan otherwise.
+    raw_opportunities = load_best_opportunities(
+        db, market_scope="all", include_uncertain=True, include_stale=True, include_insufficient_history=True, limit=None,
+    )
+    result = build_match_multis(db, match_id, confirmed_only=confirmed_only, mode=mode, raw_opportunities=raw_opportunities)
+    readiness = compute_match_readiness(db, match_id, raw_opportunities=raw_opportunities)
     return MatchMultiTiersRead(**match_multi_tiers_as_dict(result), readiness=MatchReadinessRead(**readiness.__dict__))
 
 
@@ -576,19 +583,19 @@ def get_round_multi_summary(confirmed_only: bool = Query(default=True), db: Sess
     a user should never have to open every Match Centre just to see what's
     currently available."""
     upcoming = load_next_upcoming_round(db)
-    # Fetched ONCE for the whole round, not once per match: compute_match_
-    # readiness's own load_best_opportunities(include_stale=True) scan is
-    # the expensive, largely-uncached part of this endpoint (Elo/Poisson
-    # context fit aside, which IS request-cached) - sharing one fetch across
-    # every match's readiness check keeps this endpoint's cost roughly flat
-    # instead of scaling with the number of upcoming matches.
+    # Fetched ONCE for the whole round, not once per match: load_best_
+    # opportunities(include_stale=True) is the expensive, largely-uncached
+    # part of this endpoint (Elo/Poisson context fit aside, which IS
+    # request-cached), and both build_match_multis and compute_match_
+    # readiness need it - sharing one fetch across every match keeps this
+    # endpoint's cost roughly flat instead of scaling with round size.
     raw_opportunities = load_best_opportunities(
         db, market_scope="all", include_uncertain=True, include_stale=True, include_insufficient_history=True, limit=None,
     )
     rows = []
     for m in upcoming:
         match = db.get(Match, m.match_id)
-        result = build_match_multis(db, m.match_id, confirmed_only=confirmed_only, mode=MODE_HIGH_PROBABILITY)
+        result = build_match_multis(db, m.match_id, confirmed_only=confirmed_only, mode=MODE_HIGH_PROBABILITY, raw_opportunities=raw_opportunities)
         tiers_available = [t for t in MULTI_TIER_ORDER if result.tiers[t].options]
         best_options_by_tier = {
             t: option_as_dict(result.tiers[t].options[0]) if result.tiers[t].options else None for t in MULTI_TIER_ORDER

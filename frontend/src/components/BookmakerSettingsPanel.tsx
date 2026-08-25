@@ -47,7 +47,7 @@ function BookmakerSettingsPanel() {
         diverge from sportsbook consensus. All-bookmaker data always stays visible in the comparison drawer regardless
         of this setting.
       </p>
-      {error && <div className="prop-insights-page__error">{error}</div>}
+      {error && <div className="error-banner">{error}</div>}
       <div className="bookmaker-settings__list">
         {bookmakers.map((b) => (
           <div key={b.id} className="bookmaker-settings__row">

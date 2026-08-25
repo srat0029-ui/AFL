@@ -40,7 +40,7 @@
 }
 
 .projection-table__row td a {
-  color: #93c5fd;
+  color: var(--info-text);
   text-decoration: none;
 }
 
@@ -53,8 +53,8 @@
   font-size: 0.65rem;
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
-  background: #3f2e1c;
-  color: #fdba74;
+  background: var(--caution-bg);
+  color: var(--caution-text);
   cursor: help;
 }
 
@@ -63,13 +63,13 @@
   font-size: 0.65rem;
   padding: 0.1rem 0.4rem;
   border-radius: 4px;
-  background: #2e2a1c;
-  color: #eab308;
+  background: var(--risk-bg);
+  color: var(--risk-text);
   cursor: help;
 }
 
 .projection-table__rare-flag {
-  color: #fdba74;
+  color: var(--caution-text);
   margin-left: 0.15rem;
   cursor: help;
 }
@@ -94,14 +94,14 @@
 }
 
 .lineup-badge--substitute {
-  background: #1e3a5f;
-  color: #93c5fd;
+  background: var(--info-bg);
+  color: var(--info-text);
 }
 
 .lineup-badge--named_in_squad,
 .lineup-badge--emergency {
-  background: #1e3a2f;
-  color: #6ee7b7;
+  background: var(--success-tint-bg);
+  color: var(--success-tint-text);
 }
 
 .lineup-badge--uncertain,
@@ -139,7 +139,7 @@
 .projection-drawer__warning {
   margin: 0.2rem 0;
   font-size: 0.82rem;
-  color: #fdba74;
+  color: var(--caution-text);
 }
 
 .projection-drawer__warning--stale {

@@ -47,7 +47,7 @@
 }
 
 .context-panel__severe {
-  color: #f4a340;
+  color: var(--context-warning-text);
   font-weight: 600;
 }
 
@@ -87,7 +87,7 @@
 }
 
 .context-panel__item--aging {
-  border-left-color: #f4a340;
+  border-left-color: var(--context-warning-text);
 }
 
 .context-panel__item--stale {
@@ -196,13 +196,13 @@
 }
 
 .context-panel__error {
-  color: #f87171;
+  color: var(--danger-text-strong);
   font-size: 0.8rem;
   margin: 0;
 }
 
 .context-panel__info {
-  color: #f4a340;
+  color: var(--context-warning-text);
   font-size: 0.8rem;
   margin: 0;
 }

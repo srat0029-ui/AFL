@@ -219,14 +219,14 @@ def _warnings_for(leg: dict) -> list[dict]:
     return warnings
 
 
-def _match_legs(db: Session, match_id: int) -> list[dict]:
+def _match_legs(db: Session, match_id: int, *, raw_opportunities: list[dict] | None = None) -> list[dict]:
     """One representative leg per family (opportunity_families.py) PLUS,
     where it differs, the family's safest high-probability alternate (see
     _safest_family_member) — the SAME alternate-line collapsing Best
     Opportunities uses, extended with a second candidate so High-
     Probability mode has a genuinely safe line to reach for, never two
     lines from the same player/team market appearing as if independent."""
-    raw = load_best_opportunities(
+    raw = raw_opportunities if raw_opportunities is not None else load_best_opportunities(
         db, market_scope="all", include_uncertain=True, include_stale=True, include_insufficient_history=True, limit=None,
     )
     match_legs = [o for o in raw if o["match_id"] == match_id and o["quality_tier"]["tier"] != TIER_DO_NOT_HEADLINE]
@@ -248,7 +248,7 @@ def _match_legs(db: Session, match_id: int) -> list[dict]:
     return result
 
 
-def _all_alternate_legs(db: Session, match_id: int) -> list[dict]:
+def _all_alternate_legs(db: Session, match_id: int, *, raw_opportunities: list[dict] | None = None) -> list[dict]:
     """High-Probability mode's candidate source — deliberately NOT
     _match_legs/group_into_families: that pipeline collapses every
     player+market family down to one value-ranked representative plus at
@@ -262,7 +262,7 @@ def _all_alternate_legs(db: Session, match_id: int) -> list[dict]:
     disposal/goal market in a single multi" — that's a per-combination
     validity rule, not a reason to hide candidates from the ranking/search
     itself."""
-    raw = load_best_opportunities(
+    raw = raw_opportunities if raw_opportunities is not None else load_best_opportunities(
         db, market_scope="all", include_uncertain=True, include_stale=True, include_insufficient_history=True, limit=None,
     )
     result = []
@@ -532,11 +532,20 @@ class MatchMultiTiers:
     tiers: dict[str, TierResult] = field(default_factory=dict)
 
 
-def build_match_multis(db: Session, match_id: int, *, confirmed_only: bool = True, mode: str = DEFAULT_MODE) -> MatchMultiTiers:
+def build_match_multis(
+    db: Session, match_id: int, *, confirmed_only: bool = True, mode: str = DEFAULT_MODE, raw_opportunities: list[dict] | None = None,
+) -> MatchMultiTiers:
     # High-Probability mode sources from EVERY alternate threshold line
     # (see _all_alternate_legs); Value mode keeps the existing collapsed
     # one-representative-plus-safest-alternate pool (_match_legs), unchanged.
-    legs = _all_alternate_legs(db, match_id) if mode == MODE_HIGH_PROBABILITY else _match_legs(db, match_id)
+    # `raw_opportunities`, when supplied, is used as-is instead of each
+    # helper independently re-scanning load_best_opportunities() — same
+    # passthrough pattern compute_match_readiness already uses, purely to
+    # avoid redundant identical work within a single request.
+    legs = (
+        _all_alternate_legs(db, match_id, raw_opportunities=raw_opportunities) if mode == MODE_HIGH_PROBABILITY
+        else _match_legs(db, match_id, raw_opportunities=raw_opportunities)
+    )
     by_bookmaker = _legs_by_bookmaker(legs)
     player_counts: dict[int, int] = {}
 

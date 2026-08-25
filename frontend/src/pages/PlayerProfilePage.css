@@ -4,16 +4,51 @@
   padding: 0 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
 }
 
 .player-header {
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.25rem;
 }
 
-.player-header h1 {
-  font-size: 1.5rem;
+.player-header__title {
+  font-size: var(--fs-page-title);
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0 0 0.3rem;
+  letter-spacing: -0.01em;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.player-header__team {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.player-header__inactive {
+  align-self: center;
+}
+
+.player-header__projection {
   margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--accent-light);
+}
+
+.player-profile-page__subheading {
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  font-size: var(--fs-meta);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.player-profile-page__subheading:first-of-type {
+  margin-top: 0.75rem;
 }
 
 .form-chart {
@@ -47,15 +82,46 @@
   white-space: nowrap;
 }
 
-.player-context-block {
-  margin-top: 1.2rem;
-  padding-top: 1rem;
+.player-profile-page__more {
   border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.player-profile-page__more summary {
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  list-style: none;
+}
+
+.player-profile-page__more summary::-webkit-details-marker {
+  display: none;
+}
+
+.player-profile-page__more summary::before {
+  content: "▸ ";
+}
+
+.player-profile-page__more[open] summary::before {
+  content: "▾ ";
+}
+
+.player-profile-page__more-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  margin-top: 1rem;
+}
+
+.player-profile-page__season-block h3 {
+  margin: 0 0 0.5rem;
+  font-size: var(--fs-section-title);
+  color: var(--text-h);
 }
 
 .player-context-block h3 {
   margin: 0 0 0.5rem;
-  font-size: 0.95rem;
+  font-size: var(--fs-section-title);
   color: var(--text-h);
 }
 

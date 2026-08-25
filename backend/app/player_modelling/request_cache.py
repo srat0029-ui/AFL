@@ -60,9 +60,20 @@ def cached(db, key: tuple, compute: Callable[[], T]) -> T:
 # "review before deciding" page. Process-global (not session-keyed): the
 # result doesn't depend on which Session object read it, only on the
 # underlying DB state.
+#
+# Every real data-changing path (live_cycle.py, the CLI ingestion/backfill/
+# pricing commands, and every lineup-edit/projection-regen route) already
+# calls clear_ttl_cache() explicitly the moment it changes anything - so
+# this TTL is only ever a safety-net upper bound, not the actual freshness
+# mechanism. With real finals-scale data this cache's own compute pass costs
+# ~16-20s, so the original 60s window meant any two page loads more than a
+# minute apart (a completely normal browsing pace) paid that cost again;
+# raised to 10 minutes so a realistic browsing session mostly stays on the
+# fast path, while still bounding worst-case staleness if an invalidation
+# were ever missed.
 _ttl_cache: dict[tuple, tuple[float, object]] = {}
 _engine_tokens: "weakref.WeakKeyDictionary" = weakref.WeakKeyDictionary()
-DEFAULT_TTL_SECONDS = 60.0
+DEFAULT_TTL_SECONDS = 600.0
 
 
 def _engine_token(db) -> str:

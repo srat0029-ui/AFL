@@ -62,6 +62,23 @@ function formatUnits(n: number | null): string {
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}u`;
 }
 
+// Per-bet return isn't stored on the backend (only portfolio-level analytics
+// are) — derive it from stake/odds/status already on the row so the ledger
+// can show it without waiting on a settled-status recompute elsewhere.
+function betReturn(bet: PlacedBet): number | null {
+  if (bet.stake === null || bet.stake === undefined) return null;
+  if (bet.status === "won") return bet.stake * (bet.odds_taken - 1);
+  if (bet.status === "lost") return -bet.stake;
+  return 0;
+}
+
+function formatReturn(bet: PlacedBet): string {
+  if (bet.status === "pending") return "—";
+  const r = betReturn(bet);
+  if (r === null) return "—";
+  return `${r >= 0 ? "+" : ""}${r.toFixed(2)}`;
+}
+
 // A single split row (e.g. one source mode, one probability bucket) — the
 // same shape/labeling rules apply everywhere: n is always shown, and a
 // split below the backend's MIN_SAMPLE_FOR_LABELED threshold is flagged
@@ -157,10 +174,13 @@ function PlacedBetsSummary({ analytics }: { analytics: PlacedBetAnalytics }) {
   );
 }
 
+// Research/model context for a bet, one level down from the ledger row —
+// keeps the main table to the tracking-ledger columns the page is meant to
+// be (Section 5) while still making this evidence available on demand.
 function BetDetail({ bet }: { bet: PlacedBet }) {
   return (
     <tr className="placed-bets-table__detail-row">
-      <td colSpan={13}>
+      <td colSpan={9}>
         <div className="placed-bets-detail">
           <div>
             <span className="placed-bets-detail__label">Model probability (at placement)</span>
@@ -171,18 +191,22 @@ function BetDetail({ bet }: { bet: PlacedBet }) {
             <span className="placed-bets-detail__value">{formatOdds(bet.model_fair_odds)}</span>
           </div>
           <div>
-            <span className="placed-bets-detail__label">Odds taken</span>
-            <span className="placed-bets-detail__value">{formatOdds(bet.odds_taken)}</span>
+            <span className="placed-bets-detail__label">Confidence</span>
+            <span className="placed-bets-detail__value">{CONFIDENCE_TIER_LABELS[bet.confidence_tier] ?? bet.confidence_tier}</span>
+          </div>
+          <div>
+            <span className="placed-bets-detail__label">Lineup status at placement</span>
+            <span className="placed-bets-detail__value">{bet.lineup_status ?? "—"}</span>
+          </div>
+          <div>
+            <span className="placed-bets-detail__label">Source</span>
+            <span className="placed-bets-detail__value">{SOURCE_MODE_LABELS[bet.source_mode] ?? bet.source_mode}</span>
           </div>
           <div>
             <span className="placed-bets-detail__label">Actual result</span>
             <span className="placed-bets-detail__value">
               {bet.actual_stat_value ?? "—"} · {bet.status}
             </span>
-          </div>
-          <div>
-            <span className="placed-bets-detail__label">Source mode</span>
-            <span className="placed-bets-detail__value">{SOURCE_MODE_LABELS[bet.source_mode] ?? bet.source_mode}</span>
           </div>
           <div>
             <span className="placed-bets-detail__label">Settled</span>
@@ -238,13 +262,15 @@ function PlacedBetsPage() {
 
   return (
     <main className="placed-bets-page">
-      <h1>Placed Bets</h1>
-      <p className="subtitle">
-        A record of bets you actually placed — kept separate from everything the app merely surfaced. No staking
-        advice; results settle automatically once match/player results arrive.
-      </p>
+      <header>
+        <h1 className="page-title">Placed Bets</h1>
+        <p className="page-subtitle">
+          A record of bets you actually placed — kept separate from everything the app merely surfaced. No staking
+          advice; results settle automatically once match/player results arrive.
+        </p>
+      </header>
 
-      {error && <p className="placed-bets-page__error">{error}</p>}
+      {error && <div className="error-banner">{error}</div>}
 
       {analytics && <PlacedBetsSummary analytics={analytics} />}
 
@@ -262,9 +288,9 @@ function PlacedBetsPage() {
         ))}
       </nav>
 
-      {bets === null && !error && <p>Loading…</p>}
+      {bets === null && !error && <p className="loading-state">Loading…</p>}
 
-      {bets !== null && filtered.length === 0 && <p>No bets in this view yet.</p>}
+      {bets !== null && filtered.length === 0 && <p className="empty-state">No bets in this view yet.</p>}
 
       {filtered.length > 0 && (
         <div className="placed-bets-table__wrap">
@@ -272,43 +298,35 @@ function PlacedBetsPage() {
             <thead>
               <tr>
                 <th>Selection</th>
-                <th>Market</th>
                 <th>Bookmaker</th>
-                <th>Odds</th>
-                <th>Model prob.</th>
-                <th>Fair odds</th>
-                <th>Confidence</th>
-                <th>Lineup</th>
-                <th>Source</th>
-                <th>Stake</th>
+                <th className="num">Odds</th>
+                <th className="num">Stake</th>
                 <th>Placed</th>
                 <th>Status</th>
+                <th className="num">Return</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((bet) => {
-                const isSettled = bet.status !== "pending";
                 const expanded = expandedId === bet.id;
+                const ret = betReturn(bet);
                 return (
                   <Fragment key={bet.id}>
-                    <tr
-                      className={isSettled ? "placed-bets-table__row-clickable" : undefined}
-                      onClick={() => isSettled && setExpandedId(expanded ? null : bet.id)}
-                    >
-                      <td>{bet.label}</td>
-                      <td>{bet.market_type}</td>
+                    <tr className="placed-bets-table__row-clickable" onClick={() => setExpandedId(expanded ? null : bet.id)}>
+                      <td>
+                        {bet.label}
+                        <span className="hint"> · {MARKET_TYPE_LABELS[bet.market_type] ?? bet.market_type}</span>
+                      </td>
                       <td>{bet.bookmaker}</td>
-                      <td>{formatOdds(bet.odds_taken)}</td>
-                      <td>{formatPct(bet.model_probability)}</td>
-                      <td>{formatOdds(bet.model_fair_odds)}</td>
-                      <td>{CONFIDENCE_TIER_LABELS[bet.confidence_tier] ?? bet.confidence_tier}</td>
-                      <td>{bet.lineup_status ?? "—"}</td>
-                      <td>{SOURCE_MODE_LABELS[bet.source_mode] ?? bet.source_mode}</td>
-                      <td>{bet.stake ?? "—"}</td>
-                      <td>{new Date(bet.placed_at ?? "").toLocaleString()}</td>
+                      <td className="num">{formatOdds(bet.odds_taken)}</td>
+                      <td className="num">{bet.stake ?? "—"}</td>
+                      <td>{bet.placed_at ? new Date(bet.placed_at).toLocaleString() : "—"}</td>
                       <td>
                         <span className={`placed-bets-status placed-bets-status--${bet.status}`}>{bet.status}</span>
+                      </td>
+                      <td className={ret !== null && ret !== 0 ? `num ${ret > 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}` : "num"}>
+                        {formatReturn(bet)}
                       </td>
                       <td>
                         {bet.status === "pending" && (

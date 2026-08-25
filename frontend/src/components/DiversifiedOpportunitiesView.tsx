@@ -143,7 +143,7 @@ function DiversifiedOpportunitiesView({ view }: DiversifiedOpportunitiesViewProp
       </section>
 
       {loading && <p className="loading-state">Loading…</p>}
-      {error && <div className="prop-insights-page__error">{error}</div>}
+      {error && <div className="error-banner">{error}</div>}
 
       {!loading && !error && data && data.opportunities.length === 0 && (
         <p className="hint">

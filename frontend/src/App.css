@@ -75,7 +75,7 @@
 }
 
 .chip--accent {
-  background: #1e2a3a;
+  background: var(--accent-tint-bg);
   color: var(--accent-light);
 }
 
@@ -329,7 +329,7 @@
 }
 
 .tab-bar__tab--active {
-  background: #1e3a2f;
+  background: var(--success-tint-bg);
   border-color: #2f6b4f;
   color: var(--success-text);
 }
@@ -406,6 +406,18 @@
    (OddsPanel), Prop Insights, and Weekly Review so the same tier always
    reads as the same colour everywhere. */
 
+/* Model-vs-market difference sign — shared across every table that shows an
+   edge (Dashboard, Match Centre, Prop Insights, Weekly Review, Placed Bets,
+   Opportunity views). Kept its original class name so the many existing
+   call sites didn't need touching. */
+.prop-insights-table__diff-pos {
+  color: var(--success-text);
+}
+
+.prop-insights-table__diff-neg {
+  color: var(--danger-text);
+}
+
 .edge-badge,
 .confidence-badge {
   display: inline-block;
@@ -421,8 +433,8 @@
 }
 
 .edge-badge--moderate {
-  background: #1e3a2f;
-  color: #6ee7b7;
+  background: var(--success-tint-bg);
+  color: var(--success-tint-text);
 }
 
 .edge-badge--weak {
@@ -436,8 +448,8 @@
 }
 
 .confidence-badge--higher {
-  background: #1e3a5f;
-  color: #93c5fd;
+  background: var(--info-bg);
+  color: var(--info-text);
 }
 
 .confidence-badge--moderate {
@@ -446,8 +458,8 @@
 }
 
 .confidence-badge--lower {
-  background: #3f2e1c;
-  color: #fdba74;
+  background: var(--caution-bg);
+  color: var(--caution-text);
 }
 
 .confidence-badge--insufficient_data {

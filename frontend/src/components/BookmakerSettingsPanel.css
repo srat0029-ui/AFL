@@ -14,7 +14,7 @@
   gap: 0.5rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 0.75rem 1rem;
 }
 
@@ -42,7 +42,7 @@
 .bookmaker-settings__exchange-flag {
   font-size: 0.65rem;
   padding: 0.08rem 0.35rem;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: #2a1e3a;
   color: #c4b5fd;
 }

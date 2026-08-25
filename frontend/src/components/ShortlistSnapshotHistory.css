@@ -12,7 +12,7 @@
 
 .snapshot-history__freeze-btn {
   align-self: flex-start;
-  background: #1e3a2f;
+  background: var(--success-tint-bg);
   border: 1px solid #2f6b4f;
   color: var(--success-text);
   border-radius: 8px;
@@ -67,7 +67,7 @@
 }
 
 .snapshot-history__warning {
-  color: #fdba74;
+  color: var(--caution-text);
 }
 
 .snapshot-history__summary-stats {

@@ -10,7 +10,7 @@
   gap: 0.6rem 1.2rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 0.8rem 1.1rem;
   font-size: 0.85rem;
   color: var(--table-text);
@@ -49,8 +49,8 @@
   margin-left: 0.4rem;
   font-size: 0.62rem;
   padding: 0.05rem 0.3rem;
-  border-radius: 4px;
-  background: #1e2a3a;
+  border-radius: var(--radius-xs);
+  background: var(--accent-tint-bg);
   color: var(--accent-light);
   cursor: default;
 }
@@ -66,7 +66,7 @@
   display: inline-block;
   font-size: 0.62rem;
   padding: 0.05rem 0.3rem;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--danger-badge-bg);
   color: var(--danger-text);
   white-space: normal;

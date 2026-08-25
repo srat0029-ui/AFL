@@ -86,7 +86,7 @@
 }
 
 .market-monitor__lifecycle--new {
-  background: #1e2a3a;
+  background: var(--accent-tint-bg);
   color: var(--accent-light);
 }
 
@@ -141,7 +141,7 @@
 }
 
 .market-monitor__status-btn--active {
-  background: #1e2a3a;
+  background: var(--accent-tint-bg);
   border-color: var(--accent);
   color: var(--accent-light);
 }
@@ -194,7 +194,7 @@
 }
 
 .market-monitor__severity--review_worthy {
-  background: #1e2a3a;
+  background: var(--accent-tint-bg);
   color: var(--accent-light);
 }
 

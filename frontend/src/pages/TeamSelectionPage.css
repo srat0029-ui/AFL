@@ -9,7 +9,7 @@
 
 .team-selection-page__header h1 {
   margin: 0 0 0.4rem;
-  font-size: 1.6rem;
+  font-size: var(--fs-page-title);
   color: var(--text-h);
 }
 
@@ -101,6 +101,38 @@
 
 .team-selection__list label:hover {
   background: var(--bg-inset);
+}
+
+.team-selection__status-chip {
+  margin-left: auto;
+}
+
+.team-selection__status-chip--suggested,
+.team-selection__status-chip--placeholder,
+.team-selection__status-chip--uncertain {
+  background: var(--bg-inset);
+  color: var(--text-dim);
+}
+
+.team-selection__status-chip--named_in_squad {
+  background: var(--accent-tint-bg);
+  color: var(--accent-light);
+}
+
+.team-selection__status-chip--confirmed_selected {
+  background: var(--success-bg);
+  color: var(--success-text);
+}
+
+.team-selection__status-chip--emergency,
+.team-selection__status-chip--substitute {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.team-selection__status-chip--confirmed_out {
+  background: var(--danger-bg);
+  color: var(--danger-text);
 }
 
 .team-selection__save {

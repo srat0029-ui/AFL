@@ -103,7 +103,7 @@
 
 .prop-table__delete {
   background: none;
-  border: 1px solid #3a2020;
+  border: 1px solid var(--danger-border-subtle);
   color: var(--danger-text);
   border-radius: 6px;
   padding: 0.2rem 0.5rem;

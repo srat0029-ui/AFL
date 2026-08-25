@@ -49,14 +49,14 @@
 }
 
 .opportunity-drawer__book-row--best {
-  background: var(--success-bg)22;
+  background: var(--success-tint-bg);
 }
 
 .opportunity-drawer__best-flag {
   margin-left: 0.4rem;
   font-size: 0.62rem;
   padding: 0.05rem 0.3rem;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   background: var(--success-bg);
   color: var(--success-text);
 }
@@ -64,7 +64,7 @@
 .opportunity-drawer__freshness {
   display: inline-block;
   font-size: 0.68rem;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 0.1rem 0.35rem;
 }
 
@@ -90,7 +90,7 @@
 .opportunity-drawer__warnings {
   margin: 0;
   padding-left: 1.1rem;
-  color: #fdba74;
+  color: var(--caution-text);
   font-size: 0.8rem;
   display: flex;
   flex-direction: column;
@@ -106,10 +106,10 @@
 
 .opportunity-drawer__risk-flag {
   margin: 0;
-  color: #eab308;
+  color: var(--risk-text);
   font-size: 0.8rem;
-  background: #2e2a1c;
-  border-radius: 6px;
+  background: var(--risk-bg);
+  border-radius: var(--radius-sm);
   padding: 0.4rem 0.6rem;
 }
 
@@ -122,7 +122,7 @@
 .opportunity-drawer__badge {
   display: inline-block;
   font-size: 0.7rem;
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   padding: 0.15rem 0.5rem;
   white-space: nowrap;
 }
@@ -133,7 +133,7 @@
 }
 
 .opportunity-drawer__badge--reason {
-  background: #1e2a3a;
+  background: var(--accent-tint-bg);
   color: var(--accent-light);
 }
 
@@ -183,17 +183,10 @@
 
 .opportunity-drawer__disagreement {
   margin: 0;
-  color: #fdba74;
+  color: var(--caution-text);
   font-size: 0.8rem;
 }
 
-.prop-insights-table__diff-pos {
-  color: var(--success-text);
-}
-
-.prop-insights-table__diff-neg {
-  color: var(--danger-text);
-}
 
 .opportunity-drawer__add-bet {
   margin: 0.25rem 0 0.75rem;

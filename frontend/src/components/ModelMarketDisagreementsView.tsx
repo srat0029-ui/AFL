@@ -65,7 +65,7 @@ function ModelMarketDisagreementsView() {
   }, [currentOnly, minN]);
 
   if (loading) return <p className="loading-state">Loading…</p>;
-  if (error) return <div className="prop-insights-page__error">{error}</div>;
+  if (error) return <div className="error-banner">{error}</div>;
 
   return (
     <div className="disagreements-view">

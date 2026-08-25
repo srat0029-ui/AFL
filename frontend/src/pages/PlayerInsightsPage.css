@@ -8,9 +8,11 @@
 }
 
 .player-insights-page__header h1 {
-  margin: 0 0 0.5rem;
-  font-size: 1.6rem;
+  margin: 0 0 0.25rem;
+  font-size: var(--fs-page-title);
+  font-weight: 600;
   color: var(--text-h);
+  letter-spacing: -0.01em;
 }
 
 .player-insights-page__filters {

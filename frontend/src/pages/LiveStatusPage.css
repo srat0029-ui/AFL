@@ -9,8 +9,24 @@
 
 .live-status-page__header h1 {
   margin: 0 0 0.5rem;
-  font-size: 1.6rem;
+  font-size: var(--fs-page-title);
   color: var(--text-h);
+}
+
+.live-status-attention {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.live-status-attention--warning .stat-strip {
+  border-color: var(--danger-border);
+}
+
+.live-status-attention__note {
+  margin: 0;
+  color: var(--danger-text);
+  font-size: var(--fs-meta);
 }
 
 .live-status-card {
@@ -101,12 +117,12 @@
 }
 
 .live-status-badge--stale {
-  background: #3f2e1c;
-  color: #fdba74;
+  background: var(--caution-bg);
+  color: var(--caution-text);
 }
 
 .live-status-badge--odds_available {
-  background: #1e2a3a;
+  background: var(--accent-tint-bg);
   color: var(--accent-light);
 }
 
@@ -185,7 +201,7 @@
 }
 
 .live-status-run__step--recoverable_failure .live-status-run__step-status {
-  color: #fdba74;
+  color: var(--caution-text);
 }
 
 .live-status-run__step--blocking_failure .live-status-run__step-status {

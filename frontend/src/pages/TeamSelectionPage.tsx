@@ -9,15 +9,33 @@ import {
   type LineupSummary,
   type MatchSummary,
   type RosterSuggestion,
+  type SelectionStatus,
 } from "../api/client";
 import { formatCompactDateTime } from "../lib/datetime";
 import "./TeamSelectionPage.css";
+
+// A roster candidate suggested from last-played history but never entered
+// into the lineup at all — distinct from every real SelectionStatus value,
+// so it can't be confused with a status that actually came from the backend.
+type RosterStatus = SelectionStatus | "suggested";
+
+const STATUS_LABELS: Record<RosterStatus, string> = {
+  suggested: "Suggested",
+  placeholder: "Placeholder",
+  named_in_squad: "Named in squad",
+  confirmed_selected: "Confirmed",
+  emergency: "Emergency",
+  substitute: "Substitute",
+  confirmed_out: "Confirmed out",
+  uncertain: "Uncertain",
+};
 
 interface PlayerRow {
   playerId: number;
   name: string;
   checked: boolean; // ticked = confirmed_selected
   originallyConfirmed: boolean;
+  status: RosterStatus; // current status as of last load — informational only, doesn't drive save
 }
 
 interface TeamPanelState {
@@ -40,11 +58,17 @@ async function loadTeamRoster(matchId: number, teamId: number): Promise<PlayerRo
   const existingForTeam = lineup.filter((l) => l.team_id === teamId);
   const byPlayerId = new Map<number, PlayerRow>();
   for (const l of existingForTeam) {
-    byPlayerId.set(l.player_id, { playerId: l.player_id, name: l.player_name, checked: l.selection_status === "confirmed_selected", originallyConfirmed: l.selection_status === "confirmed_selected" });
+    byPlayerId.set(l.player_id, {
+      playerId: l.player_id,
+      name: l.player_name,
+      checked: l.selection_status === "confirmed_selected",
+      originallyConfirmed: l.selection_status === "confirmed_selected",
+      status: l.selection_status,
+    });
   }
   for (const s of suggestions) {
     if (!byPlayerId.has(s.player_id)) {
-      byPlayerId.set(s.player_id, { playerId: s.player_id, name: s.display_name, checked: false, originallyConfirmed: false });
+      byPlayerId.set(s.player_id, { playerId: s.player_id, name: s.display_name, checked: false, originallyConfirmed: false, status: "suggested" });
     }
   }
   return [...byPlayerId.values()].sort((a, b) => a.name.localeCompare(b.name));
@@ -124,6 +148,7 @@ function TeamChecklist({ matchId, teamId, teamName, onSaved }: { matchId: number
                 <label>
                   <input type="checkbox" checked={p.checked} onChange={() => toggle(p.playerId)} />
                   {p.name}
+                  <span className={`chip team-selection__status-chip team-selection__status-chip--${p.status}`}>{STATUS_LABELS[p.status]}</span>
                 </label>
               </li>
             ))}

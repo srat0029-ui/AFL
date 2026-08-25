@@ -14,14 +14,14 @@
 
 .round-context-page__header h1 {
   margin: 0 0 0.3rem;
-  font-size: 1.4rem;
+  font-size: var(--fs-page-title);
   color: var(--text-h);
 }
 
 .round-context-page__refresh {
   background: var(--bg-inset);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   color: var(--text-h);
   padding: 0.4rem 0.8rem;
   font-size: 0.85rem;
@@ -29,18 +29,10 @@
   white-space: nowrap;
 }
 
-.round-context-page__error {
-  color: #f87171;
-  padding: 0.75rem;
-  border: 1px solid #f87171;
-  border-radius: 8px;
-  margin-bottom: 1rem;
-}
-
 .round-context-table-scroll {
   overflow-x: auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
 }
 
 .round-context-table {
@@ -70,12 +62,12 @@
 }
 
 .round-context-table__cell--warn {
-  color: #f4a340;
+  color: var(--context-warning-text);
   font-weight: 600;
 }
 
 .round-context-table__severe {
-  color: #f87171;
+  color: var(--danger-text-strong);
 }
 
 .round-context-table a {

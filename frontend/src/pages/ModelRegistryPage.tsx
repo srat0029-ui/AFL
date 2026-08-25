@@ -16,12 +16,19 @@ const STATUS_LABELS: Record<ModelRunStatus, string> = {
   rejected: "Rejected",
 };
 
+const STATUS_CHIP_VARIANT: Record<ModelRunStatus, string> = {
+  champion: "success",
+  previous_champion: "warning",
+  challenger: "accent",
+  rejected: "danger",
+};
+
 function fmt(n: number | null | undefined, digits = 3): string {
   return n === null || n === undefined ? "—" : n.toFixed(digits);
 }
 
 function StatusBadge({ status }: { status: ModelRunStatus }) {
-  return <span className={`model-registry-badge model-registry-badge--${status}`}>{STATUS_LABELS[status]}</span>;
+  return <span className={`chip chip--${STATUS_CHIP_VARIANT[status]}`}>{STATUS_LABELS[status]}</span>;
 }
 
 function ModelRunTable({ rows }: { rows: ModelRegistry["disposal_models"] }) {
@@ -209,22 +216,22 @@ function ProspectiveEvaluationPanel({ evaluation }: { evaluation: ProspectiveEva
         </div>
       ) : (
         <>
-          <div className="model-registry-prospective__headline">
-            <div>
-              <span className="model-registry-stat-label">Settled predictions</span>
-              <span className="model-registry-stat-value">{evaluation.n_settled.toLocaleString()}</span>
+          <div className="stat-strip model-registry-prospective__headline">
+            <div className="stat-strip__item">
+              <span className="stat-strip__label">Settled predictions</span>
+              <span className="stat-strip__value">{evaluation.n_settled.toLocaleString()}</span>
             </div>
-            <div>
-              <span className="model-registry-stat-label">Unique player-match events</span>
-              <span className="model-registry-stat-value">{evaluation.n_unique_player_match_events.toLocaleString()}</span>
+            <div className="stat-strip__item">
+              <span className="stat-strip__label">Unique player-match events</span>
+              <span className="stat-strip__value">{evaluation.n_unique_player_match_events.toLocaleString()}</span>
             </div>
-            <div>
-              <span className="model-registry-stat-label">Model Brier</span>
-              <span className="model-registry-stat-value">{fmt(evaluation.overall?.model_brier)}</span>
+            <div className="stat-strip__item">
+              <span className="stat-strip__label">Model Brier</span>
+              <span className="stat-strip__value">{fmt(evaluation.overall?.model_brier)}</span>
             </div>
-            <div>
-              <span className="model-registry-stat-label">Market Brier</span>
-              <span className="model-registry-stat-value">{fmt(evaluation.overall?.market_brier)}</span>
+            <div className="stat-strip__item">
+              <span className="stat-strip__label">Market Brier</span>
+              <span className="stat-strip__value">{fmt(evaluation.overall?.market_brier)}</span>
             </div>
           </div>
           {evaluation.overall?.exploratory && (

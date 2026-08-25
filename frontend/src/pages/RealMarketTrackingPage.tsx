@@ -56,10 +56,10 @@ function BucketTable({ title, buckets }: { title: string; buckets: BucketResult[
                 <td>{b.returns.n_settled_binary}</td>
                 <td>{pct(b.returns.win_rate)}</td>
                 <td>{b.returns.average_odds ? `$${b.returns.average_odds.toFixed(2)}` : "—"}</td>
-                <td className={b.returns.total_profit_flat_stake >= 0 ? "rmt-pos" : "rmt-neg"}>
+                <td className={b.returns.total_profit_flat_stake >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>
                   {b.returns.n_settled_binary ? `$${b.returns.total_profit_flat_stake.toFixed(2)}` : "—"}
                 </td>
-                <td className={(b.returns.roi ?? 0) >= 0 ? "rmt-pos" : "rmt-neg"}>{pct(b.returns.roi)}</td>
+                <td className={(b.returns.roi ?? 0) >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>{pct(b.returns.roi)}</td>
                 <td>
                   <span className={`rmt-sample rmt-sample--${b.sample_size_level}`} title={SAMPLE_LABELS[b.sample_size_level]}>
                     {b.sample_size_level.replace("_", " ")}
@@ -128,7 +128,7 @@ export function QuoteHistoryDrawer({ movement, onClose }: { movement: MarketMove
                     <td>{pct(e.raw_implied_probability)}</td>
                     <td>{pct(e.devigged_probability)}</td>
                     <td>{pct(e.model_probability)}</td>
-                    <td className={e.difference_pp >= 0 ? "rmt-pos" : "rmt-neg"}>{(e.difference_pp * 100).toFixed(1)}</td>
+                    <td className={e.difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>{(e.difference_pp * 100).toFixed(1)}</td>
                     <td>{e.confidence_tier}</td>
                     <td>{e.selection_status_at_observation}</td>
                     <td>{e.market_result ?? "pending"}</td>
@@ -229,8 +229,8 @@ export function MarketMovementTable({
                 <td>${m.first_odds.toFixed(2)}</td>
                 <td>${m.latest_odds.toFixed(2)}</td>
                 <td>${m.lowest_odds.toFixed(2)} – ${m.highest_odds.toFixed(2)}</td>
-                <td className={m.first_difference_pp >= 0 ? "rmt-pos" : "rmt-neg"}>{(m.first_difference_pp * 100).toFixed(1)}</td>
-                <td className={m.latest_difference_pp >= 0 ? "rmt-pos" : "rmt-neg"}>{(m.latest_difference_pp * 100).toFixed(1)}</td>
+                <td className={m.first_difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>{(m.first_difference_pp * 100).toFixed(1)}</td>
+                <td className={m.latest_difference_pp >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}>{(m.latest_difference_pp * 100).toFixed(1)}</td>
                 <td>{m.n_observations}</td>
               </tr>
             ))}
@@ -397,8 +397,8 @@ function RealMarketTrackingPage() {
               <div><span className="rmt-grid__label">Pushed / Voided</span><span className="rmt-grid__value">{report.overall_return.n_pushed} / {report.overall_return.n_voided}</span></div>
               <div><span className="rmt-grid__label">Win rate</span><span className="rmt-grid__value">{pct(report.overall_return.win_rate)}</span></div>
               <div><span className="rmt-grid__label">Average odds</span><span className="rmt-grid__value">{report.overall_return.average_odds ? `$${report.overall_return.average_odds.toFixed(2)}` : "—"}</span></div>
-              <div><span className="rmt-grid__label">Flat $1 P/L</span><span className={`rmt-grid__value ${report.overall_return.total_profit_flat_stake >= 0 ? "rmt-pos" : "rmt-neg"}`}>${report.overall_return.total_profit_flat_stake.toFixed(2)}</span></div>
-              <div><span className="rmt-grid__label" title="Return on investment: total profit divided by total staked, at flat $1 stakes">ROI</span><span className={`rmt-grid__value ${(report.overall_return.roi ?? 0) >= 0 ? "rmt-pos" : "rmt-neg"}`}>{pct(report.overall_return.roi)}</span></div>
+              <div><span className="rmt-grid__label">Flat $1 P/L</span><span className={`rmt-grid__value ${report.overall_return.total_profit_flat_stake >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}`}>${report.overall_return.total_profit_flat_stake.toFixed(2)}</span></div>
+              <div><span className="rmt-grid__label" title="Return on investment: total profit divided by total staked, at flat $1 stakes">ROI</span><span className={`rmt-grid__value ${(report.overall_return.roi ?? 0) >= 0 ? "prop-insights-table__diff-pos" : "prop-insights-table__diff-neg"}`}>{pct(report.overall_return.roi)}</span></div>
             </div>
           </div>
 

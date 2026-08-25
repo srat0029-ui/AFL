@@ -9,7 +9,7 @@
 
 .weekly-review-page__header h1 {
   margin: 0 0 0.5rem;
-  font-size: 1.6rem;
+  font-size: var(--fs-page-title);
   color: var(--text-h);
 }
 
@@ -38,6 +38,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  cursor: pointer;
+  min-width: 0;
 }
 
 .weekly-review-row__header {
@@ -68,7 +70,44 @@
 }
 
 .weekly-review-row__caution {
-  color: #fdba74;
+  color: var(--caution-text);
+}
+
+.weekly-review-row__expand-hint {
+  margin-left: auto;
+  color: var(--text-dim);
+}
+
+.weekly-review-row__evidence {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.75rem 1.25rem;
+  margin-top: 0.5rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--fs-meta);
+  color: var(--text);
+}
+
+.weekly-review-row__evidence-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.weekly-review-row__evidence-col ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.weekly-review-row__evidence-label {
+  color: var(--text-muted);
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 
 .weekly-review-page__comparison {
@@ -85,7 +124,8 @@
 
 .weekly-review-page__comparison-header h2 {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: var(--fs-section-title);
+  font-weight: 600;
   color: var(--text-h);
 }
 
