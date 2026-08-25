@@ -265,9 +265,10 @@
 }
 
 .app-nav__group-menu {
-  position: absolute;
-  top: calc(100% + 0.3rem);
-  left: 0;
+  /* Portalled to <body> and positioned via inline top/left (see App.tsx) -
+     fixed, not absolute, since it's no longer inside .app-nav's own
+     positioning/clipping context. */
+  position: fixed;
   display: flex;
   flex-direction: column;
   min-width: 11rem;

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState, type SyntheticEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type SyntheticEvent } from "react";
+import { createPortal } from "react-dom";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import "./App.css";
 import B2BDemoPage from "./pages/B2BDemoPage";
@@ -69,6 +70,7 @@ function NavGroup({
   // sibling group below re-enters onOpenChange(false) and immediately
   // undoes whichever group the user just opened.
   const ignoreNextToggle = useRef(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
 
   // Keep the native <details> element in sync with lifted state so only one
   // group can be open at a time, and so the group closes on navigation or
@@ -79,6 +81,21 @@ function NavGroup({
     if (ref.current && ref.current.open !== isOpen) {
       ignoreNextToggle.current = true;
       ref.current.open = isOpen;
+    }
+  }, [isOpen]);
+
+  // The menu is portalled to <body> and positioned in fixed coordinates
+  // (see render below) rather than living inside .app-nav — that container
+  // has overflow-x: auto for narrow-viewport scrolling, and per the CSS
+  // overflow spec that silently forces overflow-y: auto too, which was
+  // clipping/scroll-trapping the dropdown inside the thin nav strip instead
+  // of letting it float below it.
+  useLayoutEffect(() => {
+    if (isOpen && ref.current) {
+      const rect = ref.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 5, left: rect.left });
+    } else {
+      setMenuPos(null);
     }
   }, [isOpen]);
 
@@ -93,18 +110,23 @@ function NavGroup({
   return (
     <details ref={ref} className="app-nav__group" onToggle={handleToggle}>
       <summary>{label}</summary>
-      <div className="app-nav__group-menu">
-        {links.map((l) => (
-          <NavLink
-            key={l.to}
-            to={l.to}
-            className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}
-            onClick={() => onOpenChange(false)}
-          >
-            {l.label}
-          </NavLink>
-        ))}
-      </div>
+      {isOpen &&
+        menuPos &&
+        createPortal(
+          <div className="app-nav__group-menu" style={{ top: menuPos.top, left: menuPos.left }}>
+            {links.map((l) => (
+              <NavLink
+                key={l.to}
+                to={l.to}
+                className={({ isActive }) => (isActive ? "app-nav__link app-nav__link--active" : "app-nav__link")}
+                onClick={() => onOpenChange(false)}
+              >
+                {l.label}
+              </NavLink>
+            ))}
+          </div>,
+          document.body
+        )}
     </details>
   );
 }
@@ -120,15 +142,34 @@ function App() {
     setOpenGroup(null);
   }, [location.pathname]);
 
-  // Close on a click outside the nav bar.
+  // Close on a click outside the nav bar. The open group's menu is portalled
+  // to <body> (see NavGroup) so it's no longer a DOM descendant of navRef -
+  // explicitly allow clicks landing inside it too, or every click on a link
+  // in the menu would close it out from under itself before the link's own
+  // onClick/navigation had a chance to run.
   useEffect(() => {
     function handlePointerDown(e: PointerEvent) {
-      if (navRef.current && !navRef.current.contains(e.target as Node)) {
-        setOpenGroup(null);
-      }
+      const target = e.target as Element;
+      if (navRef.current?.contains(target)) return;
+      if (target.closest?.(".app-nav__group-menu")) return;
+      setOpenGroup(null);
     }
     document.addEventListener("pointerdown", handlePointerDown);
     return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, []);
+
+  // The portalled menu's position is computed once on open from the
+  // trigger's bounding rect - close it on nav scroll so it can't be left
+  // hanging in a stale position if the (horizontally-scrollable) nav bar
+  // moves out from under it.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    function handleScroll() {
+      setOpenGroup(null);
+    }
+    nav.addEventListener("scroll", handleScroll);
+    return () => nav.removeEventListener("scroll", handleScroll);
   }, []);
 
   return (
