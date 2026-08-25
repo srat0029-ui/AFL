@@ -259,7 +259,8 @@
   margin-top: 1px;
 }
 
-.app-nav__group[open] > summary {
+.app-nav__group[open] > summary,
+.app-nav__group--active > summary {
   color: var(--text-h);
   background: var(--bg-inset);
 }

@@ -23,6 +23,23 @@ import WeeklyReviewPage from "./pages/WeeklyReviewPage";
 // Section 4: grouped nav, Multis pinned outside every group as the primary
 // during-finals destination. Groups map to the brief's suggested structure,
 // extended just enough to place every existing route somewhere sensible.
+// Routes that don't have their own nav link (drill-in/detail pages reached
+// by clicking through from elsewhere) but should still light up the group
+// they conceptually belong to, so a group's active state doesn't go dark
+// just because you're one level deeper than its listed links.
+const EXTRA_GROUP_ROUTES: Record<string, string[]> = {
+  Analysis: ["/players", "/matches"],
+};
+
+function isPathActive(pathname: string, to: string): boolean {
+  return pathname === to || pathname.startsWith(`${to}/`);
+}
+
+function isGroupActive(group: { label: string; links: { to: string }[] }, pathname: string): boolean {
+  if (group.links.some((l) => isPathActive(pathname, l.to))) return true;
+  return (EXTRA_GROUP_ROUTES[group.label] ?? []).some((prefix) => isPathActive(pathname, prefix));
+}
+
 const NAV_GROUPS: { label: string; links: { to: string; label: string }[] }[] = [
   {
     label: "Analysis",
@@ -57,11 +74,13 @@ function NavGroup({
   label,
   links,
   isOpen,
+  isActive,
   onOpenChange,
 }: {
   label: string;
   links: { to: string; label: string }[];
   isOpen: boolean;
+  isActive: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const ref = useRef<HTMLDetailsElement>(null);
@@ -108,7 +127,7 @@ function NavGroup({
   }
 
   return (
-    <details ref={ref} className="app-nav__group" onToggle={handleToggle}>
+    <details ref={ref} className={isActive ? "app-nav__group app-nav__group--active" : "app-nav__group"} onToggle={handleToggle}>
       <summary>{label}</summary>
       {isOpen &&
         menuPos &&
@@ -191,6 +210,7 @@ function App() {
             label={g.label}
             links={g.links}
             isOpen={openGroup === g.label}
+            isActive={isGroupActive(g, location.pathname)}
             onOpenChange={(open) => setOpenGroup(open ? g.label : null)}
           />
         ))}
