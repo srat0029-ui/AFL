@@ -34,6 +34,12 @@
                        PlayerMatchStat results (won/lost/push/void/
                        unresolved), and reports a summary. Idempotent —
                        an already-settled observation is never re-touched.
+                       Also settles any pending Placed Bets tracker legs
+                       (app/player_modelling/placed_bets.py) the same way —
+                       previously that only happened inside run-live-cycle,
+                       so running this command standalone left placed bets
+                       stuck pending indefinitely even once their results
+                       were available.
   run-live-cycle     — Sections 1-3 of the live-operations stage brief: the
                        single command to run through an AFL round —
                        orchestrates fixtures -> player-stat updates ->
@@ -75,6 +81,7 @@ from app.player_modelling.live_engine import (
 )
 from app.player_modelling.live_persistence import persist_projection_run
 from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, run_all_sanity_checks
+from app.player_modelling.placed_bets import settle_placed_bets
 from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
 from app.player_modelling.prop_settlement import settle_all_completed_matches
@@ -384,21 +391,45 @@ def _settle_props() -> int:
         report = settle_all_completed_matches(db)
         if report.matches_considered == 0:
             print("  No completed matches have unsettled observations — nothing to settle.")
-            return 0
-        print(f"  {report.matches_considered} match(es) considered.")
+        else:
+            print(f"  {report.matches_considered} match(es) considered.")
 
-        print("\nStep 2: settlement results")
-        print(f"  settled: {report.observations_settled} (already settled, skipped: {report.already_settled_skipped})")
+            print("\nStep 2: settlement results")
+            print(f"  settled: {report.observations_settled} (already settled, skipped: {report.already_settled_skipped})")
+            print(
+                f"  won={report.observations_won} lost={report.observations_lost} push={report.observations_pushed} "
+                f"void={report.observations_voided} unresolved={report.observations_unresolved}"
+            )
+            if report.observations_voided:
+                print(f"  {report.observations_voided} observation(s) voided — match complete, other players' stats present, but this player has none (DNP).")
+            if report.awaiting_player_stats:
+                print(f"  {report.awaiting_player_stats} observation(s) left pending — match complete but no player-match stats ingested for it yet (will retry next cycle).")
+            if report.observations_flagged_for_review:
+                print(f"  {report.observations_flagged_for_review} observation(s) flagged for manual review — implausible actual stat value.")
+
+        # Step 3: Placed Bets (Section 3 of the settlement reliability audit
+        # — this used to only run as part of run-live-cycle, so anyone who
+        # only ever ran settle-props standalone would see prop observations
+        # settle correctly while their own placed bets stayed pending
+        # forever). Independent of Step 1/2 above — a match can have placed
+        # bets with no matching prop observation (e.g. a manually-entered
+        # or best_value bet) or vice versa.
+        print("\nStep 3: settling placed bets (Placed Bets tracker)...")
+        bet_report = settle_placed_bets(db)
         print(
-            f"  won={report.observations_won} lost={report.observations_lost} push={report.observations_pushed} "
-            f"void={report.observations_voided} unresolved={report.observations_unresolved}"
+            f"  checked {bet_report.legs_checked} pending leg(s): settled={bet_report.bets_settled} "
+            f"(won={bet_report.bets_won} lost={bet_report.bets_lost} push={bet_report.bets_pushed} void={bet_report.bets_voided})"
         )
-        if report.observations_voided:
-            print(f"  {report.observations_voided} observation(s) voided — match complete, other players' stats present, but this player has none (DNP).")
-        if report.awaiting_player_stats:
-            print(f"  {report.awaiting_player_stats} observation(s) left pending — match complete but no player-match stats ingested for it yet (will retry next cycle).")
-        if report.observations_flagged_for_review:
-            print(f"  {report.observations_flagged_for_review} observation(s) flagged for manual review — implausible actual stat value.")
+        if bet_report.legs_repaired:
+            print(f"  {bet_report.legs_repaired} leg(s) had missing threshold/line_type recovered from market history before settling.")
+        if bet_report.matches_awaiting_result:
+            print(f"  {bet_report.matches_awaiting_result} leg(s) waiting on their match to complete.")
+        if bet_report.matches_awaiting_player_stats:
+            print(f"  {bet_report.matches_awaiting_player_stats} leg(s) waiting on player stats for a completed match.")
+        if bet_report.settlement_failures:
+            print(f"  {bet_report.settlement_failures} leg(s) flagged as settlement failures — needs investigation, see logs.")
+        if bet_report.multis_settled:
+            print(f"  {bet_report.multis_settled} multi(s) newly settled (won={bet_report.multis_won} lost={bet_report.multis_lost} void={bet_report.multis_voided}).")
 
         return 0
     finally:

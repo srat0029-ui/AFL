@@ -250,11 +250,20 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     # this exact settlement math rather than duplicating it.
     try:
         bet_settlement = settle_placed_bets(db)
-        report.add(
-            "settle_placed_bets", STEP_SUCCESS,
+        detail = (
             f"settled {bet_settlement.bets_settled} (won={bet_settlement.bets_won} lost={bet_settlement.bets_lost} "
-            f"push={bet_settlement.bets_pushed} void={bet_settlement.bets_voided}), {bet_settlement.awaiting_data} awaiting data",
+            f"push={bet_settlement.bets_pushed} void={bet_settlement.bets_voided}), {bet_settlement.awaiting_data} awaiting data"
         )
+        if bet_settlement.legs_repaired:
+            detail += f", {bet_settlement.legs_repaired} repaired"
+        if bet_settlement.settlement_failures:
+            detail += f", {bet_settlement.settlement_failures} settlement failure(s)"
+        if bet_settlement.multis_settled:
+            detail += (
+                f", {bet_settlement.multis_settled} multi(s) settled "
+                f"(won={bet_settlement.multis_won} lost={bet_settlement.multis_lost} void={bet_settlement.multis_voided})"
+            )
+        report.add("settle_placed_bets", STEP_SUCCESS, detail)
     except Exception as exc:  # noqa: BLE001
         report.add("settle_placed_bets", STEP_RECOVERABLE_FAILURE, f"placed-bet settlement failed: {exc}")
 
