@@ -6,6 +6,10 @@ A pricing and market-intelligence system for Australian Football League markets:
 
 ~39k lines of backend Python across 270 modules, ~14.5k lines of frontend TypeScript across 49 files, 1,540 backend tests.
 
+Model vs. real, settled bookmaker markets — not a backtest, an actual running comparison against live prices from 9 Australian bookmakers:
+
+![Model vs market: Brier score, log-loss, and calibration against real settled bookmaker prices](docs/screenshots/real-market-tracking-brier.png)
+
 ## What this system does
 
 Historical AFL results (Squiggle, AFLTables) and live bookmaker odds (The Odds API, 9 AU books)
@@ -148,12 +152,9 @@ A React 19 / TypeScript product surface sits on top of the same pricing core (no
 ![Elo calibration: reliability diagram against three naive baselines](docs/screenshots/elo-calibration.png)
 ![Poisson calibration: reliability diagram, ECE 0.0545 — reported as-is, worse than Elo's](docs/screenshots/poisson-calibration.png)
 
-**Real Market Tracking** — the live, growing dataset behind the Prospective Evaluation numbers above:
+**Real Market Tracking** — the dataset behind the Brier/log-loss comparison at the top of this README (collection quality, bookmaker coverage, date range):
 
 ![Real Market Tracking: dataset summary and collection quality](docs/screenshots/real-market-tracking-summary.png)
-![Real Market Tracking: model vs market Brier/log-loss and the illustrative flat-stake return](docs/screenshots/real-market-tracking-brier.png)
-
-Not yet captured: **Match Detail's** model-vs-market panel with the Multi Builder below it, **Market Monitor's** "Model vs Consensus" tab with a case expanded to show its priority-score breakdown, and a Multi Builder option showing the correlation-warning chip.
 
 ## Engineering decisions
 
