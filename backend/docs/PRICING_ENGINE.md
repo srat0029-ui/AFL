@@ -73,7 +73,7 @@ GET /api/v1/pricing/afl/players/333/disposals?match_id=2070&threshold=22.5
   draw concept). **Line/total**: Poisson team-strength state, `home_pmf`/
   `away_pmf` scored at any requested line via `prob_margin_over`/
   `prob_total_over`.
-- **Disposals**: Ridge regression (rolling 3/5/10/season/career averages +
+- **Disposals**: Huber regression (rolling 3/5/10/season/career averages +
   EWMA) → mean, priced via a Negative-Binomial (NB2) count distribution fit
   on holdout residual dispersion.
 - **Goals**: a hurdle model — a separate `P(scores ≥ 1)` classifier, and a
