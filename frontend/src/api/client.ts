@@ -1744,6 +1744,21 @@ export interface MultiLeg {
 
 export type MultiMode = "high_probability" | "value";
 
+// Best-effort joint-probability enrichment (backend app/pricing/
+// same_game_pricing.py) — present only for combos with at most one team
+// leg (h2h/total) and at least one player leg; null otherwise. Additive:
+// indicative_combined_odds above is still the naive product, unchanged.
+export interface SameGamePricing {
+  model_joint_probability: number;
+  model_joint_fair_odds: number;
+  naive_independence_probability: number;
+  correlation_adjustment_pp: number;
+  dependence_validated: boolean;
+  model_version: string;
+  n_simulations: number;
+  mc_standard_error: number;
+}
+
 export interface MultiOption {
   option_label: string;
   bookmaker: string;
@@ -1760,6 +1775,7 @@ export interface MultiOption {
   lowest_leg_probability: number;
   average_leg_probability: number;
   legs: MultiLeg[];
+  same_game_pricing: SameGamePricing | null;
 }
 
 export type MultiTierKey = "conservative" | "balanced" | "higher_return" | "longer_shot";

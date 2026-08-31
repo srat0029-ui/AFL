@@ -138,6 +138,45 @@ class GoalPriceRead(BaseModel):
     model_risk_flags: list[ModelRiskFlagRead]
 
 
+class SameGameLegRequest(BaseModel):
+    """One leg of a requested Same Game Multi — see
+    app/pricing/same_game_pricing.py's SgmLegRequest for the full field
+    semantics this mirrors."""
+
+    leg_type: str  # "h2h" | "line" | "total" | "disposals" | "goals"
+    team_id: int | None = None
+    is_over: bool = True
+    line_value: float | None = None
+    player_id: int | None = None
+    threshold: float | None = None
+
+
+class SameGameMultiRequest(BaseModel):
+    match_id: int
+    legs: list[SameGameLegRequest]
+    n_simulations: int = 100_000
+
+
+class SameGameLegRead(BaseModel):
+    leg_type: str
+    label: str
+    naive_probability: float
+
+
+class SameGameMultiPriceRead(BaseModel):
+    match_id: int
+    provenance: ModelProvenance
+    model_probability: float
+    model_fair_odds: float
+    naive_independence_probability: float
+    naive_independence_fair_odds: float
+    correlation_adjustment_pp: float
+    mc_standard_error: float
+    n_simulations: int
+    dependence_validated: bool
+    legs: list[SameGameLegRead]
+
+
 class MatchPricingRead(BaseModel):
     match_id: int
     team: TeamMarketPriceRead

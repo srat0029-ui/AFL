@@ -104,3 +104,65 @@ def test_goal_price_response_carries_structured_model_risk_flag(client, db_sessi
             ),
         }
     ]
+
+
+def test_same_game_multi_round_trip(client, db_session):
+    from app.models import PlayerDisposalProjection
+
+    match = _seed(db_session)
+    home = db_session.get(Team, match.home_team_id)
+    player = Player(sport_id=home.sport_id, display_name="Same Game Player", source="afltables", source_player_id="sgm-1", current_team_id=home.id)
+    db_session.add(player)
+    db_session.flush()
+    db_session.add(PlayerDisposalProjection(
+        match_id=match.id, player_id=player.id, team_id=home.id, model_name="disposal_nb", model_version="v1",
+        generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=30,
+        predicted_mean=22.0, distribution_method="nb", nb_alpha=0.15, confidence_tier="higher_confidence",
+        warnings=[], input_features={},
+    ))
+    db_session.commit()
+
+    resp = client.post("/api/v1/pricing/afl/same-game", json={
+        "match_id": match.id,
+        "legs": [
+            {"leg_type": "h2h", "team_id": home.id},
+            {"leg_type": "disposals", "player_id": player.id, "threshold": 21.5},
+        ],
+        "n_simulations": 20000,
+    })
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert 0.0 < body["model_probability"] < 1.0
+    assert body["model_fair_odds"] > 1.0
+    assert len(body["legs"]) == 2
+    assert body["provenance"]["model_name"] == "sgm_joint_conditional_mc"
+    assert body["dependence_validated"] is False  # no SgmDependenceCoefficient row seeded
+
+
+def test_same_game_multi_rejects_multiple_team_legs(client, db_session):
+    from app.models import PlayerDisposalProjection
+
+    match = _seed(db_session)
+    home = db_session.get(Team, match.home_team_id)
+    player = Player(sport_id=home.sport_id, display_name="Correlation Test Player", source="afltables", source_player_id="sgm-2", current_team_id=home.id)
+    db_session.add(player)
+    db_session.flush()
+    db_session.add(PlayerDisposalProjection(
+        match_id=match.id, player_id=player.id, team_id=home.id, model_name="disposal_nb", model_version="v1",
+        generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=30,
+        predicted_mean=22.0, distribution_method="nb", nb_alpha=0.15, confidence_tier="higher_confidence",
+        warnings=[], input_features={},
+    ))
+    db_session.commit()
+
+    resp = client.post("/api/v1/pricing/afl/same-game", json={
+        "match_id": match.id,
+        "legs": [
+            {"leg_type": "h2h", "team_id": home.id},
+            {"leg_type": "line", "team_id": home.id, "line_value": -12.5},
+            {"leg_type": "disposals", "player_id": player.id, "threshold": 21.5},
+        ],
+    })
+
+    assert resp.status_code == 400

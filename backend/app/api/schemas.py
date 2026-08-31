@@ -1610,6 +1610,25 @@ class MultiLegRead(BaseModel):
     line_value: float | None = None
 
 
+class SameGamePricingRead(BaseModel):
+    """Best-effort joint-probability enrichment (app/pricing/
+    same_game_pricing.py's conditional Monte Carlo engine) attached
+    alongside — never in place of — indicative_combined_odds above. Only
+    present when the combo has at most one team-market leg (h2h/total) and
+    at least one player-prop leg; a "line" team leg or 2+ team legs leaves
+    this null and the option unchanged otherwise (see multi_builder.py's
+    _try_price_same_game docstring)."""
+
+    model_joint_probability: float
+    model_joint_fair_odds: float
+    naive_independence_probability: float
+    correlation_adjustment_pp: float
+    dependence_validated: bool
+    model_version: str
+    n_simulations: int
+    mc_standard_error: float
+
+
 class MultiOptionRead(BaseModel):
     option_label: str
     bookmaker: str
@@ -1626,6 +1645,7 @@ class MultiOptionRead(BaseModel):
     lowest_leg_probability: float
     average_leg_probability: float
     legs: list[MultiLegRead]
+    same_game_pricing: SameGamePricingRead | None = None
 
 
 class BookmakerComparisonEntryRead(BaseModel):

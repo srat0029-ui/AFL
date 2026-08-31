@@ -246,6 +246,33 @@
   margin: 0.1rem 0;
 }
 
+.tier-option__sgm {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  padding: 0.4rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.tier-option__sgm-headline {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.tier-option__sgm-label {
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  color: var(--accent-light);
+}
+
+.tier-option__sgm-detail {
+  margin: 0;
+}
+
 .tier-option__footer {
   display: flex;
   align-items: center;

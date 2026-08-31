@@ -31,6 +31,9 @@ from app.api.pricing_schemas import (
     ModelProvenance,
     ModelRiskFlagRead,
     RoundPricingRead,
+    SameGameLegRead,
+    SameGameMultiPriceRead,
+    SameGameMultiRequest,
     StaleWarningRead,
     TeamMarketPriceRead,
     ThresholdPriceRead,
@@ -44,7 +47,10 @@ from app.pricing.integration_health import load_integration_health
 from app.pricing.market_intelligence import player_market_intelligence, team_market_intelligence
 from app.pricing.player_pricing import DisposalPrice, GoalPrice, price_disposals, price_goals
 from app.pricing.round_pricing import RoundPricing, price_current_round
+from app.pricing.same_game_pricing import SameGameMultiPrice, SgmLegRequest, SgmValidationError, price_same_game_multi
 from app.pricing.team_pricing import TeamMarketPrice, latest_completed_match_timestamp, price_team_market
+
+SGM_MODEL_NAME = "sgm_joint_conditional_mc"
 
 pricing_router = APIRouter(prefix="/api/v1/pricing", tags=["pricing-v1"])
 market_intel_router = APIRouter(prefix="/api/v1/market-intelligence", tags=["market-intelligence-v1"])
@@ -189,6 +195,32 @@ def get_player_goal_pricing(player_id: int, match_id: int, threshold: list[float
     if row is None:
         raise HTTPException(status_code=404, detail="no current goal projection for this player/match")
     return _goal_read(price_goals(db, row, extra_thresholds=threshold or None))
+
+
+def _same_game_read(p: SameGameMultiPrice) -> SameGameMultiPriceRead:
+    return SameGameMultiPriceRead(
+        match_id=p.match_id,
+        provenance=_provenance(SGM_MODEL_NAME, p.model_version, p.generated_at, p.data_cutoff or p.generated_at),
+        model_probability=p.model_probability, model_fair_odds=p.model_fair_odds,
+        naive_independence_probability=p.naive_independence_probability, naive_independence_fair_odds=p.naive_independence_fair_odds,
+        correlation_adjustment_pp=p.correlation_adjustment_pp, mc_standard_error=p.mc_standard_error,
+        n_simulations=p.n_simulations, dependence_validated=p.dependence_validated,
+        legs=[SameGameLegRead(leg_type=leg.leg_type, label=leg.label, naive_probability=leg.naive_probability) for leg in p.legs],
+    )
+
+
+@pricing_router.post("/afl/same-game", response_model=SameGameMultiPriceRead)
+def post_same_game_multi(request: SameGameMultiRequest, db: Session = Depends(get_db)) -> SameGameMultiPriceRead:
+    """Same Game Multi joint pricing — a conditional Monte Carlo model, not
+    the naive independence product (see app/pricing/same_game_pricing.py).
+    A strongly-correlated leg pairing (e.g. a team's own H2H + that team's
+    own line) is rejected with 400, same as the product's Multi Builder."""
+    legs = [SgmLegRequest(**leg.model_dump()) for leg in request.legs]
+    try:
+        price = price_same_game_multi(db, request.match_id, legs, n_simulations=request.n_simulations)
+    except SgmValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return _same_game_read(price)
 
 
 # --- Market Intelligence (separate layer) -----------------------------------

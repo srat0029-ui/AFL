@@ -603,7 +603,67 @@ def option_as_dict(opt: dict) -> dict:
     }
 
 
-def match_multi_tiers_as_dict(result: MatchMultiTiers) -> dict:
+_SGM_LEG_TYPE_MAP = {PlayerMarket.DISPOSALS.value: "disposals", PlayerMarket.GOALS.value: "goals"}
+_SGM_N_SIMULATIONS = 20_000  # smaller than the dedicated pricing API's 100k default - this runs once per rendered option, several times per request
+
+
+def _try_price_same_game(db: Session, match_id: int, opt: dict) -> dict | None:
+    """Best-effort Same Game Multi joint-probability enrichment via
+    app/pricing/same_game_pricing.py's conditional Monte Carlo engine.
+    ADDITIVE ONLY: never changes which combos are searched/ranked/selected
+    above (this runs strictly after a combo is already chosen), never
+    replaces indicative_combined_odds, and any reason this can't be priced
+    - a "line" team leg (handicap sign convention isn't safely inferable
+    from this dict alone), 2+ team legs, no player leg, a missing
+    projection row, or a strong-correlation pair the engine itself would
+    reject - simply returns None so the option renders exactly as it did
+    before this existed."""
+    team_legs = [leg for leg in opt["legs"] if leg["opportunity_type"] == "team" and leg["market_type"] in ("h2h", "total")]
+    unsupported_team_legs = [leg for leg in opt["legs"] if leg["opportunity_type"] == "team" and leg["market_type"] not in ("h2h", "total")]
+    player_legs = [leg for leg in opt["legs"] if leg["opportunity_type"] == "player"]
+    if unsupported_team_legs or len(team_legs) > 1 or not player_legs:
+        return None
+
+    from app.edges.calculator import ModelsUnavailableError
+    from app.pricing.same_game_pricing import SgmLegRequest, SgmValidationError, price_same_game_multi
+
+    requests = []
+    for leg in team_legs:
+        requests.append(SgmLegRequest(
+            leg_type=leg["market_type"], team_id=leg.get("team_id"),
+            is_over=(leg.get("selection", "") or "").lower() != "under", line_value=leg.get("line_value"),
+        ))
+    for leg in player_legs:
+        mapped_type = _SGM_LEG_TYPE_MAP.get(leg["market_type"])
+        if mapped_type is None or leg.get("threshold") is None or leg.get("player_id") is None:
+            return None
+        requests.append(SgmLegRequest(leg_type=mapped_type, player_id=leg["player_id"], threshold=leg["threshold"]))
+
+    try:
+        price = price_same_game_multi(db, match_id, requests, n_simulations=_SGM_N_SIMULATIONS)
+    except (SgmValidationError, ModelsUnavailableError):
+        # ModelsUnavailableError: elo_cli/poisson_cli haven't been run yet in
+        # this environment - Multi Builder itself doesn't need those to list
+        # legs (probabilities are already baked into best_opportunities), so
+        # this enrichment degrading to "unavailable" rather than raising
+        # matches its own "additive only" contract.
+        return None
+
+    return {
+        "model_joint_probability": price.model_probability, "model_joint_fair_odds": price.model_fair_odds,
+        "naive_independence_probability": price.naive_independence_probability,
+        "correlation_adjustment_pp": price.correlation_adjustment_pp, "dependence_validated": price.dependence_validated,
+        "model_version": price.model_version, "n_simulations": price.n_simulations, "mc_standard_error": price.mc_standard_error,
+    }
+
+
+def _option_with_sgm_pricing(db: Session, match_id: int, opt: dict) -> dict:
+    option_dict = option_as_dict(opt)
+    option_dict["same_game_pricing"] = _try_price_same_game(db, match_id, option_dict)
+    return option_dict
+
+
+def match_multi_tiers_as_dict(db: Session, result: MatchMultiTiers) -> dict:
     return {
         "match_id": result.match_id,
         "n_eligible_legs": result.n_eligible_legs,
@@ -611,7 +671,7 @@ def match_multi_tiers_as_dict(result: MatchMultiTiers) -> dict:
         "tiers": [
             {
                 "tier": tier_key, "label": TIER_LABELS[tier_key],
-                "options": [option_as_dict(o) for o in result.tiers[tier_key].options] if tier_key in result.tiers else [],
+                "options": [_option_with_sgm_pricing(db, result.match_id, o) for o in result.tiers[tier_key].options] if tier_key in result.tiers else [],
                 "unavailable_reason": result.tiers[tier_key].unavailable_reason if tier_key in result.tiers else None,
                 "bookmaker_comparison": result.tiers[tier_key].bookmaker_comparison if tier_key in result.tiers else [],
             }

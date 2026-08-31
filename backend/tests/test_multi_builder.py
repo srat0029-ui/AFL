@@ -21,6 +21,7 @@ from app.player_modelling.request_cache import clear_ttl_cache
 from app.player_modelling.multi_builder import (
     INDICATIVE_ODDS_LABEL, MIN_LEG_PROBABILITY_VALUE, MODE_HIGH_PROBABILITY, MODE_VALUE, TIER_BALANCED,
     TIER_CONSERVATIVE, TIER_HIGHER_RETURN, TIER_LONGER_SHOT, _all_alternate_legs, _match_legs, build_match_multis,
+    match_multi_tiers_as_dict,
 )
 
 NOW = datetime.now(timezone.utc)
@@ -818,3 +819,47 @@ def test_unconfirmed_player_leg_carries_teams_not_confirmed_warning(db_session):
 
     warning_codes = {w["code"] for w in _warnings_for(leg)}
     assert "TEAMS_NOT_CONFIRMED" in warning_codes
+
+
+# --- Same Game Multi joint-pricing enrichment (additive, see multi_builder._try_price_same_game) ---
+
+
+def test_team_and_player_combo_gets_same_game_pricing_attached(db_session):
+    match, home, away = _seed_match(db_session)
+    _seed_model_runs(db_session)
+    _add_team_quotes(db_session, match, home.name, market_type="h2h", prices=[("SportsBet", 1.40)])
+    _add_player_leg(db_session, match, home, player_name="Home Team Player", prices=[("SportsBet", 1.60)])
+    # 1.40 * 1.60 = 2.24 -> Conservative; MODE_VALUE (not High-Probability) because
+    # this synthetic team has no real Elo/Poisson signal - see test_moderate_correlation_carries_warning.
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True, mode=MODE_VALUE)
+    result_dict = match_multi_tiers_as_dict(db_session, result)
+
+    options = [opt for tier in result_dict["tiers"] for opt in tier["options"]]
+    combo = next((opt for opt in options if any(l["opportunity_type"] == "team" for l in opt["legs"]) and any(l["opportunity_type"] == "player" for l in opt["legs"])), None)
+    assert combo is not None, "expected a team+player combo to exist for this fixture"
+
+    sgm = combo["same_game_pricing"]
+    assert sgm is not None
+    assert 0.0 < sgm["model_joint_probability"] < 1.0
+    assert sgm["model_joint_fair_odds"] > 1.0
+    assert 0.0 < sgm["naive_independence_probability"] < 1.0
+    assert sgm["dependence_validated"] is False  # no SgmDependenceCoefficient persisted in this test DB
+
+
+def test_player_only_combo_has_no_same_game_pricing_without_team_leg(db_session):
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Player A", prices=[("SportsBet", 1.60)])
+    _add_player_leg(db_session, match, home, player_name="Player B", prices=[("SportsBet", 1.30)])
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    result_dict = match_multi_tiers_as_dict(db_session, result)
+
+    options = [opt for tier in result_dict["tiers"] for opt in tier["options"]]
+    assert options, "expected at least one combo"
+    for opt in options:
+        # both legs are players -> engine still applies (0 team legs is
+        # within its supported range) as long as elo/poisson models exist;
+        # this fixture doesn't seed them, so enrichment degrades to None
+        # via the caught ModelsUnavailableError rather than raising.
+        assert opt["same_game_pricing"] is None

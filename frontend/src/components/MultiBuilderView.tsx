@@ -6,6 +6,7 @@ import {
   type MultiMode,
   type MultiOption,
   type PlacedBetSourceMode,
+  type SameGamePricing,
 } from "../api/client";
 import { AddBetButton } from "./AddBetButton";
 import { AddMultiButton } from "./AddMultiButton";
@@ -203,6 +204,32 @@ function MultiLegRow({
   );
 }
 
+// Renders the joint-probability enrichment when present, always alongside
+// (never in place of) the naive indicative odds shown elsewhere in the
+// option — see backend app/pricing/same_game_pricing.py's module docstring
+// for what this is and isn't. `dependence_validated: false` means no
+// SgmDependenceCoefficient has cleared the go/no-go backtest yet, so the
+// number shown is the same as naive independence — flagged rather than hidden.
+function SameGamePricingPanel({ pricing }: { pricing: SameGamePricing }) {
+  const adjustment = pricing.correlation_adjustment_pp;
+  const adjustmentText = `${adjustment >= 0 ? "+" : ""}${adjustment.toFixed(2)}pp vs. naive independence`;
+  return (
+    <div className="tier-option__sgm">
+      <div className="tier-option__sgm-headline">
+        <span className="tier-option__sgm-label">Same Game Pricing</span>
+        <span className="num">
+          {(pricing.model_joint_probability * 100).toFixed(1)}% · ${pricing.model_joint_fair_odds.toFixed(2)}
+        </span>
+      </div>
+      <p className="hint tier-option__sgm-detail">
+        {pricing.dependence_validated
+          ? `Joint probability from a validated conditional Monte Carlo model (${pricing.n_simulations.toLocaleString()} simulations), ${adjustmentText}.`
+          : "No validated dependence model persisted yet — this matches the naive independence product below until one clears backtesting."}
+      </p>
+    </div>
+  );
+}
+
 function MultiOptionRow({
   tierKey,
   tierLabel,
@@ -259,6 +286,7 @@ function MultiOptionRow({
               ))}
             </div>
           )}
+          {option.same_game_pricing && <SameGamePricingPanel pricing={option.same_game_pricing} />}
           <div className="tier-option__footer">
             <span className="hint">{option.indicative_odds_explanation}</span>
             <AddMultiButton matchId={matchId} tier={tierKey} option={option} sourceMode={SOURCE_MODE_BY_MULTI_MODE[option.mode]} />
@@ -277,7 +305,10 @@ interface MultiBuilderViewProps {
  * the same opportunity computation Best Opportunities uses. One global
  * High Probability / Best Value toggle (High Probability default) applies
  * to every tier; each tier row shows its headline inline and expands to
- * full leg detail on click. Never shows a combined/joint probability. */
+ * full leg detail on click. The indicative combined odds are always the
+ * naive per-leg product; a validated Same Game Pricing joint probability
+ * (see SameGamePricingPanel) is shown alongside it when the backend engine
+ * supports the combo, never in place of it. */
 function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
   const [confirmedOnly, setConfirmedOnly] = useState(true);
   const [mode, setMode] = useState<MultiMode>("high_probability");

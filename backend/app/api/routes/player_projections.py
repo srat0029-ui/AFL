@@ -573,7 +573,7 @@ def get_match_multi_builder(
     )
     result = build_match_multis(db, match_id, confirmed_only=confirmed_only, mode=mode, raw_opportunities=raw_opportunities)
     readiness = compute_match_readiness(db, match_id, raw_opportunities=raw_opportunities)
-    return MatchMultiTiersRead(**match_multi_tiers_as_dict(result), readiness=MatchReadinessRead(**readiness.__dict__))
+    return MatchMultiTiersRead(**match_multi_tiers_as_dict(db, result), readiness=MatchReadinessRead(**readiness.__dict__))
 
 
 @router.get("/multi-builder/round-summary", response_model=RoundMultiSummaryRead)

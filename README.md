@@ -192,13 +192,24 @@ No claim of a betting edge, guaranteed profit, or "beats the bookmaker" is made 
 
 - No live-odds provider offers an automated AFL team-selection feed as of this write-up — lineups are entered manually, with the codebase explicitly designed to accept an automated source later.
 - De-vig is proportional/multiplicative only; Shin's method and the power method were not implemented.
-- SGM/correlated-leg pricing is research-only — the correlation study is done, but no joint-probability model has been built or shipped from it.
+- Same Game Multi joint pricing (below) models exactly one dependence channel — a player's own output vs. their own team's match outcome — via a single global linear coefficient per market, not a full pairwise correlation structure; teammate-pair and opponent-pair correlations remain unmodelled because the original correlation study found them negligible.
 - The team-level prospective dataset has zero settled rows; the evidence above is player-props-only and one short window within one season.
 - No authentication or rate limiting — this is a dev/demo build, with the intended approach (per-key API auth, gateway-level rate limiting) documented but not implemented.
-- No CI pipeline runs the test suite on push; it passes locally (1,540 tests) but isn't enforced automatically.
+- No CI pipeline runs the test suite on push; it passes locally (1,540+ tests) but isn't enforced automatically.
 - Frontend test coverage is thin — Vitest is wired up and one real test file exists, not a comprehensive suite.
 - Single sport (AFL), single fixture provider (Squiggle), single odds provider (The Odds API).
 - The elite-disposal-bias study didn't control for opponent strength — noted explicitly in the study itself as a scope boundary, not silently omitted.
+
+## Same Game Multi joint pricing
+
+The SGM correlation study above found one real dependence signal — a player's own output vs. their own team's match outcome — and nothing else worth modelling. `scripts/sgm_joint_model_backtest.py` turns that into a validated joint-probability engine rather than assuming it would help: it fits a single global linear "dependence coefficient" per market (disposals, goals) on 2019–2023 seasons, then validates on 2024–2025 (genuinely out-of-sample for the coefficient itself) by reconstructing 38,787 historical team-leg + player-prop combos and scoring the joint model against the naive independence product with `bootstrap_metric_difference` (2,000 resamples):
+
+| Metric | Joint model | Naive independence | 95% CI on the difference |
+|---|---|---|---|
+| Brier | 0.1531 | 0.1534 | [−0.0004, −0.0002] — excludes zero |
+| Log-loss | 0.4672 | 0.4683 | [−0.0014, −0.0008] — excludes zero |
+
+The improvement is real but small — consistent with the underlying correlations being weak (disposals slope +0.016, goals scoring-probability slope +0.0024) — and is reported at that size rather than dressed up. Only because it cleared this bar did it get promoted (`ModelPromotionEvent`, `market="same_game_multi"`) and wired into `app/pricing/same_game_pricing.py`'s live Monte Carlo pricing engine (100,000 simulated team-score draws per request, reusing the same exact Poisson PMFs the team markets are priced from — never a second, inconsistent team model), exposed at `POST /api/v1/pricing/afl/same-game` and as an additive "Same Game Pricing" panel in the product's own Multi Builder, alongside — never in place of — the existing naive indicative odds.
 
 ## Roadmap
 
@@ -206,7 +217,8 @@ No claim of a betting edge, guaranteed profit, or "beats the bookmaker" is made 
 - Add per-consumer API key auth and gateway-level rate limiting ahead of any real external integration.
 - Wire up CI to run the existing test suite on every push.
 - If a reliable automated team-selection source appears, replace the manual entry step without touching the projection/pricing code that consumes it.
-- Extend the SGM correlation research into a shipped empirical-conditional joint model, if a full backtest with clustered/bootstrap CIs supports it — not before.
+- Extend Same Game Multi joint pricing's prospective evaluation: freeze real upcoming-multi joint prices into `PricingSnapshot` (`market_family="same_game_multi"`) the same way team/player markets already are, so a settled-outcome track record accumulates for the joint model specifically, not just the backtest above.
+- Support a "line" (handicap) team leg in Same Game Multi combos — currently only h2h and total team legs are priced jointly, since handicap sign conventions weren't worth risking a silent bug in the first version.
 
 ## Running locally
 
