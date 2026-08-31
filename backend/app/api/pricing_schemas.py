@@ -346,3 +346,36 @@ class ProspectiveEvaluationRead(BaseModel):
     by_probability_bucket: list[ProspectiveSplitRead]
     by_model_version: list[ProspectiveSplitRead]
     message: str
+
+
+# --- SGM Prospective Live Evaluation ------------------------------------------
+
+
+class SgmProspectiveSplitRead(BaseModel):
+    label: str
+    n_settled: int
+    n_unique_combos: int
+    model_brier: float | None
+    naive_brier: float | None
+    model_log_loss: float | None
+    naive_log_loss: float | None
+    model_calibration_ece: float | None
+    bookmaker_brier: float | None
+    bookmaker_log_loss: float | None
+    n_with_bookmaker_price: int
+    exploratory: bool
+
+
+class SgmProspectiveEvaluationRead(BaseModel):
+    dataset_label: str = "SGM prospective live evaluation"  # see sgm_prospective_evaluation.py — never a backtest number
+    has_settled_data: bool
+    n_frozen_total: int
+    n_settled: int
+    n_unique_combos: int
+    overall: SgmProspectiveSplitRead | None
+    by_n_legs: list[SgmProspectiveSplitRead]
+    by_leg_combination: list[SgmProspectiveSplitRead]
+    by_correlation_adjustment_magnitude: list[SgmProspectiveSplitRead]
+    by_snapshot_horizon: list[SgmProspectiveSplitRead]
+    message: str
+    message: str

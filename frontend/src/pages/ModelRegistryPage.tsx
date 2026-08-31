@@ -2,10 +2,13 @@ import { useEffect, useState } from "react";
 import {
   fetchModelRegistry,
   fetchProspectiveEvaluation,
+  fetchSgmProspectiveEvaluation,
   type ModelRegistry,
   type ModelRunStatus,
   type ProspectiveEvaluation,
   type ProspectiveSplit,
+  type SgmProspectiveEvaluation,
+  type SgmProspectiveSplit,
 } from "../api/client";
 import "./ModelRegistryPage.css";
 
@@ -248,14 +251,111 @@ function ProspectiveEvaluationPanel({ evaluation }: { evaluation: ProspectiveEva
   );
 }
 
+function SgmProspectiveSplitTable({ title, splits }: { title: string; splits: SgmProspectiveSplit[] }) {
+  if (splits.length === 0) return null;
+  return (
+    <div className="model-registry-prospective__split">
+      <h4>{title}</h4>
+      <table className="model-registry-table">
+        <thead>
+          <tr>
+            <th>Split</th>
+            <th>N settled</th>
+            <th>Unique combos</th>
+            <th>Model Brier</th>
+            <th>Naive Brier</th>
+            <th>Model log loss</th>
+            <th>Naive log loss</th>
+            <th>ECE</th>
+            <th>Bookmaker Brier</th>
+          </tr>
+        </thead>
+        <tbody>
+          {splits.map((s) => (
+            <tr key={s.label}>
+              <td>
+                {s.label}
+                {s.exploratory && <span className="model-registry-exploratory-tag">Exploratory</span>}
+              </td>
+              <td>{s.n_settled}</td>
+              <td>{s.n_unique_combos}</td>
+              <td>{fmt(s.model_brier)}</td>
+              <td>{fmt(s.naive_brier)}</td>
+              <td>{fmt(s.model_log_loss)}</td>
+              <td>{fmt(s.naive_log_loss)}</td>
+              <td>{fmt(s.model_calibration_ece, 4)}</td>
+              <td title={s.n_with_bookmaker_price === 0 ? "No odds provider integration exposes a genuine bookmaker Same Game Multi price yet" : undefined}>
+                {s.n_with_bookmaker_price === 0 ? "No data" : fmt(s.bookmaker_brier)}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function SgmProspectiveEvaluationPanel({ evaluation }: { evaluation: SgmProspectiveEvaluation }) {
+  return (
+    <section className="model-registry-prospective">
+      <h2>Same Game Multi Prospective Evaluation</h2>
+      <p className="hint">
+        Same Game Multi joint prices frozen before kickoff (see Multi Builder's "Same Game Pricing" panel), settled
+        against real outcomes, never overwritten. Scored against naive independence always, and against a genuine
+        bookmaker SGM price only when one exists — no odds provider integration exposes that today, so those columns
+        read "No data" rather than a fabricated number. "Overall" and the leg/correlation splits below use each real
+        combo's single closing (last-before-kickoff) snapshot, so the same combo frozen at multiple horizons is never
+        counted more than once — the horizon split below is the one place that's deliberate.
+      </p>
+      {!evaluation.has_settled_data ? (
+        <div className="model-registry-accumulating">
+          <p>{evaluation.message}</p>
+        </div>
+      ) : (
+        <>
+          <div className="stat-strip model-registry-prospective__headline">
+            <div className="stat-strip__item">
+              <span className="stat-strip__label">Settled combos</span>
+              <span className="stat-strip__value">{evaluation.n_settled.toLocaleString()}</span>
+            </div>
+            <div className="stat-strip__item">
+              <span className="stat-strip__label">Unique combos (closing snapshot)</span>
+              <span className="stat-strip__value">{evaluation.n_unique_combos.toLocaleString()}</span>
+            </div>
+            <div className="stat-strip__item">
+              <span className="stat-strip__label">Model Brier</span>
+              <span className="stat-strip__value">{fmt(evaluation.overall?.model_brier)}</span>
+            </div>
+            <div className="stat-strip__item">
+              <span className="stat-strip__label">Naive independence Brier</span>
+              <span className="stat-strip__value">{fmt(evaluation.overall?.naive_brier)}</span>
+            </div>
+          </div>
+          {evaluation.overall?.exploratory && (
+            <p className="model-registry-exploratory-tag model-registry-exploratory-tag--headline">
+              Exploratory — not enough settled combos yet to claim the joint model beats naive independence.
+            </p>
+          )}
+          <SgmProspectiveSplitTable title="By number of legs" splits={evaluation.by_n_legs} />
+          <SgmProspectiveSplitTable title="By leg/market combination" splits={evaluation.by_leg_combination} />
+          <SgmProspectiveSplitTable title="By correlation-adjustment magnitude" splits={evaluation.by_correlation_adjustment_magnitude} />
+          <SgmProspectiveSplitTable title="By snapshot horizon (not deduped — tracks the model's own belief across the pre-match window)" splits={evaluation.by_snapshot_horizon} />
+        </>
+      )}
+    </section>
+  );
+}
+
 function ModelRegistryPage() {
   const [registry, setRegistry] = useState<ModelRegistry | null>(null);
   const [prospective, setProspective] = useState<ProspectiveEvaluation | null>(null);
+  const [sgmProspective, setSgmProspective] = useState<SgmProspectiveEvaluation | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchModelRegistry().then(setRegistry).catch((err) => setError(err instanceof Error ? err.message : "Failed to load model registry"));
     fetchProspectiveEvaluation().then(setProspective).catch(() => undefined);
+    fetchSgmProspectiveEvaluation().then(setSgmProspective).catch(() => undefined);
   }, []);
 
   return (
@@ -289,6 +389,7 @@ function ModelRegistryPage() {
           </section>
 
           {prospective && <ProspectiveEvaluationPanel evaluation={prospective} />}
+          {sgmProspective && <SgmProspectiveEvaluationPanel evaluation={sgmProspective} />}
         </>
       )}
     </main>

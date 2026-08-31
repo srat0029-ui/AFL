@@ -63,6 +63,7 @@ from app.models.prop_market_observation import PropMarketObservation
 from app.models.round import Round
 from app.models.season import Season
 from app.models.sgm_dependence_coefficient import SgmDependenceCoefficient
+from app.models.sgm_price_snapshot import SNAPSHOT_HORIZONS, SgmPriceSnapshot, SgmSnapshotLeg
 from app.models.sport import Sport
 from app.models.team import Team
 from app.models.team_match_stat import TeamMatchStat
@@ -134,6 +135,9 @@ __all__ = [
     "SOURCE_MODE_MANUAL",
     "PricingSnapshot",
     "SgmDependenceCoefficient",
+    "SgmPriceSnapshot",
+    "SgmSnapshotLeg",
+    "SNAPSHOT_HORIZONS",
     "ModelPromotionEvent",
     "AnomalyAlertSnapshot",
     "AnomalyCaseRecord",

@@ -56,6 +56,7 @@ from app.player_modelling.live_persistence import persist_projection_run
 from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, run_all_sanity_checks
 from app.player_modelling.placed_bets import settle_placed_bets
 from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
+from app.pricing.sgm_snapshot_service import settle_sgm_snapshots, snapshot_sgm_pricing
 from app.pricing.snapshot_service import settle_pricing_snapshots, snapshot_round_pricing
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
 from app.player_modelling.prop_odds_quota import recommended_refresh_interval
@@ -281,6 +282,21 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     except Exception as exc:  # noqa: BLE001
         report.add("settle_pricing_snapshots", STEP_RECOVERABLE_FAILURE, f"pricing snapshot settlement failed: {exc}")
 
+    # Step 4d: settle any pending SgmPriceSnapshot rows (Same Game Multi's
+    # own prospective evaluation dataset) - same Section 14 reasoning as
+    # step 4c, and the same shared settlement primitives underneath (see
+    # app/pricing/sgm_snapshot_service.py's module docstring).
+    try:
+        sgm_settlement = settle_sgm_snapshots(db)
+        report.add(
+            "settle_sgm_snapshots", STEP_SUCCESS,
+            f"settled {sgm_settlement.combos_settled} (won={sgm_settlement.combos_won} lost={sgm_settlement.combos_lost} "
+            f"void={sgm_settlement.combos_voided}), {sgm_settlement.legs_resolved} leg(s) newly resolved, "
+            f"{sgm_settlement.awaiting_data} awaiting data",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("settle_sgm_snapshots", STEP_RECOVERABLE_FAILURE, f"SGM snapshot settlement failed: {exc}")
+
     # Step 5-6: detect stale projections and regenerate only those (reuses
     # exactly what `refresh-live` already does — see cli.py's _refresh_live).
     changed_match_ids: set[int] = set()
@@ -411,6 +427,21 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
         )
     except Exception as exc:  # noqa: BLE001
         report.add("snapshot_pricing", STEP_RECOVERABLE_FAILURE, f"pricing snapshot creation failed: {exc}")
+
+    # Step 10b-ii: freeze this cycle's Same Game Multi joint prices, same
+    # placement reasoning as step 10b (after odds refresh, so leg
+    # probabilities reflect current lineup/odds context) - see
+    # app/pricing/sgm_snapshot_service.py. Which combos get frozen is
+    # whatever Multi Builder's own existing combo search actually surfaces
+    # this cycle, not a separately invented selection.
+    try:
+        sgm_snap_report = snapshot_sgm_pricing(db, [m.match_id for m in upcoming_matches])
+        report.add(
+            "snapshot_sgm_pricing", STEP_SUCCESS,
+            f"{sgm_snap_report.matches_considered} match(es) considered: {sgm_snap_report.snapshots_created} SGM snapshot(s) newly frozen",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("snapshot_sgm_pricing", STEP_RECOVERABLE_FAILURE, f"SGM snapshot creation failed: {exc}")
 
     # Step 10c: freeze/refresh/settle High Priority + Critical Market
     # Monitor cases (Genuine Prospective Operation stage, item 1) - same

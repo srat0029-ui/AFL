@@ -2819,6 +2819,43 @@ export function fetchProspectiveEvaluation(): Promise<ProspectiveEvaluation> {
   return request("/api/v1/model-registry/prospective-evaluation");
 }
 
+// Same Game Multi's own prospective evaluation — a separate dataset from
+// ProspectiveEvaluation above (multi-leg, model-vs-naive-independence and
+// model-vs-bookmaker rather than model-vs-market-consensus). See backend
+// app/player_modelling/sgm_prospective_evaluation.py.
+export interface SgmProspectiveSplit {
+  label: string;
+  n_settled: number;
+  n_unique_combos: number;
+  model_brier: number | null;
+  naive_brier: number | null;
+  model_log_loss: number | null;
+  naive_log_loss: number | null;
+  model_calibration_ece: number | null;
+  bookmaker_brier: number | null;
+  bookmaker_log_loss: number | null;
+  n_with_bookmaker_price: number;
+  exploratory: boolean;
+}
+
+export interface SgmProspectiveEvaluation {
+  dataset_label: string;
+  has_settled_data: boolean;
+  n_frozen_total: number;
+  n_settled: number;
+  n_unique_combos: number;
+  overall: SgmProspectiveSplit | null;
+  by_n_legs: SgmProspectiveSplit[];
+  by_leg_combination: SgmProspectiveSplit[];
+  by_correlation_adjustment_magnitude: SgmProspectiveSplit[];
+  by_snapshot_horizon: SgmProspectiveSplit[];
+  message: string;
+}
+
+export function fetchSgmProspectiveEvaluation(): Promise<SgmProspectiveEvaluation> {
+  return request("/api/v1/model-registry/sgm-prospective-evaluation");
+}
+
 // --- B2B Pricing API (/api/v1/pricing/*, /api/v1/market-intelligence/*) ----
 // Pure model belief (pricing) vs bookmaker comparison (market intelligence)
 // are separate endpoints by design — see backend app/pricing/ module docs.

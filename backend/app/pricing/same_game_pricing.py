@@ -86,6 +86,14 @@ class SameGameMultiPrice:
     dependence_validated: bool
     generated_at: datetime
     data_cutoff: datetime | None
+    # The raw slope/intercept actually used for this price, denormalized
+    # rather than referenced only by model_version - SgmDependenceCoefficient
+    # is upserted IN PLACE (no history kept), so a caller that wants to
+    # reproduce/audit this exact price later needs the real numbers, not
+    # just a version string that may no longer resolve to the same values.
+    # Keyed by market ("disposals"/"goals"), present only for markets
+    # actually used by a leg in this combo.
+    dependence_coefficients_used: dict = field(default_factory=dict)
     legs: list[SgmLegPriced] = field(default_factory=list)
 
 
@@ -211,6 +219,13 @@ def price_same_game_multi(
     dependence_validated = bool(used_versions)
     model_version = " + ".join(sorted(used_versions)) if used_versions else "independence_fallback (no validated dependence model persisted)"
 
+    markets_used = {spec.market for spec in player_specs}
+    coefficients_used = {}
+    if MARKET_DISPOSALS in markets_used:
+        coefficients_used["disposals"] = {"slope": disposal_coeff.slope, "intercept": disposal_coeff.intercept, "n_observations": disposal_coeff.n_observations}
+    if MARKET_GOALS in markets_used:
+        coefficients_used["goals"] = {"slope": goal_coeff.slope, "intercept": goal_coeff.intercept, "n_observations": goal_coeff.n_observations}
+
     leg_labels = ([f"{team_legs[0].leg_type}:{team_legs[0].team_id}"] if team_legs else []) + [spec.label for spec in player_specs]
     all_naive = [team_leg_spec.analytic_probability(home_pmf, away_pmf)] if team_leg_spec else []
     all_naive += [result.per_leg_naive_probability[spec.label] for spec in player_specs]
@@ -228,6 +243,7 @@ def price_same_game_multi(
         dependence_validated=dependence_validated,
         generated_at=datetime.now(timezone.utc),
         data_cutoff=max(data_cutoffs) if data_cutoffs else None,
+        dependence_coefficients_used=coefficients_used,
         legs=[SgmLegPriced(leg_type=lt, label=lb, naive_probability=np_) for lt, lb, np_ in zip(
             [team_legs[0].leg_type] * len(team_legs) + [s.market for s in player_specs], leg_labels, all_naive
         )],

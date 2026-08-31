@@ -21,6 +21,8 @@ from app.api.pricing_schemas import (
     ProspectiveEvaluationRead,
     ProspectiveSplitRead,
     PromotionEventRead,
+    SgmProspectiveEvaluationRead,
+    SgmProspectiveSplitRead,
 )
 from app.database import get_db
 from app.player_modelling.model_registry import (
@@ -32,6 +34,7 @@ from app.player_modelling.model_registry import (
     list_team_models,
 )
 from app.player_modelling.prospective_evaluation import ProspectiveSplit, load_prospective_evaluation
+from app.player_modelling.sgm_prospective_evaluation import SgmProspectiveSplit, load_sgm_prospective_evaluation
 
 router = APIRouter(prefix="/api/v1/model-registry", tags=["model-registry-v1"])
 
@@ -88,5 +91,34 @@ def get_prospective_evaluation(db: Session = Depends(get_db)) -> ProspectiveEval
         by_market_family=[_split_read(s) for s in report.by_market_family],
         by_probability_bucket=[_split_read(s) for s in report.by_probability_bucket],
         by_model_version=[_split_read(s) for s in report.by_model_version],
+        message=report.message,
+    )
+
+
+def _sgm_split_read(s: SgmProspectiveSplit) -> SgmProspectiveSplitRead:
+    return SgmProspectiveSplitRead(
+        label=s.label, n_settled=s.n_settled, n_unique_combos=s.n_unique_combos, model_brier=s.model_brier,
+        naive_brier=s.naive_brier, model_log_loss=s.model_log_loss, naive_log_loss=s.naive_log_loss,
+        model_calibration_ece=s.model_calibration_ece, bookmaker_brier=s.bookmaker_brier,
+        bookmaker_log_loss=s.bookmaker_log_loss, n_with_bookmaker_price=s.n_with_bookmaker_price, exploratory=s.exploratory,
+    )
+
+
+@router.get("/sgm-prospective-evaluation", response_model=SgmProspectiveEvaluationRead)
+def get_sgm_prospective_evaluation(db: Session = Depends(get_db)) -> SgmProspectiveEvaluationRead:
+    """Separate dataset and endpoint from /prospective-evaluation above -
+    Same Game Multi joint prices are multi-leg and evaluated against naive
+    independence (and a genuine bookmaker SGM price, when one exists - see
+    sgm_prospective_evaluation.py's module docstring for why that's always
+    empty today), not against market consensus."""
+    report = load_sgm_prospective_evaluation(db)
+    return SgmProspectiveEvaluationRead(
+        has_settled_data=report.has_settled_data, n_frozen_total=report.n_frozen_total, n_settled=report.n_settled,
+        n_unique_combos=report.n_unique_combos,
+        overall=_sgm_split_read(report.overall) if report.overall else None,
+        by_n_legs=[_sgm_split_read(s) for s in report.by_n_legs],
+        by_leg_combination=[_sgm_split_read(s) for s in report.by_leg_combination],
+        by_correlation_adjustment_magnitude=[_sgm_split_read(s) for s in report.by_correlation_adjustment_magnitude],
+        by_snapshot_horizon=[_sgm_split_read(s) for s in report.by_snapshot_horizon],
         message=report.message,
     )

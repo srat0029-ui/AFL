@@ -654,6 +654,13 @@ def _try_price_same_game(db: Session, match_id: int, opt: dict) -> dict | None:
         "naive_independence_probability": price.naive_independence_probability,
         "correlation_adjustment_pp": price.correlation_adjustment_pp, "dependence_validated": price.dependence_validated,
         "model_version": price.model_version, "n_simulations": price.n_simulations, "mc_standard_error": price.mc_standard_error,
+        # Not part of the product-facing MultiOptionRead schema (Phase 5) -
+        # carried here purely so app/pricing/sgm_snapshot_service.py can
+        # freeze a fully self-contained, auditable price without a second
+        # pricing call. See same_game_pricing.SameGameMultiPrice's docstring
+        # for why the raw values (not just a version string) matter.
+        "_dependence_coefficients_used": price.dependence_coefficients_used,
+        "_naive_independence_fair_odds": price.naive_independence_fair_odds,
     }
 
 
