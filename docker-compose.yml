@@ -1,0 +1,36 @@
+# Local reproducibility for the Postgres path this project doesn't
+# otherwise get to exercise (dev defaults to SQLite - see backend/.env).
+# `docker compose up` gives a real Postgres to run migrations/tests/the app
+# against without needing any cloud account. See docs/DEPLOYMENT.md.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: afl
+      POSTGRES_PASSWORD: afl
+      POSTGRES_DB: afl
+    ports:
+      - "5433:5432"  # host 5433 to avoid clashing with any other local Postgres on the default port
+    volumes:
+      - afl_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U afl"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://afl:afl@db:5432/afl
+      APP_ENV: local
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  afl_postgres_data:

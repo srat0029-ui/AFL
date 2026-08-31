@@ -15,7 +15,6 @@ worth investigating (is the model missing something? mispriced feature?),
 not a betting signal.
 """
 
-from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session

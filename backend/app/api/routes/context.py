@@ -31,7 +31,6 @@ from app.player_modelling.context_model_conflict import context_conflict_as_dict
 from app.player_modelling.live_change_detection import detect_matches_needing_regeneration
 from app.player_modelling.match_context_service import (
     add_context_item,
-    context_freshness,
     context_item_as_dict,
     current_context_for_match,
     list_context_for_match,

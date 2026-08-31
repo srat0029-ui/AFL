@@ -12,7 +12,7 @@ deleted) — a stale "still projected" row for a player who is now marked out
 would be actively misleading, not just outdated.
 """
 
-from sqlalchemy import delete, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import PlayerDisposalProjection, PlayerGoalProjection

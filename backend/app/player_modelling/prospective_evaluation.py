@@ -14,7 +14,7 @@ never a probability re-derived from today's market state, so this is a
 genuine same-moment model-vs-market comparison, not a mismatched one.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session

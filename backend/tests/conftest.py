@@ -1,9 +1,19 @@
 """Shared pytest fixtures.
 
-Tests never touch the real dev database (afl.db). Each test gets a fresh
-in-memory SQLite database with the full schema applied via create_all(), and
-the FastAPI app's get_db dependency is overridden to use it.
+Tests never touch the real dev database (afl.db). By default each test gets
+a fresh in-memory SQLite database with the full schema applied via
+create_all(), and the FastAPI app's get_db dependency is overridden to use
+it.
+
+Setting TEST_DATABASE_URL (e.g. to a postgresql+psycopg://... URL) points
+the SAME fixture, and therefore every test that uses it, at a real Postgres
+instance instead — this is how CI's postgres-integration job and a local
+`docker compose` Postgres actually exercise real test assertions against a
+real Postgres dialect, without a second, parallel test suite to maintain.
+The default (unset) path is unchanged from before this existed.
 """
+
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -15,14 +25,19 @@ import app.models  # noqa: F401  (populates Base.metadata)
 from app.database import Base, get_db
 from app.main import app
 
+TEST_DATABASE_URL = os.environ.get("TEST_DATABASE_URL")
+
 
 @pytest.fixture()
 def db_session():
-    engine = create_engine(
-        "sqlite://",
-        connect_args={"check_same_thread": False},
-        poolclass=StaticPool,
-    )
+    if TEST_DATABASE_URL:
+        engine = create_engine(TEST_DATABASE_URL, pool_pre_ping=True)
+    else:
+        engine = create_engine(
+            "sqlite://",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

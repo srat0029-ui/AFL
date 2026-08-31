@@ -17,7 +17,11 @@ from app.player_modelling.prop_market_diagnosis import (
 )
 from app.providers.types import ProviderEvent
 
-KICKOFF = datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)
+# Always 7 days out from whenever the suite runs - deterministic without
+# depending on wall-clock date (a hardcoded absolute date here previously
+# went stale and broke test_would_be_skipped_and_hours_to_kickoff_always_computed
+# once real time passed it).
+KICKOFF = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0) + timedelta(days=7)
 
 
 def _seed(db):

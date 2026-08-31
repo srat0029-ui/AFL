@@ -26,7 +26,7 @@ step order below (settle_props is step 3, before regeneration/odds).
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session

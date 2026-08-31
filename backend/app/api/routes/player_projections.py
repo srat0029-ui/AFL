@@ -47,7 +47,7 @@ from app.api.schemas import (
     WeeklySummaryRead,
 )
 from app.database import get_db
-from app.models import Bookmaker, ExpectedLineup, Match, Player, PlayerPropMarket, SelectionStatus, Team, derive_coarse_status
+from app.models import Bookmaker, ExpectedLineup, Match, Player, PlayerPropMarket, SelectionStatus, Team
 from app.player_modelling.best_opportunities import load_best_opportunities
 from app.player_modelling.diversified_opportunities import load_diversified_opportunities
 from app.player_modelling.elite_disposal_diagnostic import bucket_diagnostic_as_dict, load_elite_disposal_diagnostic

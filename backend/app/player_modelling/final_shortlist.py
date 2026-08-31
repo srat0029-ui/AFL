@@ -149,7 +149,6 @@ def load_final_shortlist(
         rep = fam.representative
         match = match_objs.get(rep["match_id"])
 
-        recent_form = None
         form_disagreement = False
         if rep["opportunity_type"] == "player" and match is not None:
             stat_field = STAT_FIELD_BY_MARKET.get(rep["market_type"])

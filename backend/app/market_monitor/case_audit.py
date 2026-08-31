@@ -13,7 +13,6 @@ from sqlalchemy.orm import Session
 from app.models import AnomalyCaseFollowUp, AnomalyCaseSnapshot, PlayerDisposalProjection, PlayerGoalProjection
 from app.player_modelling.market import PlayerMarket
 from app.pricing.market_intelligence import player_market_intelligence
-from app.pricing.player_pricing import price_disposals, price_goals
 
 from app.market_monitor.case_builder import AnomalyCase
 from app.market_monitor.common import dedupe_bookmaker_prices

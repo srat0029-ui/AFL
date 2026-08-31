@@ -22,7 +22,6 @@ from app.player_modelling.disposal_confidence import (
 )
 from app.player_modelling.goal_confidence import (
     GoalConfidenceInputs,
-    GoalConfidenceTier,
     HIGH_SCORING_RATE_VARIANCE_THRESHOLD,
     classify_goal_confidence,
 )

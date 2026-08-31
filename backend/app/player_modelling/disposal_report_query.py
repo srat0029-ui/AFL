@@ -13,7 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import Player, PlayerDisposalPrediction, PlayerModelRun, PlayerModelValidationMetric
-from app.player_modelling.disposal_confidence import ConfidenceInputs, ConfidenceTier, classify_confidence
+from app.player_modelling.disposal_confidence import ConfidenceInputs, classify_confidence
 from app.player_modelling.disposal_distribution import NegativeBinomialDistribution
 
 

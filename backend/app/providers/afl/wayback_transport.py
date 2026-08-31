@@ -18,7 +18,6 @@ when direct access is failing.
 
 import os
 import subprocess
-from datetime import date
 
 # Wayback's "closest snapshot" shorthand (web.archive.org/web/{year}/{url})
 # resolves to whichever real capture is closest in time to this anchor - not

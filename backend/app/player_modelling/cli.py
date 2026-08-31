@@ -267,7 +267,7 @@ def _refresh_prop_odds(force: bool = False, min_interval_minutes: float | None =
         )
 
         print(f"  {report.events_seen} AFL events returned by the provider.")
-        print(f"\nStep 3: resolving events to matches, fetching quotes for matches due a refresh...")
+        print("\nStep 3: resolving events to matches, fetching quotes for matches due a refresh...")
         print(f"  matches refreshed (quota spent): {report.matches_resolved}")
         skip_label = f"fresh within {min_interval}" if min_interval is not None else "fresh per the match-time-aware policy"
         print(f"  matches skipped ({skip_label}): {report.matches_skipped_fresh}")

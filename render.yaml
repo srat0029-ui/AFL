@@ -1,0 +1,72 @@
+# Render Blueprint (Infrastructure as Code) - see docs/DEPLOYMENT.md for the
+# provisioning walkthrough. This file is unverified against a live Render
+# account (no credentials available to this project) - review it before
+# first use rather than assuming it deploys correctly untouched.
+#
+# Covers everything this project's live-operations design actually needs
+# in one platform/account: a Docker web service, a background worker (the
+# existing live-cycle scheduler), a managed Postgres database, and static
+# frontend hosting - see the "Deployment target" section of
+# docs/DEPLOYMENT.md for why Render specifically.
+
+databases:
+  - name: afl-postgres
+    plan: free
+    databaseName: afl
+    user: afl
+
+services:
+  - type: web
+    name: afl-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: afl-postgres
+          property: connectionString
+      - key: CORS_ORIGINS
+        sync: false  # set to the deployed static site's real origin - see docs/DEPLOYMENT.md
+      - key: LOG_LEVEL
+        value: INFO
+      - key: THE_ODDS_API_KEY
+        sync: false  # optional - the app runs fine without it (see backend/.env.example)
+
+  - type: worker
+    name: afl-live-cycle-scheduler
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: python -m app.player_modelling.cli run-scheduler
+    plan: free
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: afl-postgres
+          property: connectionString
+      - key: LOG_LEVEL
+        value: INFO
+      - key: THE_ODDS_API_KEY
+        sync: false
+
+  - type: web
+    name: afl-frontend
+    runtime: static
+    buildCommand: cd frontend && npm ci && npm run build
+    staticPublishPath: ./frontend/dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        sync: false  # set to afl-backend's real deployed URL
+    routes:
+      # SPA fallback: BrowserRouter needs every path served index.html so
+      # direct navigation to e.g. /trading-monitor doesn't 404.
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -4,7 +4,7 @@ A pricing and market-intelligence system for Australian Football League markets:
 
 `Python · FastAPI · SQLAlchemy 2.0 · scikit-learn · statsmodels · XGBoost/LightGBM (research) · React 19 · TypeScript`
 
-~43k lines of backend Python across 295 modules, ~15.2k lines of frontend TypeScript across 50 files, 1,730 backend tests.
+~43k lines of backend Python across 295 modules, ~15.2k lines of frontend TypeScript across 50 files, 1,738 backend tests.
 
 Model vs. real, settled bookmaker markets — not a backtest, an actual running comparison against live prices from 9 Australian bookmakers:
 
@@ -30,10 +30,12 @@ Most sports-prediction side projects stop at a model that outputs a number. The 
 
 ## System architecture
 
+Data/model flow below; see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the deployment-topology view (services, scheduler, database boundaries).
+
 ```mermaid
 flowchart LR
     subgraph Ingestion
-        SQ[Squiggle API<br/>fixtures & results] --> DB[(SQLite, Postgres-ready<br/>30 Alembic migrations)]
+        SQ[Squiggle API<br/>fixtures & results] --> DB[(SQLite dev / Postgres prod<br/>38 Alembic migrations)]
         AT[AFLTables scrape<br/>historical box scores] --> DB
         OM[Open-Meteo<br/>venue weather] --> DB
         OA[The Odds API<br/>9 AU bookmakers] --> DB
@@ -197,7 +199,7 @@ No claim of a betting edge, guaranteed profit, or "beats the bookmaker" is made 
 - No odds provider integration in this codebase ingests a genuine bookmaker Same Game Multi/parlay price — `SgmPriceSnapshot`'s bookmaker fields are schema-ready but always null today, and "model vs. bookmaker" in the SGM prospective evaluation always reports "no data" rather than a fabricated number. Real closing-line tracking for SGM isn't buildable without that data source; what's tracked instead is how the model's own belief moves across the pre-match window.
 - The team-level prospective dataset has zero settled rows; the evidence above is player-props-only and one short window within one season.
 - API-key rate limiting is a DB-backed rolling-window count in-process, not a distributed limiter — correct at this project's real traffic, but not a claim of gateway-scale throughput.
-- No CI pipeline runs the test suite on push; it passes locally (1,670+ tests) but isn't enforced automatically.
+- CI (GitHub Actions) is real but has never run against the live repository — it's been exercised locally (`act`-equivalent via `actionlint` + manually running each job's commands) since this was built without pushing.
 - Frontend test coverage is thin — Vitest is wired up and one real test file exists, not a comprehensive suite.
 - Single sport (AFL), single fixture provider (Squiggle), single odds provider (The Odds API).
 - The elite-disposal-bias study didn't control for opponent strength — noted explicitly in the study itself as a scope boundary, not silently omitted.
@@ -229,13 +231,22 @@ The `/api/v1/pricing/*` and `/api/v1/market-intelligence/*` routes are the actua
 
 Rate limiting (per-minute + rolling 24-hour quota, both per-consumer) is a COUNT query against a new `ApiUsageRecord` table — the same table every authenticated request writes one row to regardless of outcome — deliberately not Redis or a gateway-level limiter, since neither is earned at this project's real scale. Every response carries `X-RateLimit-*` headers and an `X-Request-ID` that round-trips into the error body, the usage-log row, and (for pricing responses) `provenance.request_id`, so a reported issue can be traced to one exact server-side record. All error responses — the new auth/rate-limit errors and every pre-existing route's `HTTPException` alike, via a global exception-handler retrofit — now share one JSON shape (`error_code`/`message`/`request_id`/`details`) instead of ad hoc `detail` strings. `GET /api/v1/pricing/readiness` reports data-readiness by reusing the Trading Monitor's own data-health checks, not a second freshness implementation. Consumer/key lifecycle (`create-consumer`/`create-key`/`revoke-key`/`usage`) is CLI-only, matching how every other operational workflow in this repo already works — there's no HTTP admin surface that would need its own auth story. Full detail: [docs/API_USAGE.md](backend/docs/API_USAGE.md).
 
+## Deployment, CI/CD and operations
+
+CI (`.github/workflows/ci.yml`) runs on every PR and push to `master`: backend tests, ruff lint, two migration checks (empty database → latest, and a representative earlier schema → latest), a real Postgres-integration job for the models where SQLite's behavior can silently diverge from production, and frontend lint/tests/build. Running the Postgres job for the first time surfaced two real bugs this project had been carrying: a historical migration used a SQLite-only `GROUP_CONCAT` (SQLite has never enforced foreign keys by default, so several test fixtures with fabricated foreign keys had been silently passing for the same reason) and `PricingSnapshot.confidence_tier` was declared 8 characters too short for real team-confidence values — both fixed, both would otherwise have broken a first production Postgres deployment.
+
+The backend ships as a small (~990MB), non-root Docker image (`backend/Dockerfile`) running plain `uvicorn` with no dev/reload mode; the frontend is a static build hosted separately (it has no server-side logic, so a second container would be pure overhead). `render.yaml` is a reviewed-but-not-yet-live Blueprint covering a web service, a background worker (the pre-existing live-cycle scheduler, unchanged, chosen over platform cron specifically because it already has single-instance locking that cron would need reinventing), managed Postgres, and static frontend hosting on one platform. Migrations are an explicit pre-deploy step, never automatic on application boot. A local `pg_dump`/`pg_restore` drill was run for real against a Postgres container and confirmed a full round-trip. Full detail, including what has and hasn't been verified against a live deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md), [docs/OPERATIONS.md](docs/OPERATIONS.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+This project has not been deployed to a live cloud account (no credentials were available while building this phase) — everything up to that boundary (image, CI, migration verification, Blueprint, smoke-test script) is real and tested locally; provisioning a real Render account and running `scripts/smoke_test.py` against it is the one step this phase didn't get to do.
+
 ## Roadmap
 
 - Let the `PricingSnapshot` and `SgmPriceSnapshot` prospective datasets accumulate through a full season before drawing any conclusion from either.
-- Wire up CI to run the existing test suite on every push.
+- Provision a real Render account from `render.yaml` and run `scripts/smoke_test.py` against the live deployment — the one step this phase's audit trail stops short of.
 - If a reliable automated team-selection source appears, replace the manual entry step without touching the projection/pricing code that consumes it.
 - Support a "line" (handicap) team leg in Same Game Multi combos and their snapshots — currently only h2h and total team legs are priced/frozen jointly, since handicap sign conventions weren't worth risking a silent bug in the first version.
 - Once `ModelValueObservation` has accumulated real cycle-to-cycle history, revisit the Trading Monitor's conservative movement-materiality defaults against the actual observed distribution rather than the current placeholder thresholds.
+- Once real B2B traffic accumulates in `ApiUsageRecord`, revisit the default rate limits (60/min, 5,000/day) against actual observed usage rather than the current placeholder defaults.
 
 ## Running locally
 
@@ -243,12 +254,19 @@ Rate limiting (per-minute + rolling 24-hour quota, both per-consumer) is a COUNT
 ```bash
 cd backend
 python -m venv .venv
-.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip install -r requirements-dev.txt   # requirements.txt alone is the production/runtime-only set
 copy .env.example .env
 .venv\Scripts\python -m alembic upgrade head
 .venv\Scripts\python -m uvicorn app.main:app --reload
 ```
 API at `http://localhost:8000` — interactive docs at `/docs`, health checks at `/api/health`.
+
+**Backend against Postgres instead of the SQLite dev default** (no cloud account needed):
+```bash
+docker compose up -d --build
+docker compose exec backend python -m alembic upgrade head
+```
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for the full container/deployment story.
 
 **Frontend**
 ```bash
@@ -261,7 +279,7 @@ App at `http://localhost:5173`.
 
 **Tests**
 ```bash
-cd backend && .venv\Scripts\python -m pytest -q   # 1,730 tests
+cd backend && .venv\Scripts\python -m pytest -q   # 1,738 tests
 cd frontend && npm run build                       # tsc -b + vite build
 cd frontend && npm test                             # vitest
 ```

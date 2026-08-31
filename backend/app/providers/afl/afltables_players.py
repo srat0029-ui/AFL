@@ -35,7 +35,6 @@ TeamStatLine), just keyed by round instead of date.
 
 import re
 import time
-from collections.abc import Callable
 from datetime import datetime, timezone
 
 from app.config import get_settings

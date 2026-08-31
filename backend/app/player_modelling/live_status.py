@@ -23,7 +23,7 @@ from app.models import (
     Team,
 )
 from app.player_modelling.live_report_query import load_lineup_summary
-from app.player_modelling.prop_market_diagnosis import DIAG_ODDS_AVAILABLE, MatchMarketDiagnosis, diagnose_match_market_coverage
+from app.player_modelling.prop_market_diagnosis import MatchMarketDiagnosis, diagnose_match_market_coverage
 from app.player_modelling.upcoming_features import UpcomingMatchTeams, load_next_upcoming_round
 
 STATUS_WAITING_FOR_TEAMS = "waiting_for_teams"

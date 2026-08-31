@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Match, PoissonMatchPrediction, VenueWeatherSnapshot
+from app.models import PoissonMatchPrediction, VenueWeatherSnapshot
 
 # A historical match counts as "wet"/"windy" for bucketing using the same
 # thresholds weather_ingestion.py uses to flag a severe-weather warning —

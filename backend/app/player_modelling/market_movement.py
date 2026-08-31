@@ -20,7 +20,6 @@ from sqlalchemy.orm import Session
 
 from app.edges.overround import implied_probability
 from app.models import OddsQuote, PlayerPropMarket
-from app.models.bookmaker import ELIGIBILITY_INCLUDED
 
 TOWARD_MODEL = "toward_model"
 AWAY_FROM_MODEL = "away_from_model"

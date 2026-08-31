@@ -35,7 +35,7 @@ from app.player_modelling.market import PlayerMarket
 from app.player_modelling.match_context_service import current_context_for_match
 from app.player_modelling.live_report_query import current_lineup_for
 from app.player_modelling.prop_settlement import _actual_stat_value, _settle_result, compute_team_market_result
-from app.pricing.market_intelligence import player_market_intelligence, team_market_intelligence
+from app.pricing.market_intelligence import player_market_intelligence
 
 from app.market_monitor.case_builder import AnomalyCase
 from app.market_monitor.common import aware, dedupe_bookmaker_prices

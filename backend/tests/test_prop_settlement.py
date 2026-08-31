@@ -12,6 +12,7 @@ from app.models import (
     MatchStatus,
     Player,
     PlayerMatchStat,
+    PlayerPropMarket,
     PropMarketObservation,
     Round,
     Season,
@@ -58,9 +59,15 @@ def _seed_match(db, status=MatchStatus.COMPLETED):
     return match, home, away, player, bookmaker
 
 
-def _observation(match, player, bookmaker, *, market_type="player_disposals", line_type="over_under", threshold=29.5):
+def _observation(db, match, player, bookmaker, *, market_type="player_disposals", line_type="over_under", threshold=29.5):
+    quote = PlayerPropMarket(
+        match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id, market_type=market_type,
+        line_type=line_type, threshold=threshold, price_decimal=1.9, recorded_at=NOW - timedelta(hours=5), source="the_odds_api",
+    )
+    db.add(quote)
+    db.flush()
     return PropMarketObservation(
-        quote_id=1, match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id,
+        quote_id=quote.id, match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id,
         market_type=market_type, line_type=line_type, threshold=threshold, source="the_odds_api",
         offered_odds=1.9, observed_at=NOW - timedelta(hours=5), raw_implied_probability=0.526,
         devigged_probability=None, overround_removed=False,
@@ -76,7 +83,7 @@ def test_disposal_over_settles_won_when_actual_clears_threshold(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=30, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=29.5)
+    obs = _observation(db_session, match, player, bookmaker, threshold=29.5)
     db_session.add(obs)
     db_session.commit()
 
@@ -93,7 +100,7 @@ def test_disposal_over_settles_lost_when_actual_below_threshold(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=25, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=29.5)
+    obs = _observation(db_session, match, player, bookmaker, threshold=29.5)
     db_session.add(obs)
     db_session.commit()
 
@@ -108,7 +115,7 @@ def test_over_under_whole_number_threshold_pushes_on_exact_match(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=30, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=30.0)  # whole-number line, arbitrary threshold
+    obs = _observation(db_session, match, player, bookmaker, threshold=30.0)  # whole-number line, arbitrary threshold
     db_session.add(obs)
     db_session.commit()
 
@@ -122,7 +129,7 @@ def test_arbitrary_half_line_threshold_settles_correctly(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=18, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=17.5)
+    obs = _observation(db_session, match, player, bookmaker, threshold=17.5)
     db_session.add(obs)
     db_session.commit()
 
@@ -136,7 +143,7 @@ def test_multi_plus_line_has_no_push_case(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=0, goals=2,
     ))
-    obs = _observation(match, player, bookmaker, market_type="player_goals", line_type="multi_plus", threshold=2.0)
+    obs = _observation(db_session, match, player, bookmaker, market_type="player_goals", line_type="multi_plus", threshold=2.0)
     db_session.add(obs)
     db_session.commit()
 
@@ -150,7 +157,7 @@ def test_multi_plus_line_loses_below_threshold(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=0, goals=1,
     ))
-    obs = _observation(match, player, bookmaker, market_type="player_goals", line_type="multi_plus", threshold=2.0)
+    obs = _observation(db_session, match, player, bookmaker, market_type="player_goals", line_type="multi_plus", threshold=2.0)
     db_session.add(obs)
     db_session.commit()
 
@@ -165,7 +172,7 @@ def test_no_stats_ingested_for_match_at_all_leaves_observation_pending(db_sessio
     left pending ("awaiting player stats"), never voided just because the
     data hasn't arrived."""
     match, home, away, player, bookmaker = _seed_match(db_session)
-    obs = _observation(match, player, bookmaker)
+    obs = _observation(db_session, match, player, bookmaker)
     db_session.add(obs)
     db_session.commit()
 
@@ -190,7 +197,7 @@ def test_genuine_dnp_settles_void_when_other_players_have_stats(db_session):
     db_session.add(PlayerMatchStat(
         player_id=other_player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=20, goals=1,
     ))
-    obs = _observation(match, player, bookmaker)
+    obs = _observation(db_session, match, player, bookmaker)
     db_session.add(obs)
     db_session.commit()
 
@@ -212,7 +219,7 @@ def test_negative_actual_stat_flagged_for_review_not_silently_settled(db_session
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=-1, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=29.5)
+    obs = _observation(db_session, match, player, bookmaker, threshold=29.5)
     db_session.add(obs)
     db_session.commit()
 
@@ -230,7 +237,7 @@ def test_stat_row_with_null_stat_value_settles_unresolved(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=None, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=29.5)
+    obs = _observation(db_session, match, player, bookmaker, threshold=29.5)
     db_session.add(obs)
     db_session.commit()
 
@@ -245,7 +252,7 @@ def test_already_settled_observation_is_not_resettled(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=30, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=29.5)
+    obs = _observation(db_session, match, player, bookmaker, threshold=29.5)
     db_session.add(obs)
     db_session.commit()
 
@@ -267,7 +274,7 @@ def test_settlement_never_touches_frozen_quote_or_model_fields(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=30, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=29.5)
+    obs = _observation(db_session, match, player, bookmaker, threshold=29.5)
     db_session.add(obs)
     db_session.commit()
 
@@ -280,7 +287,7 @@ def test_settlement_never_touches_frozen_quote_or_model_fields(db_session):
 
 def test_settle_match_observations_no_ops_for_scheduled_match(db_session):
     match, home, away, player, bookmaker = _seed_match(db_session, status=MatchStatus.SCHEDULED)
-    obs = _observation(match, player, bookmaker)
+    obs = _observation(db_session, match, player, bookmaker)
     db_session.add(obs)
     db_session.commit()
 
@@ -295,7 +302,7 @@ def test_settle_match_observations_idempotent_rerun(db_session):
     db_session.add(PlayerMatchStat(
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=30, goals=0,
     ))
-    obs = _observation(match, player, bookmaker, threshold=29.5)
+    obs = _observation(db_session, match, player, bookmaker, threshold=29.5)
     db_session.add(obs)
     db_session.commit()
 
@@ -312,7 +319,7 @@ def test_settle_all_completed_matches_scoped_to_matches_with_unsettled_observati
     db_session.add(PlayerMatchStat(
         player_id=player1.id, match_id=match1.id, team_id=home1.id, source="afltables", recorded_at=NOW, disposals=30, goals=0,
     ))
-    obs1 = _observation(match1, player1, bookmaker, threshold=29.5)
+    obs1 = _observation(db_session, match1, player1, bookmaker, threshold=29.5)
     db_session.add(obs1)
 
     # Second completed match with no observations at all - must not error or be counted.

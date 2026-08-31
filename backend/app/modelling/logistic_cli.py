@@ -28,7 +28,7 @@ docstring for why the inner-split discipline differs):
 
 import sys
 import warnings
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 from app.backtesting.evaluation import EVALUATION_START_YEAR
 from app.backtesting.logistic_report import INNER_VALIDATION_START_YEAR, build_logistic_comparison

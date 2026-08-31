@@ -12,6 +12,7 @@ xgboost==3.4.0
 lightgbm==4.7.0
 statsmodels==0.14.6
 
-# testing
-pytest==8.3.4
-pytest-cov==6.0.0
+# Postgres driver for production (DATABASE_URL=postgresql+psycopg://...).
+# SQLite (the local-dev default) needs no driver - this is only imported
+# when the URL actually asks for it.
+psycopg[binary]==3.3.4

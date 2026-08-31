@@ -7,7 +7,6 @@ object from stored parameters and prices it on demand, so nothing about
 """
 
 from dataclasses import dataclass
-from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session

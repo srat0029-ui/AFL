@@ -44,6 +44,7 @@ class ApiUsageRecord(TimestampMixin, Base):
     freshness: Mapped[str | None] = mapped_column(String(16), nullable=True)  # "fresh" | "stale" | "unavailable"
     rate_limited: Mapped[bool] = mapped_column(nullable=False, default=False)
     recorded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    release_sha: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     def __repr__(self) -> str:
         return f"<ApiUsageRecord {self.method} {self.endpoint} {self.status_code} consumer={self.consumer_id}>"

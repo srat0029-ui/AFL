@@ -17,12 +17,11 @@ several alert TYPES agreeing scores higher than any one of them alone.
 """
 
 import statistics
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from app.edges.overround import implied_probability
 from app.market_monitor.case_builder import AnomalyCase
-from app.market_monitor.context_staleness import NOTABLE_SELECTION_STATUSES
 from app.market_monitor.types import (
     ADJACENT_THRESHOLD_JUMP,
     BOOKMAKER_VS_CONSENSUS_OUTLIER,

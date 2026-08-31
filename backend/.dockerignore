@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+.git/
+.pytest_cache/
+.ruff_cache/
+tests/
+afl.db
+*.db
+.env
+*.md
+docs/

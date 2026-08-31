@@ -28,6 +28,7 @@ from starlette.responses import Response
 
 from app.database import SessionLocal
 from app.models import ApiUsageRecord
+from app.release_info import get_release_info
 
 logger = logging.getLogger(__name__)
 
@@ -56,11 +57,16 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         return response
 
     def _log_usage(self, request: Request, response: Response, request_id: str, latency_ms: float) -> None:
+        consumer_id = getattr(request.state, "consumer_id", None)
+        logger.info(
+            "b2b_request request_id=%s consumer_id=%s route=%s method=%s status=%d latency_ms=%.1f",
+            request_id, consumer_id, request.url.path, request.method, response.status_code, latency_ms,
+        )
         db = SessionLocal()
         try:
             db.add(ApiUsageRecord(
                 request_id=request_id,
-                consumer_id=getattr(request.state, "consumer_id", None),
+                consumer_id=consumer_id,
                 endpoint=request.url.path,
                 method=request.method,
                 status_code=response.status_code,
@@ -69,6 +75,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 freshness=getattr(request.state, "freshness", None),
                 rate_limited=getattr(request.state, "rate_limited", False),
                 recorded_at=datetime.now(timezone.utc),
+                release_sha=get_release_info().git_sha,
             ))
             db.commit()
         except Exception:  # noqa: BLE001 - usage logging must never break the actual response

@@ -1,0 +1,7 @@
+# Everything the production image needs (requirements.txt) plus test/lint
+# tooling that has no reason to ship in a deployed container.
+-r requirements.txt
+
+pytest==8.3.4
+pytest-cov==6.0.0
+ruff==0.16.5

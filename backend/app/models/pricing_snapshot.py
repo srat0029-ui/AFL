@@ -54,7 +54,11 @@ class PricingSnapshot(Base, TimestampMixin):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     data_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     lineup_status: Mapped[str | None] = mapped_column(String(24), nullable=True)
-    confidence_tier: Mapped[str] = mapped_column(String(24), nullable=False)
+    # 32, not 24: this column holds BOTH team confidence tiers
+    # (team_pricing._confidence_tier's "no_demonstrated_edge_over_naive" is
+    # 32 chars) and the shorter player vocabulary - SQLite never enforces
+    # VARCHAR length so this silently fit until run against real Postgres.
+    confidence_tier: Mapped[str] = mapped_column(String(32), nullable=False)
     # Usage-Change Production Integration stage (item 5): frozen at snapshot
     # time alongside everything else here, never backfilled onto existing
     # rows — lets prospective evaluation later be split stable vs changed to

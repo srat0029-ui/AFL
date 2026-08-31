@@ -10,7 +10,7 @@ goal_distribution.py. GoalPredictionRecord carries whichever fields its
 model actually populated; unused fields stay None.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 from sqlalchemy.orm import Session

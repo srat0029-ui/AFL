@@ -24,7 +24,7 @@ Squiggle's official score breakdown, not a fabricated stand-in.
 """
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 FORM_WINDOW_SHORT = 5

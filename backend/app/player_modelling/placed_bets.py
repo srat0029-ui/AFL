@@ -11,7 +11,7 @@ result for a given match+selection is computed the same way everywhere.
 """
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from sqlalchemy import select

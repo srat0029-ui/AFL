@@ -15,7 +15,7 @@ just drives and prints.
 
 import sys
 import warnings
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 
 from app.backtesting.boosting_report import build_boosting_comparison
 from app.backtesting.evaluation import EVALUATION_START_YEAR

@@ -555,7 +555,7 @@ def build_match_multis(
 
     return MatchMultiTiers(
         match_id=match_id, n_eligible_legs=len(legs),
-        bookmakers_available=sorted(name for name, l in by_bookmaker.items() if len(l) >= 2),
+        bookmakers_available=sorted(name for name, quotes in by_bookmaker.items() if len(quotes) >= 2),
         tiers=tiers,
     )
 

@@ -33,6 +33,7 @@ class TestUsageLogging:
         assert records[0].method == "GET"
         assert records[0].status_code == 200
         assert records[0].latency_ms >= 0
+        assert records[0].release_sha  # connects this request to the exact code version that served it
 
     def test_internal_route_produces_no_usage_record(self, client, db_session):
         client.get(INTERNAL_URL)

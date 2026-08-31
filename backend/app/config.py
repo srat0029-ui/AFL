@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    log_level: str = "INFO"
 
     # Squiggle's usage policy requires a descriptive User-Agent identifying the
     # client and a contact email. See https://api.squiggle.com.au/
@@ -41,3 +42,24 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+
+
+_LOCAL_DEV_CORS_DEFAULT = "http://localhost:5173,http://127.0.0.1:5173"
+
+
+def validate_production_settings(settings: Settings) -> None:
+    """Fails loudly at startup rather than silently running a production
+    deployment against the SQLite dev database or the local-dev CORS
+    allowlist - the two defaults that are safe for local development but
+    would be a real, silent misconfiguration in production. Every other
+    setting (e.g. THE_ODDS_API_KEY) already has a supported, tested
+    "absent" behavior and is deliberately not required here."""
+    if settings.app_env != "production":
+        return
+    problems = []
+    if settings.database_url.startswith("sqlite"):
+        problems.append("DATABASE_URL is still the SQLite default - set it to a real Postgres URL for production.")
+    if settings.cors_origins == _LOCAL_DEV_CORS_DEFAULT:
+        problems.append("CORS_ORIGINS is still the local-dev default - set it to the real deployed frontend origin(s).")
+    if problems:
+        raise RuntimeError("Refusing to start with APP_ENV=production and unsafe defaults:\n- " + "\n- ".join(problems))

@@ -12,7 +12,7 @@ engine has no visibility into; a stale market may simply not have refreshed
 yet for reasons unrelated to the context event).
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 # --- Alert types (item 1) ---------------------------------------------------

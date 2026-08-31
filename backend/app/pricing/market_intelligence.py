@@ -15,7 +15,7 @@ and simple price-movement figures for the pricing engine's own price.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session

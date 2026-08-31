@@ -73,20 +73,32 @@ def _seed_disposal_player(db, match, team, *, predicted_mean=22.0, nb_alpha=0.15
     return player
 
 
-_SAMPLE_OPTION = {
-    "same_game_pricing": {
-        "model_joint_probability": 0.30, "model_joint_fair_odds": 3.33,
-        "naive_independence_probability": 0.28, "correlation_adjustment_pp": 2.0,
-        "dependence_validated": True, "model_version": "sgm_joint_conditional_mc_v1@test",
-        "n_simulations": 20000, "mc_standard_error": 0.003,
-        "_dependence_coefficients_used": {"disposals": {"slope": 0.016, "intercept": -0.04, "n_observations": 45216}},
-        "_naive_independence_fair_odds": 3.57,
-    },
-    "legs": [
-        {"opportunity_type": "team", "market_type": "h2h", "team_id": 1, "player_id": None, "selection": "Collingwood", "threshold": None, "line_value": None, "model_probability": 0.55},
-        {"opportunity_type": "player", "market_type": "player_disposals", "team_id": None, "player_id": 42, "selection": None, "threshold": 21.5, "line_value": None, "model_probability": 0.6},
-    ],
-}
+def _seed_sgm_leg_player(db, team, *, name="SGM Sample Player"):
+    """A bare Player row for TestFreezeSgmPrice's sample option leg - real
+    FK target, not the hardcoded literal id this test file used to pass
+    straight through (silently tolerated by SQLite, which never enforces
+    foreign keys; a real Postgres run caught it)."""
+    player = Player(sport_id=team.sport_id, display_name=name, source="afltables", source_player_id=name, current_team_id=team.id)
+    db.add(player)
+    db.commit()
+    return player
+
+
+def _sample_option(home_id: int, player_id: int) -> dict:
+    return {
+        "same_game_pricing": {
+            "model_joint_probability": 0.30, "model_joint_fair_odds": 3.33,
+            "naive_independence_probability": 0.28, "correlation_adjustment_pp": 2.0,
+            "dependence_validated": True, "model_version": "sgm_joint_conditional_mc_v1@test",
+            "n_simulations": 20000, "mc_standard_error": 0.003,
+            "_dependence_coefficients_used": {"disposals": {"slope": 0.016, "intercept": -0.04, "n_observations": 45216}},
+            "_naive_independence_fair_odds": 3.57,
+        },
+        "legs": [
+            {"opportunity_type": "team", "market_type": "h2h", "team_id": home_id, "player_id": None, "selection": "Collingwood", "threshold": None, "line_value": None, "model_probability": 0.55},
+            {"opportunity_type": "player", "market_type": "player_disposals", "team_id": None, "player_id": player_id, "selection": None, "threshold": 21.5, "line_value": None, "model_probability": 0.6},
+        ],
+    }
 
 
 class TestComputeSnapshotHorizon:
@@ -105,8 +117,10 @@ class TestComputeSnapshotHorizon:
 class TestFreezeSgmPrice:
     def test_creates_snapshot_and_legs(self, db_session):
         match, home, away = _seed_match(db_session)
+        player = _seed_sgm_leg_player(db_session, home)
+        option = _sample_option(home.id, player.id)
 
-        snap = freeze_sgm_price(db_session, match_id=match.id, option=_SAMPLE_OPTION, generated_at=NOW, hours_to_kickoff=30.0)
+        snap = freeze_sgm_price(db_session, match_id=match.id, option=option, generated_at=NOW, hours_to_kickoff=30.0)
         db_session.commit()
 
         assert snap is not None
@@ -119,14 +133,16 @@ class TestFreezeSgmPrice:
         legs = db_session.scalars(select(SgmSnapshotLeg).where(SgmSnapshotLeg.snapshot_id == snap.id).order_by(SgmSnapshotLeg.leg_index)).all()
         assert len(legs) == 2
         assert legs[0].leg_type == "h2h" and legs[0].selection == "Collingwood"
-        assert legs[1].leg_type == "disposals" and legs[1].player_id == 42 and legs[1].threshold == 21.5 and legs[1].selection == "over"
+        assert legs[1].leg_type == "disposals" and legs[1].player_id == player.id and legs[1].threshold == 21.5 and legs[1].selection == "over"
 
     def test_idempotent_same_horizon(self, db_session):
         match, home, away = _seed_match(db_session)
+        player = _seed_sgm_leg_player(db_session, home)
+        option = _sample_option(home.id, player.id)
 
-        first = freeze_sgm_price(db_session, match_id=match.id, option=_SAMPLE_OPTION, generated_at=NOW, hours_to_kickoff=30.0)
+        first = freeze_sgm_price(db_session, match_id=match.id, option=option, generated_at=NOW, hours_to_kickoff=30.0)
         db_session.commit()
-        second = freeze_sgm_price(db_session, match_id=match.id, option=_SAMPLE_OPTION, generated_at=NOW, hours_to_kickoff=29.5)
+        second = freeze_sgm_price(db_session, match_id=match.id, option=option, generated_at=NOW, hours_to_kickoff=29.5)
         db_session.commit()
 
         assert first is not None
@@ -137,10 +153,12 @@ class TestFreezeSgmPrice:
 
     def test_new_row_in_a_new_horizon_bucket(self, db_session):
         match, home, away = _seed_match(db_session)
+        player = _seed_sgm_leg_player(db_session, home)
+        option = _sample_option(home.id, player.id)
 
-        freeze_sgm_price(db_session, match_id=match.id, option=_SAMPLE_OPTION, generated_at=NOW, hours_to_kickoff=30.0)
+        freeze_sgm_price(db_session, match_id=match.id, option=option, generated_at=NOW, hours_to_kickoff=30.0)
         db_session.commit()
-        second = freeze_sgm_price(db_session, match_id=match.id, option=_SAMPLE_OPTION, generated_at=NOW, hours_to_kickoff=3.0)
+        second = freeze_sgm_price(db_session, match_id=match.id, option=option, generated_at=NOW, hours_to_kickoff=3.0)
         db_session.commit()
 
         assert second is not None
@@ -150,7 +168,8 @@ class TestFreezeSgmPrice:
 
     def test_returns_none_when_no_sgm_pricing(self, db_session):
         match, home, away = _seed_match(db_session)
-        option_without_sgm = {**_SAMPLE_OPTION, "same_game_pricing": None}
+        player = _seed_sgm_leg_player(db_session, home)
+        option_without_sgm = {**_sample_option(home.id, player.id), "same_game_pricing": None}
 
         assert freeze_sgm_price(db_session, match_id=match.id, option=option_without_sgm, generated_at=NOW, hours_to_kickoff=30.0) is None
 
@@ -159,7 +178,8 @@ class TestFreezeSgmPrice:
         place, so a snapshot must carry the raw values it actually used,
         not just a reference that could later resolve to something else."""
         match, home, away = _seed_match(db_session)
-        snap = freeze_sgm_price(db_session, match_id=match.id, option=_SAMPLE_OPTION, generated_at=NOW, hours_to_kickoff=30.0)
+        player = _seed_sgm_leg_player(db_session, home)
+        snap = freeze_sgm_price(db_session, match_id=match.id, option=_sample_option(home.id, player.id), generated_at=NOW, hours_to_kickoff=30.0)
         db_session.commit()
         frozen_coeffs = dict(snap.dependence_coefficients_used)
 
@@ -287,7 +307,7 @@ class TestEndToEndLifecycle:
         match, home, away = _seed_match(db_session, status=MatchStatus.SCHEDULED)
         player = _seed_disposal_player(db_session, match, home, predicted_mean=22.0)
         option = {
-            "same_game_pricing": _SAMPLE_OPTION["same_game_pricing"],
+            "same_game_pricing": _sample_option(home.id, player.id)["same_game_pricing"],
             "legs": [
                 {"opportunity_type": "team", "market_type": "h2h", "team_id": home.id, "player_id": None, "selection": home.name, "threshold": None, "line_value": None, "model_probability": 0.55},
                 {"opportunity_type": "player", "market_type": "player_disposals", "team_id": None, "player_id": player.id, "selection": None, "threshold": 21.5, "line_value": None, "model_probability": 0.6},

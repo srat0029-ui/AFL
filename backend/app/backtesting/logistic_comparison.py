@@ -52,8 +52,8 @@ def build_logistic_vs_elo_comparison(elo_probs_by_match: dict[int, float], logis
             )
             continue
         elo_probs_group = [e for e, _ in group]
-        logistic_probs_group = [l.home_win_probability for _, l in group]
-        outcomes_group = [l.actual_home_outcome for _, l in group]
+        logistic_probs_group = [pred.home_win_probability for _, pred in group]
+        outcomes_group = [pred.actual_home_outcome for _, pred in group]
         buckets.append(
             LogisticDisagreementBucket(
                 label=label,

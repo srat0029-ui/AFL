@@ -19,7 +19,7 @@ existing multi-subcommand CLI convention in this codebase.
 import sys
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.api_platform.keys import generate_api_key, hash_key, key_prefix as compute_key_prefix
 from app.database import SessionLocal

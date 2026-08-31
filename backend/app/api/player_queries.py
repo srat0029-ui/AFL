@@ -5,7 +5,7 @@ the API layer, not the ingestion or modelling pipelines.
 
 from dataclasses import dataclass
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import Match, Player, PlayerMatchStat, Round, Season, Sport

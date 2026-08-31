@@ -34,7 +34,7 @@ from app.player_modelling.live_report_query import (
 )
 from app.player_modelling.live_staleness import check_staleness
 from app.player_modelling.market import PlayerMarket
-from app.player_modelling.usage_regime import USAGE_REGIME_CHANGE_FLAG, ModelRiskFlag, goal_usage_risk_flags
+from app.player_modelling.usage_regime import USAGE_REGIME_CHANGE_FLAG, ModelRiskFlag, goal_usage_risk_flags  # noqa: F401 - re-exported for app.pricing.player_pricing.USAGE_REGIME_CHANGE_FLAG callers
 
 DISPOSAL_MODEL_NAME = "disposal_nb"
 GOAL_MODEL_NAME = "goal_hurdle"

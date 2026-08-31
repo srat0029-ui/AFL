@@ -20,6 +20,7 @@ from app.models import (
     MatchStatus,
     Player,
     PlayerMatchStat,
+    PlayerPropMarket,
     PropMarketObservation,
     Round,
     Season,
@@ -368,8 +369,14 @@ def _seed_in_progress_match_with_pending_observation(db):
         player_id=player.id, match_id=match.id, team_id=home.id, source="afltables",
         recorded_at=NOW - timedelta(days=4), disposals=32, goals=1,
     )
+    quote = PlayerPropMarket(
+        match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id, market_type="player_disposals",
+        line_type="over_under", threshold=29.5, price_decimal=1.9, recorded_at=NOW - timedelta(days=5), source="the_odds_api",
+    )
+    db.add(quote)
+    db.flush()
     observation = PropMarketObservation(
-        quote_id=1, match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id,
+        quote_id=quote.id, match_id=match.id, player_id=player.id, bookmaker_id=bookmaker.id,
         market_type="player_disposals", line_type="over_under", threshold=29.5, source="the_odds_api",
         offered_odds=1.9, observed_at=NOW - timedelta(days=5), raw_implied_probability=0.526,
         devigged_probability=None, overround_removed=False,

@@ -15,7 +15,7 @@ bookmaker list.
 """
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
 from app.market_monitor.types import Alert, SEVERITY_CRITICAL, SEVERITY_WARNING

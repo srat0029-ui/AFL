@@ -24,25 +24,32 @@ def _consolidate_duplicate_venues() -> None:
     row — otherwise the constraint fails to apply on a DB with pre-existing
     duplicates. Keeps the lowest id per name as canonical, repoints every
     match referencing a duplicate onto it, then removes the now-unused
-    duplicate rows. Reports what it found; does nothing if there are none."""
+    duplicate rows. Reports what it found; does nothing if there are none.
+
+    Grouping is done in Python (not SQL GROUP_CONCAT, which is SQLite-only
+    and broke this migration on Postgres) via SQLAlchemy Core table()
+    constructs so the whole function is dialect-portable - discovered
+    running this migration against Postgres for the first time."""
     conn = op.get_bind()
-    duplicate_groups = conn.exec_driver_sql(
-        "SELECT name, GROUP_CONCAT(id) FROM venues GROUP BY name HAVING COUNT(*) > 1"
-    ).fetchall()
+    venues = sa.table("venues", sa.column("id", sa.Integer), sa.column("name", sa.String))
+    matches = sa.table("matches", sa.column("id", sa.Integer), sa.column("venue_id", sa.Integer))
+
+    rows = conn.execute(sa.select(venues.c.id, venues.c.name).order_by(venues.c.name, venues.c.id)).fetchall()
+    groups: dict[str, list[int]] = {}
+    for venue_id, name in rows:
+        groups.setdefault(name, []).append(venue_id)
+    duplicate_groups = {name: ids for name, ids in groups.items() if len(ids) > 1}
 
     if not duplicate_groups:
         print("  venue uniqueness check: no duplicate venue names found")
         return
 
-    for name, id_csv in duplicate_groups:
-        ids = sorted(int(i) for i in id_csv.split(","))
+    for name, ids in duplicate_groups.items():
         canonical_id, duplicate_ids = ids[0], ids[1:]
         print(f"  duplicate venue {name!r}: ids {ids} -> consolidating onto {canonical_id}")
         for dup_id in duplicate_ids:
-            conn.exec_driver_sql(
-                "UPDATE matches SET venue_id = ? WHERE venue_id = ?", (canonical_id, dup_id)
-            )
-            conn.exec_driver_sql("DELETE FROM venues WHERE id = ?", (dup_id,))
+            conn.execute(matches.update().where(matches.c.venue_id == dup_id).values(venue_id=canonical_id))
+            conn.execute(venues.delete().where(venues.c.id == dup_id))
 
 
 def upgrade() -> None:

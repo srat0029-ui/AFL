@@ -1,3 +1,25 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 200
+target-version = "py313"
+# Scoped to app/ (product code) deliberately - tests/ has ~90 pre-existing,
+# low-risk style findings (mostly ambiguous single-letter loop variables)
+# that a one-time infra phase isn't the place to bulk-rename; the actual
+# risk surface (real bugs, not test-helper variable names) is app/.
+include = ["app/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E", "F"]
+ignore = [
+    # Long lines are this codebase's established style, not a defect.
+    "E501",
+    # SQLAlchemy relationship() forward-ref string annotations
+    # (Mapped["Match"]) are resolved at ORM-configuration time, not by
+    # static analysis - ruff/pyflakes has no way to see that and reports
+    # every one as an undefined name. Verified by inspection: every F821
+    # hit in this codebase is this exact pattern, not a real bug.
+    "F821",
+]

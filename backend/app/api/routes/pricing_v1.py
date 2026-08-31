@@ -44,7 +44,7 @@ from app.api.pricing_schemas import (
 from app.api_platform.auth import require_api_key
 from app.database import get_db
 from app.edges.calculator import ModelsUnavailableError, build_model_context
-from app.models import ApiConsumer, GoalModelRun, Match, MatchStatus, PlayerDisposalProjection, PlayerGoalProjection, PlayerModelRun, PricingSnapshot
+from app.models import ApiConsumer, GoalModelRun, Match, PlayerDisposalProjection, PlayerGoalProjection, PlayerModelRun
 from app.player_modelling.market import PlayerMarket
 from app.pricing.integration_health import load_integration_health
 from app.pricing.market_intelligence import player_market_intelligence, team_market_intelligence
@@ -87,7 +87,7 @@ def _team_read(p: TeamMarketPrice, request_id: str) -> TeamMarketPriceRead:
         home_fair_odds=p.home_fair_odds, draw_fair_odds=p.draw_fair_odds, away_fair_odds=p.away_fair_odds,
         expected_margin=p.expected_margin, expected_total_points=p.expected_total_points,
         home_expected_score=p.home_expected_score, away_expected_score=p.away_expected_score,
-        lines=[LinePriceRead(**vars(l)) for l in p.lines], totals=[TotalPriceRead(**vars(t)) for t in p.totals],
+        lines=[LinePriceRead(**vars(line)) for line in p.lines], totals=[TotalPriceRead(**vars(t)) for t in p.totals],
         warnings=[],
     )
 

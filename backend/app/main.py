@@ -28,9 +28,12 @@ from app.api.routes import (
     trading_monitor_v1,
     weekly_review,
 )
-from app.config import get_settings
+from app.config import get_settings, validate_production_settings
+from app.logging_config import configure_logging
 
 settings = get_settings()
+validate_production_settings(settings)
+configure_logging(settings.log_level)
 
 app = FastAPI(
     title="AFL Analytics API",
@@ -63,6 +66,7 @@ app.add_middleware(RequestContextMiddleware)
 register_exception_handlers(app)
 
 app.include_router(health.router)
+app.include_router(health.release_router)
 app.include_router(matches.router)
 app.include_router(afl.router)
 app.include_router(odds.odds_router)
