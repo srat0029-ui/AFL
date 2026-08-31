@@ -13,7 +13,7 @@ docstrings for exactly what's read vs computed on demand.
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -30,6 +30,8 @@ from app.api.pricing_schemas import (
     ModelHealthRead,
     ModelProvenance,
     ModelRiskFlagRead,
+    PricingReadinessCheckRead,
+    PricingReadinessRead,
     RoundPricingRead,
     SameGameLegRead,
     SameGameMultiPriceRead,
@@ -39,9 +41,10 @@ from app.api.pricing_schemas import (
     ThresholdPriceRead,
     TotalPriceRead,
 )
+from app.api_platform.auth import require_api_key
 from app.database import get_db
 from app.edges.calculator import ModelsUnavailableError, build_model_context
-from app.models import GoalModelRun, Match, MatchStatus, PlayerDisposalProjection, PlayerGoalProjection, PlayerModelRun, PricingSnapshot
+from app.models import ApiConsumer, GoalModelRun, Match, MatchStatus, PlayerDisposalProjection, PlayerGoalProjection, PlayerModelRun, PricingSnapshot
 from app.player_modelling.market import PlayerMarket
 from app.pricing.integration_health import load_integration_health
 from app.pricing.market_intelligence import player_market_intelligence, team_market_intelligence
@@ -49,12 +52,17 @@ from app.pricing.player_pricing import DisposalPrice, GoalPrice, price_disposals
 from app.pricing.round_pricing import RoundPricing, price_current_round
 from app.pricing.same_game_pricing import SameGameMultiPrice, SgmLegRequest, SgmValidationError, price_same_game_multi
 from app.pricing.team_pricing import TeamMarketPrice, latest_completed_match_timestamp, price_team_market
+from app.trading_monitor.data_health import SEVERITY_ERROR, load_data_health
 
 SGM_MODEL_NAME = "sgm_joint_conditional_mc"
 
 pricing_router = APIRouter(prefix="/api/v1/pricing", tags=["pricing-v1"])
 market_intel_router = APIRouter(prefix="/api/v1/market-intelligence", tags=["market-intelligence-v1"])
 integration_router = APIRouter(prefix="/api/v1", tags=["integration-v1"])
+
+
+def _request_id(request: Request) -> str:
+    return getattr(request.state, "request_id", "unknown")
 
 
 @integration_router.get("/integration-health", response_model=IntegrationHealthRead)
@@ -67,19 +75,20 @@ def get_integration_health(db: Session = Depends(get_db)) -> IntegrationHealthRe
     )
 
 
-def _provenance(model_name: str, model_version: str, generated_at: datetime, data_cutoff: datetime) -> ModelProvenance:
-    return ModelProvenance(model_name=model_name, model_version=model_version, generated_at=generated_at, data_cutoff=data_cutoff)
+def _provenance(model_name: str, model_version: str, generated_at: datetime, data_cutoff: datetime, request_id: str) -> ModelProvenance:
+    return ModelProvenance(model_name=model_name, model_version=model_version, generated_at=generated_at, data_cutoff=data_cutoff, request_id=request_id)
 
 
-def _team_read(p: TeamMarketPrice) -> TeamMarketPriceRead:
+def _team_read(p: TeamMarketPrice, request_id: str) -> TeamMarketPriceRead:
     return TeamMarketPriceRead(
         match_id=p.match_id, home_team=p.home_team, away_team=p.away_team,
-        provenance=_provenance(p.model_name, p.model_version, p.generated_at, p.data_cutoff),
+        provenance=_provenance(p.model_name, p.model_version, p.generated_at, p.data_cutoff, request_id),
         home_win_probability=p.home_win_probability, draw_probability=p.draw_probability, away_win_probability=p.away_win_probability,
         home_fair_odds=p.home_fair_odds, draw_fair_odds=p.draw_fair_odds, away_fair_odds=p.away_fair_odds,
         expected_margin=p.expected_margin, expected_total_points=p.expected_total_points,
         home_expected_score=p.home_expected_score, away_expected_score=p.away_expected_score,
         lines=[LinePriceRead(**vars(l)) for l in p.lines], totals=[TotalPriceRead(**vars(t)) for t in p.totals],
+        warnings=[],
     )
 
 
@@ -89,10 +98,10 @@ def _calibration_read(c) -> CalibrationInfo | None:
     return CalibrationInfo(market_type=c.market_type, requested_threshold=c.requested_threshold, evaluated_threshold=c.evaluated_threshold, ece=c.ece, n=c.n)
 
 
-def _disposal_read(p: DisposalPrice) -> DisposalPriceRead:
+def _disposal_read(p: DisposalPrice, request_id: str) -> DisposalPriceRead:
     return DisposalPriceRead(
         match_id=p.match_id, player_id=p.player_id, player_name=p.player_name, team_id=p.team_id,
-        provenance=_provenance(p.model_name, p.model_version, p.generated_at, p.data_cutoff),
+        provenance=_provenance(p.model_name, p.model_version, p.generated_at, p.data_cutoff, request_id),
         lineup_status=p.lineup_status, confidence_tier=p.confidence_tier, games_of_history=p.games_of_history,
         expected=p.expected, distribution_method=p.distribution_method, distribution_params=p.distribution_params,
         interval_50=p.interval_50, interval_80=p.interval_80, interval_90=p.interval_90,
@@ -103,10 +112,10 @@ def _disposal_read(p: DisposalPrice) -> DisposalPriceRead:
     )
 
 
-def _goal_read(p: GoalPrice) -> GoalPriceRead:
+def _goal_read(p: GoalPrice, request_id: str) -> GoalPriceRead:
     return GoalPriceRead(
         match_id=p.match_id, player_id=p.player_id, player_name=p.player_name, team_id=p.team_id,
-        provenance=_provenance(p.model_name, p.model_version, p.generated_at, p.data_cutoff),
+        provenance=_provenance(p.model_name, p.model_version, p.generated_at, p.data_cutoff, request_id),
         lineup_status=p.lineup_status, confidence_tier=p.confidence_tier, games_of_history=p.games_of_history,
         expected=p.expected, distribution_kind=p.distribution_kind, distribution_params=p.distribution_params,
         scoring_archetype=p.scoring_archetype, thresholds=[ThresholdPriceRead(**vars(t)) for t in p.thresholds],
@@ -116,10 +125,11 @@ def _goal_read(p: GoalPrice) -> GoalPriceRead:
     )
 
 
-def _round_read(r: RoundPricing) -> RoundPricingRead:
+def _round_read(r: RoundPricing, request_id: str) -> RoundPricingRead:
     return RoundPricingRead(
         round_number=r.round_number, season_year=r.season_year, n_matches=r.n_matches,
-        teams=[_team_read(t) for t in r.teams], disposals=[_disposal_read(d) for d in r.disposals], goals=[_goal_read(g) for g in r.goals],
+        teams=[_team_read(t, request_id) for t in r.teams], disposals=[_disposal_read(d, request_id) for d in r.disposals],
+        goals=[_goal_read(g, request_id) for g in r.goals],
     )
 
 
@@ -153,8 +163,13 @@ def get_model_health(db: Session = Depends(get_db)) -> ModelHealthRead:
     return ModelHealthRead(generated_at=datetime.now(timezone.utc), models=entries)
 
 
-@pricing_router.get("/afl/matches/{match_id}", response_model=MatchPricingRead)
-def get_match_pricing(match_id: int, db: Session = Depends(get_db)) -> MatchPricingRead:
+@pricing_router.get(
+    "/afl/matches/{match_id}", response_model=MatchPricingRead,
+    summary="Full team + player pricing for one match",
+    description="Model-derived team (h2h/line/total) and player (disposals/goals) pricing for a single match, "
+                "independent of any bookmaker quote. Requires an API key outside local development.",
+)
+def get_match_pricing(request: Request, match_id: int, db: Session = Depends(get_db), consumer: ApiConsumer = Depends(require_api_key)) -> MatchPricingRead:
     match = db.get(Match, match_id)
     if match is None:
         raise HTTPException(status_code=404, detail="match not found")
@@ -163,44 +178,63 @@ def get_match_pricing(match_id: int, db: Session = Depends(get_db)) -> MatchPric
     except ModelsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
 
+    request_id = _request_id(request)
     now = datetime.now(timezone.utc)
     data_cutoff = latest_completed_match_timestamp(db) or now
     team = price_team_market(match, context, now, data_cutoff)
     disposals = [price_disposals(db, r) for r in db.scalars(select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id == match_id)).all()]
     goals = [price_goals(db, r) for r in db.scalars(select(PlayerGoalProjection).where(PlayerGoalProjection.match_id == match_id)).all()]
 
-    return MatchPricingRead(match_id=match_id, team=_team_read(team), disposals=[_disposal_read(d) for d in disposals], goals=[_goal_read(g) for g in goals])
+    return MatchPricingRead(
+        match_id=match_id, team=_team_read(team, request_id),
+        disposals=[_disposal_read(d, request_id) for d in disposals], goals=[_goal_read(g, request_id) for g in goals],
+    )
 
 
-@pricing_router.get("/afl/current-round", response_model=RoundPricingRead)
-def get_current_round_pricing(no_cache: bool = Query(default=False), db: Session = Depends(get_db)) -> RoundPricingRead:
+@pricing_router.get(
+    "/afl/current-round", response_model=RoundPricingRead,
+    summary="Team + player pricing for every match in the current round",
+    description="Same shape as /afl/matches/{match_id}, for every match in the nearest upcoming round. "
+                "Requires an API key outside local development.",
+)
+def get_current_round_pricing(request: Request, no_cache: bool = Query(default=False), db: Session = Depends(get_db), consumer: ApiConsumer = Depends(require_api_key)) -> RoundPricingRead:
     try:
         result = price_current_round(db, use_cache=not no_cache)
     except ModelsUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
-    return _round_read(result)
+    return _round_read(result, _request_id(request))
 
 
-@pricing_router.get("/afl/players/{player_id}/disposals", response_model=DisposalPriceRead)
-def get_player_disposal_pricing(player_id: int, match_id: int, threshold: list[float] = Query(default=[]), db: Session = Depends(get_db)) -> DisposalPriceRead:
+@pricing_router.get(
+    "/afl/players/{player_id}/disposals", response_model=DisposalPriceRead,
+    summary="Player disposal pricing at one or more thresholds",
+    description="Prices arbitrary disposal thresholds on demand from the player's already-fitted NB2 distribution "
+                "(not just a fixed preset list). Requires an API key outside local development.",
+)
+def get_player_disposal_pricing(request: Request, player_id: int, match_id: int, threshold: list[float] = Query(default=[]), db: Session = Depends(get_db), consumer: ApiConsumer = Depends(require_api_key)) -> DisposalPriceRead:
     row = db.scalar(select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id == match_id, PlayerDisposalProjection.player_id == player_id))
     if row is None:
         raise HTTPException(status_code=404, detail="no current disposal projection for this player/match")
-    return _disposal_read(price_disposals(db, row, extra_thresholds=threshold or None))
+    return _disposal_read(price_disposals(db, row, extra_thresholds=threshold or None), _request_id(request))
 
 
-@pricing_router.get("/afl/players/{player_id}/goals", response_model=GoalPriceRead)
-def get_player_goal_pricing(player_id: int, match_id: int, threshold: list[float] = Query(default=[]), db: Session = Depends(get_db)) -> GoalPriceRead:
+@pricing_router.get(
+    "/afl/players/{player_id}/goals", response_model=GoalPriceRead,
+    summary="Player goal pricing at one or more thresholds",
+    description="Prices arbitrary goal thresholds on demand from the player's already-fitted hurdle/NB distribution. "
+                "Requires an API key outside local development.",
+)
+def get_player_goal_pricing(request: Request, player_id: int, match_id: int, threshold: list[float] = Query(default=[]), db: Session = Depends(get_db), consumer: ApiConsumer = Depends(require_api_key)) -> GoalPriceRead:
     row = db.scalar(select(PlayerGoalProjection).where(PlayerGoalProjection.match_id == match_id, PlayerGoalProjection.player_id == player_id))
     if row is None:
         raise HTTPException(status_code=404, detail="no current goal projection for this player/match")
-    return _goal_read(price_goals(db, row, extra_thresholds=threshold or None))
+    return _goal_read(price_goals(db, row, extra_thresholds=threshold or None), _request_id(request))
 
 
-def _same_game_read(p: SameGameMultiPrice) -> SameGameMultiPriceRead:
+def _same_game_read(p: SameGameMultiPrice, request_id: str) -> SameGameMultiPriceRead:
     return SameGameMultiPriceRead(
         match_id=p.match_id,
-        provenance=_provenance(SGM_MODEL_NAME, p.model_version, p.generated_at, p.data_cutoff or p.generated_at),
+        provenance=_provenance(SGM_MODEL_NAME, p.model_version, p.generated_at, p.data_cutoff or p.generated_at, request_id),
         model_probability=p.model_probability, model_fair_odds=p.model_fair_odds,
         naive_independence_probability=p.naive_independence_probability, naive_independence_fair_odds=p.naive_independence_fair_odds,
         correlation_adjustment_pp=p.correlation_adjustment_pp, mc_standard_error=p.mc_standard_error,
@@ -209,27 +243,36 @@ def _same_game_read(p: SameGameMultiPrice) -> SameGameMultiPriceRead:
     )
 
 
-@pricing_router.post("/afl/same-game", response_model=SameGameMultiPriceRead)
-def post_same_game_multi(request: SameGameMultiRequest, db: Session = Depends(get_db)) -> SameGameMultiPriceRead:
-    """Same Game Multi joint pricing — a conditional Monte Carlo model, not
-    the naive independence product (see app/pricing/same_game_pricing.py).
-    A strongly-correlated leg pairing (e.g. a team's own H2H + that team's
-    own line) is rejected with 400, same as the product's Multi Builder."""
+@pricing_router.post(
+    "/afl/same-game", response_model=SameGameMultiPriceRead,
+    summary="Same Game Multi (SGM) joint pricing",
+    description=(
+        "Prices a Same Game Multi via a validated conditional Monte Carlo model (see README's 'Same Game Multi "
+        "joint pricing' section for the backtest evidence) — never the naive per-leg probability product. "
+        "**Idempotency note**: this is a computational endpoint, not a mutation — it persists nothing and is safe "
+        "to retry; the same inputs and seed always produce the same output. A strongly-correlated leg pairing "
+        "(e.g. a team's own H2H + that team's own line) is rejected with 400, same as the product's own Multi "
+        "Builder. `n_simulations` and leg count are both bounded server-side regardless of what's requested. "
+        "Requires an API key outside local development."
+    ),
+)
+def post_same_game_multi(http_request: Request, request: SameGameMultiRequest, db: Session = Depends(get_db), consumer: ApiConsumer = Depends(require_api_key)) -> SameGameMultiPriceRead:
     legs = [SgmLegRequest(**leg.model_dump()) for leg in request.legs]
     try:
         price = price_same_game_multi(db, request.match_id, legs, n_simulations=request.n_simulations)
     except SgmValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    return _same_game_read(price)
+    return _same_game_read(price, _request_id(http_request))
 
 
 # --- Market Intelligence (separate layer) -----------------------------------
 
 
-def _intel_read(m) -> MarketIntelligenceRead:
+def _intel_read(m, request_id: str) -> MarketIntelligenceRead:
     from app.api.pricing_schemas import BookLineRead, ConsensusRead, OutlierRead
 
     return MarketIntelligenceRead(
+        request_id=request_id,
         has_market=m.has_market, n_bookmakers=m.n_bookmakers, best_price=m.best_price, best_bookmaker=m.best_bookmaker,
         consensus=ConsensusRead(
             consensus_probability=m.consensus.consensus_probability, n_bookmakers=m.consensus.n_bookmakers,
@@ -244,9 +287,15 @@ def _intel_read(m) -> MarketIntelligenceRead:
     )
 
 
-@market_intel_router.get("/afl/matches/{match_id}/team/{market_type}", response_model=MarketIntelligenceRead)
+@market_intel_router.get(
+    "/afl/matches/{match_id}/team/{market_type}", response_model=MarketIntelligenceRead,
+    summary="Compare a team market's model price against real bookmaker quotes",
+    description="Never influences pricing — purely descriptive model-vs-market comparison for one team market. "
+                "Requires an API key outside local development.",
+)
 def get_team_market_intelligence(
-    match_id: int, market_type: str, selection: str, line_value: float | None = None, db: Session = Depends(get_db)
+    request: Request, match_id: int, market_type: str, selection: str, line_value: float | None = None,
+    db: Session = Depends(get_db), consumer: ApiConsumer = Depends(require_api_key),
 ) -> MarketIntelligenceRead:
     match = db.get(Match, match_id)
     if match is None:
@@ -266,12 +315,18 @@ def get_team_market_intelligence(
         model_p = price.totals[0].over_probability if selection == "over" else price.totals[0].under_probability
     if model_p is None:
         raise HTTPException(status_code=400, detail="unsupported market_type/selection combination")
-    return _intel_read(team_market_intelligence(db, match_id, market_type, selection, line_value, model_p))
+    return _intel_read(team_market_intelligence(db, match_id, market_type, selection, line_value, model_p), _request_id(request))
 
 
-@market_intel_router.get("/afl/players/{player_id}/{market_type}", response_model=MarketIntelligenceRead)
+@market_intel_router.get(
+    "/afl/players/{player_id}/{market_type}", response_model=MarketIntelligenceRead,
+    summary="Compare a player prop market's model price against real bookmaker quotes",
+    description="Never influences pricing — purely descriptive model-vs-market comparison for one player market. "
+                "Requires an API key outside local development.",
+)
 def get_player_market_intelligence(
-    player_id: int, market_type: str, match_id: int, threshold: float, line_type: str = "over_under", db: Session = Depends(get_db)
+    request: Request, player_id: int, market_type: str, match_id: int, threshold: float, line_type: str = "over_under",
+    db: Session = Depends(get_db), consumer: ApiConsumer = Depends(require_api_key),
 ) -> MarketIntelligenceRead:
     if market_type == PlayerMarket.DISPOSALS.value:
         row = db.scalar(select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id == match_id, PlayerDisposalProjection.player_id == player_id))
@@ -288,4 +343,28 @@ def get_player_market_intelligence(
     # player_pricing.py's price_disposals/price_goals), so the requested
     # threshold's price is exactly the last entry.
     model_p = priced.thresholds[-1].probability
-    return _intel_read(player_market_intelligence(db, match_id, player_id, market_type, line_type, threshold, model_p))
+    return _intel_read(player_market_intelligence(db, match_id, player_id, market_type, line_type, threshold, model_p), _request_id(request))
+
+
+@pricing_router.get(
+    "/readiness", response_model=PricingReadinessRead,
+    summary="Data readiness for pricing (distinct from process liveness)",
+    description="Liveness (is the process running) is /api/health; DB readiness is /api/health/db. This endpoint "
+                "answers a narrower, pricing-specific question: is the underlying data fresh/complete enough to "
+                "price with confidence right now? Reuses the same Data Health checks the internal Trading Monitor "
+                "uses (app/trading_monitor/data_health.py) — one stale bookmaker feed degrades, it never marks the "
+                "whole API unhealthy.",
+)
+def get_pricing_readiness(db: Session = Depends(get_db)) -> PricingReadinessRead:
+    health = load_data_health(db)
+    checks = [
+        PricingReadinessCheckRead(category=f.category, label=f.label, severity=f.severity, detail=f.detail)
+        for f in health.findings
+    ]
+    if any(c.severity == SEVERITY_ERROR for c in checks):
+        status_ = "not_ready"
+    elif checks:
+        status_ = "degraded"
+    else:
+        status_ = "ready"
+    return PricingReadinessRead(status=status_, generated_at=datetime.now(timezone.utc), checks=checks)

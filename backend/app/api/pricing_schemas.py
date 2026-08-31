@@ -8,18 +8,33 @@ nothing here computes anything, it only shapes already-computed dataclass
 output into a stable, typed, documented response.
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.schemas import UtcDatetime
 
 
 class ModelProvenance(BaseModel):
-    """Attached to every priced market (item 1's explicit requirement)."""
+    """Attached to every priced market (item 1's explicit requirement).
+
+    `generated_at` and `data_cutoff` answer two DIFFERENT questions and
+    must never be conflated: `generated_at` is when THIS response was
+    computed; `data_cutoff` ("data_as_of") is the newest underlying data
+    (completed match results, projections, odds) the computation actually
+    used. A cached or replayed response can have a `generated_at` far
+    later than its `data_cutoff` — that gap is real information, not noise.
+
+    `request_id` is included here (rather than as a separate top-level
+    field on every response schema) because every priced response already
+    embeds exactly one `ModelProvenance` — a client tracing an issue back
+    to a specific server-side event needs this value regardless of which
+    market they called.
+    """
 
     model_name: str
     model_version: str
-    generated_at: UtcDatetime
-    data_cutoff: UtcDatetime
+    generated_at: UtcDatetime = Field(description="When this response was computed.")
+    data_cutoff: UtcDatetime = Field(description="The newest underlying data used (\"data_as_of\") — NOT the same as generated_at.")
+    request_id: str = Field(description="Correlation ID for this response — also present in the X-Request-ID response header.")
 
 
 class ThresholdPriceRead(BaseModel):
@@ -67,6 +82,7 @@ class TeamMarketPriceRead(BaseModel):
 
     lines: list[LinePriceRead]
     totals: list[TotalPriceRead]
+    warnings: list[str] = Field(default_factory=list, description="Currently always empty — team pricing has no confidence/staleness warnings of its own yet, unlike player pricing. Present for schema consistency across markets.")
 
 
 class CalibrationInfo(BaseModel):
@@ -153,8 +169,28 @@ class SameGameLegRequest(BaseModel):
 
 class SameGameMultiRequest(BaseModel):
     match_id: int
-    legs: list[SameGameLegRequest]
-    n_simulations: int = 100_000
+    legs: list[SameGameLegRequest] = Field(
+        min_length=2, max_length=8,
+        description="2-8 legs. The 8-leg ceiling matches Multi Builder's own existing Longer Shot tier — not a new number invented for this endpoint.",
+    )
+    n_simulations: int = Field(
+        default=100_000, ge=1_000, le=200_000,
+        description="Monte Carlo draw count. Bounded server-side regardless of what's requested, to keep worst-case "
+                    "request cost predictable — this is not a knob for a client to trade accuracy for unbounded compute cost.",
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "match_id": 2260,
+                "legs": [
+                    {"leg_type": "h2h", "team_id": 3},
+                    {"leg_type": "disposals", "player_id": 1042, "threshold": 21.5},
+                ],
+                "n_simulations": 100_000,
+            }
+        }
+    }
 
 
 class SameGameLegRead(BaseModel):
@@ -220,6 +256,7 @@ class OutlierRead(BaseModel):
 
 
 class MarketIntelligenceRead(BaseModel):
+    request_id: str
     has_market: bool
     n_bookmakers: int
     best_price: float | None
@@ -250,6 +287,24 @@ class ModelHealthEntry(BaseModel):
 class ModelHealthRead(BaseModel):
     generated_at: UtcDatetime
     models: list[ModelHealthEntry]
+
+
+class PricingReadinessCheckRead(BaseModel):
+    category: str
+    label: str
+    severity: str  # "error" | "warning" | "info" — see app/trading_monitor/data_health.py
+    detail: str
+
+
+class PricingReadinessRead(BaseModel):
+    """Distinct from liveness (/api/health — is the process running) and DB
+    readiness (/api/health/db) — this answers "is the underlying pricing
+    data fresh/complete enough to trust right now?" One stale bookmaker
+    feed degrades this, it never marks the whole API not_ready."""
+
+    status: str  # "ready" | "degraded" | "not_ready"
+    generated_at: UtcDatetime
+    checks: list[PricingReadinessCheckRead]
 
 
 # --- Integration health -------------------------------------------------------

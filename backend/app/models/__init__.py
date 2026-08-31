@@ -6,6 +6,17 @@ from app.models.anomaly_alert_snapshot import AnomalyAlertSnapshot
 from app.models.anomaly_case_record import AnomalyCaseRecord
 from app.models.anomaly_case_followup import AnomalyCaseFollowUp
 from app.models.anomaly_case_snapshot import AnomalyCaseSnapshot
+from app.models.api_consumer import (
+    CONSUMER_STATUS_ACTIVE,
+    CONSUMER_STATUS_DISABLED,
+    DEFAULT_DAILY_QUOTA,
+    DEFAULT_RATE_LIMIT_PER_MINUTE,
+    KEY_STATUS_ACTIVE,
+    KEY_STATUS_REVOKED,
+    ApiConsumer,
+    ApiKey,
+)
+from app.models.api_usage_record import FRESHNESS_FRESH, FRESHNESS_STALE, FRESHNESS_UNAVAILABLE, ApiUsageRecord
 from app.models.bookmaker import Bookmaker
 from app.models.elo_rating import EloRating
 from app.models.expected_lineup import (
@@ -165,4 +176,16 @@ __all__ = [
     "AnomalyCaseRecord",
     "AnomalyCaseSnapshot",
     "AnomalyCaseFollowUp",
+    "ApiConsumer",
+    "ApiKey",
+    "CONSUMER_STATUS_ACTIVE",
+    "CONSUMER_STATUS_DISABLED",
+    "KEY_STATUS_ACTIVE",
+    "KEY_STATUS_REVOKED",
+    "DEFAULT_RATE_LIMIT_PER_MINUTE",
+    "DEFAULT_DAILY_QUOTA",
+    "ApiUsageRecord",
+    "FRESHNESS_FRESH",
+    "FRESHNESS_STALE",
+    "FRESHNESS_UNAVAILABLE",
 ]

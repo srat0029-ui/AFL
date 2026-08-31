@@ -4,7 +4,7 @@ A pricing and market-intelligence system for Australian Football League markets:
 
 `Python · FastAPI · SQLAlchemy 2.0 · scikit-learn · statsmodels · XGBoost/LightGBM (research) · React 19 · TypeScript`
 
-~39k lines of backend Python across 270 modules, ~14.5k lines of frontend TypeScript across 49 files, 1,540 backend tests.
+~43k lines of backend Python across 295 modules, ~15.2k lines of frontend TypeScript across 50 files, 1,730 backend tests.
 
 Model vs. real, settled bookmaker markets — not a backtest, an actual running comparison against live prices from 9 Australian bookmakers:
 
@@ -196,8 +196,8 @@ No claim of a betting edge, guaranteed profit, or "beats the bookmaker" is made 
 - Same Game Multi joint pricing (below) models exactly one dependence channel — a player's own output vs. their own team's match outcome — via a single global linear coefficient per market, not a full pairwise correlation structure; teammate-pair and opponent-pair correlations remain unmodelled because the original correlation study found them negligible.
 - No odds provider integration in this codebase ingests a genuine bookmaker Same Game Multi/parlay price — `SgmPriceSnapshot`'s bookmaker fields are schema-ready but always null today, and "model vs. bookmaker" in the SGM prospective evaluation always reports "no data" rather than a fabricated number. Real closing-line tracking for SGM isn't buildable without that data source; what's tracked instead is how the model's own belief moves across the pre-match window.
 - The team-level prospective dataset has zero settled rows; the evidence above is player-props-only and one short window within one season.
-- No authentication or rate limiting — this is a dev/demo build, with the intended approach (per-key API auth, gateway-level rate limiting) documented but not implemented.
-- No CI pipeline runs the test suite on push; it passes locally (1,540+ tests) but isn't enforced automatically.
+- API-key rate limiting is a DB-backed rolling-window count in-process, not a distributed limiter — correct at this project's real traffic, but not a claim of gateway-scale throughput.
+- No CI pipeline runs the test suite on push; it passes locally (1,670+ tests) but isn't enforced automatically.
 - Frontend test coverage is thin — Vitest is wired up and one real test file exists, not a comprehensive suite.
 - Single sport (AFL), single fixture provider (Squiggle), single odds provider (The Odds API).
 - The elite-disposal-bias study didn't control for opponent strength — noted explicitly in the study itself as a scope boundary, not silently omitted.
@@ -223,10 +223,15 @@ Team win probability is computed live and never persisted continuously (`Pricing
 
 SGM monitoring (largest naive-vs-joint differences, largest correlation adjustments, cross-horizon price movement, dependence-coefficient provenance) and the Data Health panel (freshness, settlement backlog, live-cycle step failures — classified ERROR/WARNING/INFO, never inflating a normal "not open yet" state into a failure) are both pure read-time aggregations over data this project already persists — no new detection logic, no new event table for either. Nothing about `app/market_monitor/` itself was modified.
 
+## B2B API productisation
+
+The `/api/v1/pricing/*` and `/api/v1/market-intelligence/*` routes are the actual external-facing surface of this project — everything else (Trading Monitor, Model Registry, the frontend's own dashboard routes) is same-origin internal consumption and was deliberately left unauthenticated rather than protected uniformly. Those B2B routes now sit behind a per-consumer API key (`X-API-Key`, hashed with SHA-256 — never stored or logged in plaintext) checked by a single FastAPI dependency, `require_api_key`, mirroring the existing `Depends(get_db)` shape rather than inventing a new one. A `local-dev` bypass keyed off the same `settings.app_env` field that already loosens CORS means the frontend and the full test suite need no key at all when running locally — but a request that *does* supply a key is validated for real even then, so the failure paths stay testable.
+
+Rate limiting (per-minute + rolling 24-hour quota, both per-consumer) is a COUNT query against a new `ApiUsageRecord` table — the same table every authenticated request writes one row to regardless of outcome — deliberately not Redis or a gateway-level limiter, since neither is earned at this project's real scale. Every response carries `X-RateLimit-*` headers and an `X-Request-ID` that round-trips into the error body, the usage-log row, and (for pricing responses) `provenance.request_id`, so a reported issue can be traced to one exact server-side record. All error responses — the new auth/rate-limit errors and every pre-existing route's `HTTPException` alike, via a global exception-handler retrofit — now share one JSON shape (`error_code`/`message`/`request_id`/`details`) instead of ad hoc `detail` strings. `GET /api/v1/pricing/readiness` reports data-readiness by reusing the Trading Monitor's own data-health checks, not a second freshness implementation. Consumer/key lifecycle (`create-consumer`/`create-key`/`revoke-key`/`usage`) is CLI-only, matching how every other operational workflow in this repo already works — there's no HTTP admin surface that would need its own auth story. Full detail: [docs/API_USAGE.md](backend/docs/API_USAGE.md).
+
 ## Roadmap
 
 - Let the `PricingSnapshot` and `SgmPriceSnapshot` prospective datasets accumulate through a full season before drawing any conclusion from either.
-- Add per-consumer API key auth and gateway-level rate limiting ahead of any real external integration.
 - Wire up CI to run the existing test suite on every push.
 - If a reliable automated team-selection source appears, replace the manual entry step without touching the projection/pricing code that consumes it.
 - Support a "line" (handicap) team leg in Same Game Multi combos and their snapshots — currently only h2h and total team legs are priced/frozen jointly, since handicap sign conventions weren't worth risking a silent bug in the first version.
@@ -256,7 +261,7 @@ App at `http://localhost:5173`.
 
 **Tests**
 ```bash
-cd backend && .venv\Scripts\python -m pytest -q   # 1,540 tests
+cd backend && .venv\Scripts\python -m pytest -q   # 1,730 tests
 cd frontend && npm run build                       # tsc -b + vite build
 cd frontend && npm test                             # vitest
 ```

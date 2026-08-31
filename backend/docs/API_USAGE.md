@@ -33,20 +33,67 @@ hand-written samples).
 
 ## 3. Authentication
 
-**Not implemented yet — this is a dev/demo build with no auth layer.** For a
-production integration, the intended approach is a per-consumer API key sent
-as a `X-API-Key` header, validated by a FastAPI dependency ahead of every
-router (the same `Depends(get_db)` pattern already used for the DB session
-would extend naturally to `Depends(get_api_key)`). No timeline is committed —
-this section states intent, not a shipped feature.
+The `/api/v1/pricing/*` and `/api/v1/market-intelligence/*` routes require a
+per-consumer API key sent as an `X-API-Key` header, checked by a FastAPI
+dependency (`require_api_key`) ahead of the route body — the same
+`Depends(get_db)` shape already used for the DB session. `/health` and
+`/model-health` stay open (standard for uptime checks, nothing proprietary
+in the response).
+
+- Request a key out-of-band from whoever operates this deployment. Keys are
+  provisioned with the admin CLI (`python -m app.api_platform.cli
+  create-consumer` / `create-key`) — there is no self-service signup or HTTP
+  key-management endpoint.
+- A key is only ever shown once, at creation time. The server stores a
+  SHA-256 hash, never the raw value — a lost key means issuing a new one.
+- A missing or invalid key gets `401` with the shared error shape (§6).
+- **Local development bypass**: when the server is running with
+  `APP_ENV=local` (the same setting that already loosens CORS) and no
+  `X-API-Key` header is sent, the request is treated as a synthetic
+  `local-dev` consumer instead of being rejected. This is why the frontend
+  and the existing test suite need no key at all when running locally. Any
+  other environment always requires a real key, and a request that *does*
+  send a key is validated for real even in local mode.
 
 ## 4. Rate limiting
 
-**Not implemented yet.** Recommended strategy for production: a per-key
-token-bucket limit at the reverse-proxy/gateway layer (not in application
-code), since pricing responses are cheap to serve from cache (§5) and the
-actual cost driver is protecting the upstream odds-provider integration, not
-this API's own compute.
+Each API key carries a per-minute limit and a rolling 24-hour quota (default
+60/minute, 5,000/day — set per-consumer at provisioning time). Limits are
+enforced in-process against a DB-backed usage log (`ApiUsageRecord`), not a
+separate cache or gateway — this is a rolling-window, single-database limit,
+not a distributed one, and is sized for this project's real traffic rather
+than gateway-scale throughput.
+
+Every authenticated response carries the current status as headers:
+
+```
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 57
+X-RateLimit-Daily-Quota: 5000
+X-RateLimit-Daily-Remaining: 4991
+```
+
+Exceeding either limit returns `429` with the shared error shape and a
+`retry_after_seconds` field in `details`.
+
+## 4a. Request tracing and readiness
+
+Every response carries an `X-Request-ID` header (a client-supplied one is
+echoed back; otherwise the server generates one). The same ID appears in
+every pricing response's `provenance.request_id` field and in any error
+body — quote it when reporting an issue, it identifies the exact server-side
+usage-log row.
+
+`GET /api/v1/pricing/readiness` (unauthenticated, like `/health`) reports
+whether the underlying data the pricing routes depend on is actually usable
+right now — reusing the same data-health checks the internal Trading
+Monitor uses, not a separate freshness implementation. `status` is
+`"not_ready"` if any check is at error severity, `"degraded"` if only
+warnings exist, `"ready"` otherwise:
+
+```json
+{"status": "ready", "generated_at": "2026-08-23T13:10:48.015909+00:00", "checks": []}
+```
 
 ## 5. Expected response times
 
@@ -58,14 +105,20 @@ real current-round dataset. Re-run it any time — it's read-only:
 python -m scripts.benchmark_pricing
 ```
 
-| Operation | Typical | Notes |
-|---|---|---|
-| Single team-market pricing | ~1–2ms | Elo/Poisson context is pre-fit, not re-fit per request |
-| Full round pricing, cache miss | ~100ms | scales with matches × players in the round |
-| Full round pricing, cache hit | <1ms | 30s TTL cache around the whole round response |
-| Arbitrary player-threshold query | ~1ms | evaluates one persisted distribution at any threshold |
+| Operation | p50 | p95 | Notes |
+|---|---|---|---|
+| Single team-market pricing | 0.3ms | 1.8ms | Elo/Poisson context is pre-fit, not re-fit per request; n=20 reps |
+| Full round pricing, cache miss | ~110ms | — | single-shot (repeating would hit the cache); scales with matches × players in the round |
+| Full round pricing, cache hit | <1ms | — | single-shot; 30s TTL cache around the whole round response |
+| Arbitrary player-threshold query | 0.8ms | 1.2ms | evaluates one persisted distribution at any threshold; n=20 reps |
+| Same Game Multi, 2 legs, default 100k sims | 14.2ms | 15.1ms | Monte Carlo pricing; n=20 reps |
+| Same Game Multi, 3 legs, default 100k sims | 16.2ms | 16.9ms | n=20 reps |
+| Same Game Multi, 2 legs, 200k sims (API max) | 28.1ms | 28.7ms | `n_simulations` is capped at 200,000; n=20 reps |
 
-These are in-process compute figures. Observed HTTP round-trip time in this
+Figures above are one real measurement from `scripts/benchmark_pricing.py`
+against the current dev dataset — re-run it yourself rather than trusting
+these as a permanent SLA, since they scale with whatever match/player data
+happens to be loaded. These are in-process compute figures. Observed HTTP round-trip time in this
 dev environment is higher (dev-server `--reload`, single worker, no
 connection pooling) — re-measure against a production ASGI deployment before
 using round-trip time as an SLA figure. See PRICING_ENGINE.md §6 for the
@@ -73,20 +126,27 @@ same caveat in more detail.
 
 ## 6. Error formats
 
-Standard FastAPI/Pydantic conventions, no custom envelope:
+Every error response — from the new auth/rate-limit layer, from an existing
+route's `HTTPException`, or from an unexpected server exception — is
+normalized to one JSON shape by a global exception handler:
 
-- **Domain errors** (not found, unsupported combination): `HTTPException`,
-  e.g. `{"detail": "match not found"}` with `404`; `{"detail": "unsupported
-  market_type/selection combination"}` with `400`.
-- **Model/context unavailable** (e.g. team models not yet trained):
-  `503` with `{"detail": "<reason>"}`.
-- **Request validation errors** (bad query param type, missing required
-  param): FastAPI's standard `422` with a `{"detail": [{"loc": [...], "msg":
-  ..., "type": ...}]}` array — one entry per invalid field.
+```json
+{"error_code": "AUTHENTICATION_ERROR", "message": "Invalid API key.", "request_id": "b1e2...", "details": null}
+```
 
-There is currently no distinct error code/taxonomy beyond the HTTP status
-and `detail` string — do not pattern-match on `detail` text for control flow
-without confirming it first via `/docs`, since message wording may change.
+| `error_code` | HTTP status | Meaning |
+|---|---|---|
+| `AUTHENTICATION_ERROR` | 401 | Missing/invalid/revoked key, or disabled consumer |
+| `RATE_LIMIT_ERROR` | 429 | Per-minute or daily quota exceeded; `details.retry_after_seconds` and `details.reason` are set |
+| `VALIDATION_ERROR` | 400/422 | Bad request shape, including FastAPI's own request-validation errors |
+| `NOT_FOUND` | 404 | e.g. match not found |
+| `MODEL_UNAVAILABLE` | 503 | Model/context not yet trained or available |
+| `DATA_UNAVAILABLE` | 503 | Required underlying data missing |
+| `INTERNAL_ERROR` | 500 | Unexpected server error — client-visible message is intentionally generic; full detail is server-side logged against `request_id` |
+
+`request_id` in the body always matches the response's `X-Request-ID`
+header — quote it when reporting an issue. Pattern-match on `error_code`,
+not on `message` text, since wording may change.
 
 ## 7. Model-version semantics
 
@@ -155,3 +215,32 @@ model) — treat `"degraded"` as "investigate," not necessarily "down."
 Every endpoint documented here is read-only — no request body, no mutation
 of pricing/model state. Nothing in this API surface places, records, or
 implies a stake.
+
+## 11. Versioning
+
+`v1` is the only version, and it means what's documented on this page today
+— there is no `v2` in development and no deprecation schedule to plan
+around. A breaking change to a `v1` response shape would ship as a new
+prefix rather than silently altering `v1`; additive fields (new optional
+response keys) do not bump the version.
+
+## 12. Provisioning a consumer (operator-side)
+
+Consumer and key lifecycle is CLI-only — there is no HTTP admin endpoint,
+deliberately, since an HTTP key-management surface would need its own auth
+story:
+
+```bash
+python -m app.api_platform.cli create-consumer --name "Acme Sportsbook" --rate-limit-per-minute 60 --daily-quota 5000
+python -m app.api_platform.cli create-key --consumer "Acme Sportsbook"    # prints the raw key once — store it now
+python -m app.api_platform.cli usage --consumer "Acme Sportsbook"         # request counts, success rate, p50/p95 latency
+python -m app.api_platform.cli revoke-key --key-prefix afl_XXXXXXXXXXXX
+python -m app.api_platform.cli disable-consumer --name "Acme Sportsbook"
+```
+
+## 13. Minimal client example
+
+[`examples/b2b_client_example.py`](../../examples/b2b_client_example.py) is
+a dependency-free (stdlib `urllib` only) script that authenticates, requests
+match/player/SGM pricing, prints provenance, and handles an API error —
+useful as a starting point independent of language/framework choice.

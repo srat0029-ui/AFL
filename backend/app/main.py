@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api_platform.errors import register_exception_handlers
+from app.api_platform.request_context import RequestContextMiddleware
 from app.api.routes import (
     afl,
     backtest,
@@ -56,6 +58,9 @@ else:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+app.add_middleware(RequestContextMiddleware)
+register_exception_handlers(app)
 
 app.include_router(health.router)
 app.include_router(matches.router)

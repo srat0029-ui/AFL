@@ -35,8 +35,27 @@ def db_session():
         engine.dispose()
 
 
+class _NoCloseSessionProxy:
+    """Wraps db_session so app/api_platform/request_context.py's middleware
+    (which opens its OWN session via a direct SessionLocal() call, entirely
+    outside FastAPI's dependency-injection system - middleware runs after
+    the request's own get_db-scoped session is already torn down) writes to
+    the SAME in-memory test database as everything else in the test,
+    instead of the real dev database (afl.db). `close()` is a no-op since
+    db_session's own fixture teardown owns the real close."""
+
+    def __init__(self, session):
+        self._session = session
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+    def close(self) -> None:
+        pass
+
+
 @pytest.fixture()
-def client(db_session):
+def client(db_session, monkeypatch):
     def _override_get_db():
         try:
             yield db_session
@@ -44,6 +63,7 @@ def client(db_session):
             pass
 
     app.dependency_overrides[get_db] = _override_get_db
+    monkeypatch.setattr("app.api_platform.request_context.SessionLocal", lambda: _NoCloseSessionProxy(db_session))
     try:
         yield TestClient(app)
     finally:
