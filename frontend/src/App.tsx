@@ -18,6 +18,7 @@ import RealMarketTrackingPage from "./pages/RealMarketTrackingPage";
 import RoundContextDashboardPage from "./pages/RoundContextDashboardPage";
 import StatusPage from "./pages/StatusPage";
 import TeamSelectionPage from "./pages/TeamSelectionPage";
+import TradingMonitorPage from "./pages/TradingMonitorPage";
 import WeeklyReviewPage from "./pages/WeeklyReviewPage";
 
 // Section 4: grouped nav, Multis pinned outside every group as the primary
@@ -61,6 +62,7 @@ const NAV_GROUPS: { label: string; links: { to: string; label: string }[] }[] = 
   {
     label: "Trading / B2B",
     links: [
+      { to: "/trading-monitor", label: "Trading Monitor" },
       { to: "/market-monitor", label: "Market Monitor" },
       { to: "/model-registry", label: "Model Evaluation" },
       { to: "/b2b-demo", label: "B2B Demo" },
@@ -232,6 +234,7 @@ function App() {
         <Route path="/placed-bets" element={<PlacedBetsPage />} />
         <Route path="/model-registry" element={<ModelRegistryPage />} />
         <Route path="/b2b-demo" element={<B2BDemoPage />} />
+        <Route path="/trading-monitor" element={<TradingMonitorPage />} />
         <Route path="/market-monitor" element={<MarketMonitorPage />} />
         <Route path="/real-market-tracking" element={<RealMarketTrackingPage />} />
         <Route path="/live-status" element={<LiveStatusPage />} />

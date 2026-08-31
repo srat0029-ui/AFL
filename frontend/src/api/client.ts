@@ -3290,3 +3290,157 @@ export interface EffectivenessDashboard {
 export function fetchEffectiveness(): Promise<EffectivenessDashboard> {
   return request("/api/v1/market-monitor/effectiveness");
 }
+
+// --- Trading Monitor (/api/v1/trading-monitor/*) ----------------------------
+// A composition layer over app.market_monitor's own already-scored cases
+// plus new model-movement/SGM/data-health signals — see backend
+// app/trading_monitor/__init__.py for what's reused vs. genuinely new.
+
+export interface NeedsAttentionEntry {
+  case_id: string;
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  player_name: string | null;
+  market_type: string;
+  selection: string | null;
+  threshold: number | null;
+  tier: string;
+  total_score: number;
+  primary_alert_type: string;
+  severity: string;
+  detail: string;
+  lifecycle: string;
+}
+
+export interface ModelMovement {
+  match_id: number;
+  player_id: number | null;
+  value_type: string;
+  value_kind: string;
+  selection: string | null;
+  threshold: number | null;
+  previous_value: number;
+  current_value: number;
+  absolute_change: number;
+  relative_change: number | null;
+  hours_between: number;
+  previous_recorded_at: string;
+  recorded_at: string;
+  model_name: string;
+  model_version: string;
+  lineup_status_changed: boolean;
+  previous_lineup_status: string | null;
+  current_lineup_status: string | null;
+  is_notable: boolean;
+  is_material: boolean;
+}
+
+export interface FreshnessItem {
+  category: string;
+  label: string;
+  status: string;
+  last_refreshed: string | null;
+  detail: string;
+}
+
+export interface DataHealthFinding {
+  category: string;
+  label: string;
+  severity: string;
+  detail: string;
+}
+
+export interface SettlementBacklog {
+  prop_observations_unsettled: number;
+  pricing_snapshots_unsettled: number;
+  sgm_snapshots_unsettled: number;
+}
+
+export interface LiveCycleHealth {
+  last_run_at: string | null;
+  last_run_status: string | null;
+  n_runs_checked: number;
+  n_runs_with_failures: number;
+  recent_failed_steps: string[];
+}
+
+export interface DataHealth {
+  freshness: FreshnessItem[];
+  findings: DataHealthFinding[];
+  backlog: SettlementBacklog;
+  live_cycle: LiveCycleHealth;
+}
+
+export interface SgmDivergenceEntry {
+  match_id: number;
+  leg_signature: string;
+  n_legs: number;
+  model_probability: number;
+  naive_independence_probability: number;
+  naive_vs_joint_difference_pp: number;
+  correlation_adjustment_pp: number;
+  correlation_adjustment_bucket: string;
+  snapshot_horizon: string;
+  generated_at: string;
+}
+
+export interface SgmHorizonMovement {
+  match_id: number;
+  leg_signature: string;
+  n_legs: number;
+  earliest_horizon: string;
+  earliest_probability: number;
+  latest_horizon: string;
+  latest_probability: number;
+  absolute_change: number;
+  is_beyond_mc_noise: boolean;
+}
+
+export interface SgmCoefficientProvenance {
+  market: string;
+  slope: number;
+  intercept: number;
+  n_observations: number;
+  model_version: string;
+  fitted_at: string;
+}
+
+export interface SgmMonitoring {
+  n_recent_snapshots: number;
+  largest_naive_vs_joint_differences: SgmDivergenceEntry[];
+  largest_correlation_adjustments: SgmDivergenceEntry[];
+  horizon_movements: SgmHorizonMovement[];
+  coefficient_provenance: SgmCoefficientProvenance[];
+}
+
+export interface RecentActivityEntry {
+  run_at: string;
+  overall_status: string;
+  n_steps_failed: number;
+}
+
+export interface TradingMonitorTopSummary {
+  n_upcoming_matches: number;
+  n_fresh_markets: number;
+  n_stale_or_warning_findings: number;
+  n_active_error_or_warning: number;
+  n_material_model_movements: number;
+  n_market_movement_cases: number;
+}
+
+export interface TradingMonitorOverview {
+  generated_at: string;
+  summary: TradingMonitorTopSummary;
+  needs_attention: NeedsAttentionEntry[];
+  market_movers: NeedsAttentionEntry[];
+  dispersion: NeedsAttentionEntry[];
+  model_movers: ModelMovement[];
+  data_health: DataHealth;
+  sgm: SgmMonitoring;
+  recent_activity: RecentActivityEntry[];
+}
+
+export function fetchTradingMonitorOverview(limit?: number): Promise<TradingMonitorOverview> {
+  return request(`/api/v1/trading-monitor/overview${limit ? `?limit=${limit}` : ""}`);
+}

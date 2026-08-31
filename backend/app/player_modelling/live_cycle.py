@@ -56,6 +56,7 @@ from app.player_modelling.live_persistence import persist_projection_run
 from app.player_modelling.live_sanity import confirmed_out_player_ids_by_match, run_all_sanity_checks
 from app.player_modelling.placed_bets import settle_placed_bets
 from app.player_modelling.prop_observation import ObservationCreationReport, create_observations_for_match
+from app.player_modelling.model_value_observations import record_model_value_observations
 from app.pricing.sgm_snapshot_service import settle_sgm_snapshots, snapshot_sgm_pricing
 from app.pricing.snapshot_service import settle_pricing_snapshots, snapshot_round_pricing
 from app.player_modelling.prop_odds_ingestion import run_prop_odds_refresh
@@ -442,6 +443,23 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
         )
     except Exception as exc:  # noqa: BLE001
         report.add("snapshot_sgm_pricing", STEP_RECOVERABLE_FAILURE, f"SGM snapshot creation failed: {exc}")
+
+    # Step 10b-iii: capture this cycle's model-side values (team win
+    # probability, player projections) into ModelValueObservation - the
+    # Trading Monitor's one genuinely new history table (see
+    # app/models/model_value_observation.py's docstring for why nothing
+    # else in this codebase already tracks this). Same placement reasoning
+    # as 10b/10b-ii: after odds refresh, so this reflects the cycle's real
+    # state. Insert-only-on-change, so a normal cycle with no real movement
+    # writes nothing new.
+    try:
+        obs_report = record_model_value_observations(db, [m.match_id for m in upcoming_matches])
+        report.add(
+            "record_model_value_observations", STEP_SUCCESS,
+            f"{obs_report.matches_considered} match(es) considered: {obs_report.observations_created} observation(s) newly recorded",
+        )
+    except Exception as exc:  # noqa: BLE001
+        report.add("record_model_value_observations", STEP_RECOVERABLE_FAILURE, f"model value observation capture failed: {exc}")
 
     # Step 10c: freeze/refresh/settle High Priority + Critical Market
     # Monitor cases (Genuine Prospective Operation stage, item 1) - same

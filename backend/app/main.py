@@ -23,6 +23,7 @@ from app.api.routes import (
     pricing_v1,
     real_market_tracking,
     refresh,
+    trading_monitor_v1,
     weekly_review,
 )
 from app.config import get_settings
@@ -82,3 +83,4 @@ app.include_router(pricing_v1.market_intel_router)
 app.include_router(pricing_v1.integration_router)
 app.include_router(model_registry_v1.router)
 app.include_router(market_monitor_v1.router)
+app.include_router(trading_monitor_v1.router)

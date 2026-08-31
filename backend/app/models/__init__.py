@@ -37,6 +37,18 @@ from app.models.match_context import (
 )
 from app.models.model_promotion_event import ModelPromotionEvent
 from app.models.model_run import ModelRun, ModelRunHistory, ModelValidationMetric
+from app.models.model_value_observation import (
+    KIND_FAIR_ODDS,
+    KIND_PROBABILITY,
+    KIND_PROJECTED_MEAN,
+    VALUE_PLAYER_DISPOSAL_PROBABILITY,
+    VALUE_PLAYER_DISPOSAL_PROJECTED_MEAN,
+    VALUE_PLAYER_GOAL_PROBABILITY,
+    VALUE_PLAYER_GOAL_PROJECTED_MEAN,
+    VALUE_TEAM_FAIR_ODDS,
+    VALUE_TEAM_WIN_PROBABILITY,
+    ModelValueObservation,
+)
 from app.models.odds_quote import OddsQuote
 from app.models.placed_bet import (
     SOURCE_MODE_BEST_OPPORTUNITY,
@@ -138,6 +150,16 @@ __all__ = [
     "SgmPriceSnapshot",
     "SgmSnapshotLeg",
     "SNAPSHOT_HORIZONS",
+    "ModelValueObservation",
+    "VALUE_TEAM_WIN_PROBABILITY",
+    "VALUE_TEAM_FAIR_ODDS",
+    "VALUE_PLAYER_DISPOSAL_PROBABILITY",
+    "VALUE_PLAYER_GOAL_PROBABILITY",
+    "VALUE_PLAYER_DISPOSAL_PROJECTED_MEAN",
+    "VALUE_PLAYER_GOAL_PROJECTED_MEAN",
+    "KIND_PROBABILITY",
+    "KIND_FAIR_ODDS",
+    "KIND_PROJECTED_MEAN",
     "ModelPromotionEvent",
     "AnomalyAlertSnapshot",
     "AnomalyCaseRecord",

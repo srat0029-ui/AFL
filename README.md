@@ -139,7 +139,8 @@ A React 19 / TypeScript product surface sits on top of the same pricing core (no
 | Dashboard | Round-wide overview, best-opportunity edge table, system status |
 | Match Detail | Model-vs-market win probabilities side by side, odds panel, player pricing, Multi Builder |
 | Prop Insights | 12-tab prop-shopping console: model probability, best price, devigged market probability, edge, EV, confidence, freshness |
-| Multis / Multi Builder | Per-leg probabilities plus correlation-warning chips — never a combined probability |
+| Multis / Multi Builder | Per-leg probabilities plus correlation-warning chips, and an additive Same Game Pricing joint-probability panel where the SGM engine supports the combo |
+| Trading Monitor | Operational dashboard: needs-attention cases, model/market movers, bookmaker dispersion, SGM monitoring, and data health — composed from Market Monitor's own cases plus new model-movement tracking |
 | Market Monitor | Trader-inbox view of anomaly cases ranked by a transparent, component-scored priority |
 | Real Market Tracking | The prospective evaluation numbers above, rendered as calibration tables and ROI bucket breakdowns |
 | Model Registry | Champion/challenger history, Ridge-vs-Huber head-to-head, the promotion audit trail |
@@ -214,6 +215,14 @@ The improvement is real but small — consistent with the underlying correlation
 
 **Prospective tracking for SGM specifically.** The backtest above is historical. `app/pricing/sgm_snapshot_service.py` extends the same freeze-before-kickoff/settle-after/never-overwrite discipline `PricingSnapshot` already applies to team/player markets to real Same Game Multi prices — but as its own `SgmPriceSnapshot`/`SgmSnapshotLeg` table pair, not bolted onto `PricingSnapshot`, since a joint price is inherently multi-leg where `PricingSnapshot` is one selection per row. Every combo Multi Builder's own existing combo search actually surfaces (never an invented selection) gets frozen repeatedly across four pre-match horizon windows (24h+, 6-24h, 1-6h, under 1h) — a genuinely new idempotency dimension, since team/player markets freeze only once per model version. Settlement reuses the exact same primitives as every other settlement path in this codebase (`prop_settlement.py`), aggregating leg outcomes with the same any-leg-lost-kills-the-combo precedence `placed_bets.py` already uses for real multis. The raw dependence-coefficient values used are denormalized onto every frozen row (not just referenced by version string), since `SgmDependenceCoefficient` is upserted in place with no history — without that, a later refit would make an old snapshot's exact pricing irreproducible. Reported at `GET /api/v1/model-registry/sgm-prospective-evaluation` and the Model Registry page's "Same Game Multi Prospective Evaluation" section: model vs. naive independence (always computable) and model vs. a genuine bookmaker SGM price (see Limitations — always "no data" today, not fabricated), split by leg count, leg/market combination, correlation-adjustment magnitude, and snapshot horizon.
 
+## Trading Monitor / Pricing QA
+
+This project already had a mature anomaly/QA engine (`app/market_monitor/` — model-vs-consensus divergence, cross-book dispersion and outliers, pricing-curve integrity, stale-quote-vs-lineup-change detection, a component-scored priority engine, and idempotent case persistence with resolved/open lifecycle state) built and tested well before this section existed. Rather than build a second, competing detection system, the **Trading Monitor** page (`/trading-monitor`) is a composition layer: it reads `app/market_monitor`'s own already-scored cases unchanged for divergence/dispersion/market-movement, and adds exactly one genuinely new signal that nothing in the codebase already tracked — **model-side movement over time**.
+
+Team win probability is computed live and never persisted continuously (`PricingSnapshot` only freezes once per model version, and team ratings drift between promotions); player projections are upserted in place with zero history. `ModelValueObservation` closes that gap: an append-only, insert-only-on-a-genuine-change log of team win probability, fair odds, and player disposal/goal probabilities and projected means, captured once per live cycle (same idempotency pattern as bookmaker `OddsQuote` history). `app/player_modelling/model_movement.py` diffs consecutive observations and classifies materiality against centrally-documented thresholds (`app/trading_monitor/thresholds.py`) — conservative, explicitly-labelled defaults for team/player probability and projection movement (no prior observation history existed to derive them from empirically), except Same Game Multi movement, which is judged against `3 × the engine's own computed Monte Carlo standard error` — a real, statistically-motivated bar rather than a guess.
+
+SGM monitoring (largest naive-vs-joint differences, largest correlation adjustments, cross-horizon price movement, dependence-coefficient provenance) and the Data Health panel (freshness, settlement backlog, live-cycle step failures — classified ERROR/WARNING/INFO, never inflating a normal "not open yet" state into a failure) are both pure read-time aggregations over data this project already persists — no new detection logic, no new event table for either. Nothing about `app/market_monitor/` itself was modified.
+
 ## Roadmap
 
 - Let the `PricingSnapshot` and `SgmPriceSnapshot` prospective datasets accumulate through a full season before drawing any conclusion from either.
@@ -221,7 +230,7 @@ The improvement is real but small — consistent with the underlying correlation
 - Wire up CI to run the existing test suite on every push.
 - If a reliable automated team-selection source appears, replace the manual entry step without touching the projection/pricing code that consumes it.
 - Support a "line" (handicap) team leg in Same Game Multi combos and their snapshots — currently only h2h and total team legs are priced/frozen jointly, since handicap sign conventions weren't worth risking a silent bug in the first version.
-- Support a "line" (handicap) team leg in Same Game Multi combos — currently only h2h and total team legs are priced jointly, since handicap sign conventions weren't worth risking a silent bug in the first version.
+- Once `ModelValueObservation` has accumulated real cycle-to-cycle history, revisit the Trading Monitor's conservative movement-materiality defaults against the actual observed distribution rather than the current placeholder thresholds.
 
 ## Running locally
 

@@ -1,0 +1,91 @@
+.trading-monitor-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.trading-monitor-page .subtitle {
+  color: var(--text-muted);
+  font-size: var(--fs-meta);
+  max-width: 70ch;
+}
+
+.trading-monitor-page__error {
+  color: var(--danger-text);
+}
+
+.trading-monitor-page__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 1rem;
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 1rem;
+  font-size: var(--fs-meta);
+}
+
+.trading-monitor-page__filters label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text-muted);
+}
+
+.trading-monitor-page__filters select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xs);
+  color: var(--text-h);
+  padding: 0.2rem 0.4rem;
+}
+
+.trading-monitor-section {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.trading-monitor-section h2 {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--text-h);
+}
+
+.trading-monitor__section-gap {
+  margin-top: 0.4rem;
+}
+
+.trading-monitor__findings {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: var(--fs-meta);
+}
+
+.trading-monitor__findings li {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+}
+
+.trading-monitor__activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: var(--fs-meta);
+}
