@@ -1,0 +1,66 @@
+name: Live Cycle
+
+# Runs exactly one existing `run-live-cycle` invocation on a schedule, from
+# the same immutable GHCR image production runs - never the infinite
+# `run-scheduler` loop (that loop's own single-instance file lock is
+# meaningless across ephemeral runner VMs anyway; `concurrency:` below is
+# the correct equivalent for this execution model). See docs/DEPLOYMENT.md
+# and docs/OPERATIONS.md for the full design rationale, including why the
+# schedule is offset from the top of the hour and what happens after 60
+# days of repository inactivity.
+#
+# Activation gate: a SCHEDULED run does nothing until the repository
+# variable LIVE_CYCLE_ENABLED is explicitly set to "true" - an unset
+# variable means disabled, so this can be committed and scheduled well
+# before the production database and secrets exist without generating
+# scheduled failures in the meantime. A manual workflow_dispatch always
+# runs regardless of the variable - the documented rollout deliberately
+# needs one manual run (to produce the first real LiveCycleRun and confirm
+# the prospective-tracking boundary) BEFORE the recurring schedule is
+# switched on. See docs/DEPLOYMENT.md's "Activation sequence".
+
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: live-cycle
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  run-live-cycle:
+    name: Run one live cycle
+    runs-on: ubuntu-latest
+    # Scheduled runs skip until LIVE_CYCLE_ENABLED=true; a manual dispatch
+    # always runs (needed for the one deliberate first production run in
+    # the activation sequence, before the schedule is turned on).
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.LIVE_CYCLE_ENABLED == 'true' }}
+    # A hung run must not permanently block every future scheduled run -
+    # cancel-in-progress: false means later runs queue behind this one
+    # rather than cancel it, so a stuck job needs a hard ceiling.
+    timeout-minutes: 10
+    steps:
+      - name: Run one live cycle from the CI-verified image
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+        # -e VAR (no =value) reads the value from this shell's environment
+        # instead of writing it into the command line itself - the secret
+        # value is never part of the invoked command text, only of the
+        # process environment, and GitHub additionally masks the raw
+        # secret value anywhere it might appear in step output regardless.
+        run: |
+          docker run --rm \
+            -e DATABASE_URL \
+            -e THE_ODDS_API_KEY \
+            -e APP_ENV=production \
+            ghcr.io/srat0029-ui/afl/backend:sha-4d496ad \
+            python -m app.player_modelling.cli run-live-cycle
+        # No further steps and no `|| true` anywhere in this job: the
+        # container's exit code (0=ok, 1=partial, 2=blocked - see
+        # app/player_modelling/live_cycle.py) becomes this step's exit
+        # code becomes the job's/workflow's conclusion, unmodified.

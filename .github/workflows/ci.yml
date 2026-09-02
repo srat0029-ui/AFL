@@ -54,14 +54,25 @@ jobs:
         run: pytest -q
 
   postgres-integration:
-    name: Postgres integration subset
+    # 16: the already-proven baseline this project was first verified
+    # against. 18: the actual production target (Layerbase's managed
+    # Postgres can only be created as 18 or a 19 beta - see
+    # docs/DEPLOYMENT.md's "PostgreSQL version" section; 18 was chosen,
+    # never the beta). Deliberately not 17 or 19 - scope is "retain the
+    # proven baseline, verify the real production target," not general
+    # version coverage.
+    name: Postgres integration subset (PostgreSQL ${{ matrix.postgres-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        postgres-version: [16, 18]
     defaults:
       run:
         working-directory: backend
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:${{ matrix.postgres-version }}-alpine
         env:
           POSTGRES_USER: afl
           POSTGRES_PASSWORD: afl

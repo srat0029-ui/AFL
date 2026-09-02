@@ -12,32 +12,43 @@ flowchart TB
         oddsapi["The Odds API (player-prop odds, optional)"]
     end
 
-    subgraph worker["Background worker (deployment boundary)"]
-        scheduler["Live-cycle scheduler\napp/player_modelling/cli.py run-scheduler\n(single-instance file lock, pause/resume)"]
+    subgraph ci["GitHub CI (public repo, free)"]
+        build["GitHub Actions: test, lint,\nDocker build"]
+        ghcr["GHCR: ghcr.io/.../afl/backend\nimmutable, digest-pinned image"]
+        build --> ghcr
     end
 
-    subgraph webservice["Web service (deployment boundary)"]
-        api["FastAPI app\nuvicorn, 2 workers, no --reload"]
+    subgraph gha["GitHub Actions scheduled workflows (free, public repo)"]
+        livecycle["live-cycle.yml\nevery ~15 min, offset from :00\ndocker run <pinned image> run-live-cycle\nconcurrency group: no overlap"]
+        backup["backup.yml\nweekly: pg_dump -> gpg AES256 encrypt\n-> Actions artifact (30-day retention)"]
+    end
+
+    subgraph webservice["Render Free web service (runtime: image)"]
+        api["FastAPI app\nuvicorn, no --reload\nruns the SAME pinned GHCR image"]
         pricing["Pricing engine\nteam Elo/Poisson, player NB2/hurdle,\nSGM conditional Monte Carlo"]
         monitor["Market/SGM monitoring\napp/market_monitor, app/trading_monitor"]
         b2b["Authenticated B2B API\n/api/v1/pricing/*, /api/v1/market-intelligence/*"]
         internal["Internal product API\ndashboard, multi builder, model registry,\ntrading monitor, admin"]
     end
 
-    subgraph db["PostgreSQL (production) / SQLite (local dev)"]
-        tables["Matches, projections, PricingSnapshot,\nSgmPriceSnapshot, OddsQuote/PropMarketObservation,\nModelValueObservation, ApiUsageRecord, ..."]
+    subgraph db["External free-tier PostgreSQL\n(hibernates when idle, wakes on connect)"]
+        tables["Matches, projections, PricingSnapshot,\nSgmPriceSnapshot, PropMarketObservation,\nModelValueObservation, ApiUsageRecord, ..."]
     end
 
-    subgraph frontend["Static frontend (separate hosting)"]
+    subgraph frontend["Render Free static site"]
         spa["React SPA\nDashboard, Multi Builder, Trading Monitor,\nModel Registry, B2B Demo"]
     end
 
     consumers["External B2B API consumers"]
 
-    squiggle --> scheduler
-    afltables --> scheduler
-    oddsapi --> scheduler
-    scheduler -->|"run_live_cycle\n(idempotent, per-cycle audit row)"| db
+    ghcr -.->|"pulled, not rebuilt"| api
+    ghcr -.->|"pulled, not rebuilt"| livecycle
+
+    squiggle --> livecycle
+    afltables --> livecycle
+    oddsapi --> livecycle
+    livecycle -->|"run_live_cycle\n(idempotent, per-cycle audit row)"| db
+    backup -->|"read-only pg_dump"| db
 
     api --> pricing
     pricing --> db
@@ -55,10 +66,17 @@ flowchart TB
 
 ## Notes
 
-- **The scheduler and the web service are separate processes** (a Render
-  Background Worker and Web Service respectively) — the live cycle never
-  runs inside a request handler, so a slow/failed cycle can't affect API
-  latency or availability, and vice versa.
+- **There is no Render background worker and no Render Postgres.** Both
+  were real recurring-cost sources (Render has no free plan for background
+  workers at all, and free Render Postgres expires 30 days after creation
+  with no backups) — see docs/DEPLOYMENT.md's "$0 architecture" section for
+  the full reasoning. The live cycle runs as a scheduled GitHub Actions
+  workflow instead of a persistent worker process; the database is an
+  external free-tier Postgres provider instead of Render Postgres.
+- **The backend deploys a pinned GHCR image (`runtime: image`), never a
+  Render-side rebuild.** The scheduled live-cycle workflow pulls the exact
+  same image — one CI-verified artifact, two consumers, never two
+  independently-built copies of the same code.
 - **The frontend is a static build, not a container** — it has no
   server-side logic, so it's hosted as static files with an SPA rewrite
   rule, calling the backend cross-origin via `VITE_API_BASE_URL`.

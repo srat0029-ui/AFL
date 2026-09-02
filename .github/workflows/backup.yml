@@ -1,0 +1,95 @@
+name: Backup
+
+# Weekly encrypted PostgreSQL backup - the free external database has no
+# managed backups of its own (see docs/OPERATIONS.md). This is a rolling
+# ~30-day window of encrypted snapshots, not managed disaster recovery:
+# retention is bounded, and nothing here claims an RPO/RTO guarantee.
+#
+# The dump is encrypted on THIS runner before anything is uploaded, and
+# only the encrypted file ever leaves the runner. Nothing is committed to
+# the repository - GitHub Actions artifacts are a separate storage
+# mechanism from git history entirely, so a raw (or even encrypted) dump
+# never enters git.
+#
+# PostgreSQL version: pinned to postgres:18-alpine, matching the real
+# production target - Layerbase's managed Postgres can only be created as
+# 18 or a 19 beta (confirmed via its public, unauthenticated engine
+# registry), and this project deliberately targets 18, never the beta.
+# ci.yml's postgres-integration job runs a 16/18 matrix so this version is
+# genuinely CI-verified, not just assumed compatible. See
+# docs/DEPLOYMENT.md's "PostgreSQL version" section.
+#
+# Activation gate: a SCHEDULED run does nothing until the repository
+# variable BACKUP_ENABLED is explicitly set to "true"; a manual
+# workflow_dispatch always runs, for the deliberate first verified backup
+# the activation sequence requires before the schedule is turned on. See
+# docs/DEPLOYMENT.md's "Activation sequence".
+
+on:
+  schedule:
+    # Weekly, offset from both the top of the hour and midnight - avoids
+    # the same scheduler congestion window called out in live-cycle.yml.
+    - cron: "17 3 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    name: Encrypted PostgreSQL backup
+    runs-on: ubuntu-latest
+    # Scheduled runs skip until BACKUP_ENABLED=true; a manual dispatch
+    # always runs (needed for the one deliberate first verified backup in
+    # the activation sequence, before the schedule is turned on).
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.BACKUP_ENABLED == 'true' }}
+    timeout-minutes: 15
+    steps:
+      - name: Dump the database (custom format)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          docker run --rm -e DATABASE_URL -v "$PWD:/backup" postgres:18-alpine \
+            pg_dump "$DATABASE_URL" -Fc -f /backup/afl_backup.dump
+
+      - name: Encrypt the dump before it leaves this runner
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        # Passphrase goes in over stdin (--passphrase-fd 0), never as a
+        # command-line argument - it's read from the environment into the
+        # pipe, not written into the executed command text, and never
+        # printed anywhere. printf '%s' (not echo) avoids shell-specific
+        # echo behavior and doesn't add a trailing newline to the
+        # passphrase. --pinentry-mode loopback keeps this fully
+        # non-interactive in a headless runner.
+        run: |
+          printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --symmetric --cipher-algo AES256 \
+            --output afl_backup.dump.gpg afl_backup.dump
+          rm -f afl_backup.dump
+
+      - name: Verify the encrypted backup decrypts to a valid pg_dump archive
+        env:
+          BACKUP_ENCRYPTION_PASSPHRASE: ${{ secrets.BACKUP_ENCRYPTION_PASSPHRASE }}
+        # pg_restore --list only reads the archive's table of contents
+        # (object names/types) - it never touches row data, so this proves
+        # the backup is real and intact without printing database
+        # contents or secrets anywhere in the log.
+        run: |
+          printf '%s' "$BACKUP_ENCRYPTION_PASSPHRASE" | gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-fd 0 --decrypt \
+            --output /tmp/afl_backup_verify.dump afl_backup.dump.gpg
+          docker run --rm -v /tmp:/verify postgres:18-alpine \
+            pg_restore --list /verify/afl_backup_verify.dump > /dev/null
+          echo "Backup verified: decrypts cleanly and is recognised as a valid pg_dump custom-format archive."
+          rm -f /tmp/afl_backup_verify.dump
+
+      - name: Upload encrypted backup
+        uses: actions/upload-artifact@v4
+        with:
+          name: afl-backup-${{ github.run_id }}
+          path: afl_backup.dump.gpg
+          retention-days: 30
+        # Only afl_backup.dump.gpg is uploaded - the plaintext .dump was
+        # already deleted above, and no other file from this job is
+        # included.

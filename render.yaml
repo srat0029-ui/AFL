@@ -3,58 +3,40 @@
 # account (no credentials available to this project) - review it before
 # first use rather than assuming it deploys correctly untouched.
 #
-# Covers everything this project's live-operations design actually needs
-# in one platform/account: a Docker web service, a background worker (the
-# existing live-cycle scheduler), a managed Postgres database, and static
-# frontend hosting - see the "Deployment target" section of
-# docs/DEPLOYMENT.md for why Render specifically.
-
-databases:
-  - name: afl-postgres
-    plan: free
-    databaseName: afl
-    user: afl
+# $0 architecture: no Render Postgres and no Render worker - both were
+# real cost sources with no free tier for the worker and a 30-day expiry
+# with zero backups for free Postgres (see docs/DEPLOYMENT.md). The
+# database is external (a free-tier managed Postgres provider); the
+# live-cycle scheduler is a GitHub Actions scheduled workflow
+# (.github/workflows/live-cycle.yml) invoking one existing `run-live-cycle`
+# per trigger, from the exact same immutable GHCR image this backend runs -
+# never a second, separately-built artifact.
+#
+# The backend deploys the exact image GitHub CI already built and verified
+# (runtime: image, pinned to a real digest/tag - never `latest`) rather
+# than having Render rebuild the Dockerfile itself, which would otherwise
+# both duplicate the build and break /api/release's provenance (Render's
+# own build has no way to pass the real GIT_SHA build arg).
 
 services:
   - type: web
     name: afl-backend
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
+    runtime: image
+    image:
+      url: ghcr.io/srat0029-ui/afl/backend:sha-4d496ad  # pin to a CI-verified tag/digest - never :latest
     plan: free
     healthCheckPath: /api/health
     envVars:
       - key: APP_ENV
         value: production
       - key: DATABASE_URL
-        fromDatabase:
-          name: afl-postgres
-          property: connectionString
+        sync: false  # external Postgres connection string (direct, not pooled) - entered manually, never Render-managed
       - key: CORS_ORIGINS
         sync: false  # set to the deployed static site's real origin - see docs/DEPLOYMENT.md
       - key: LOG_LEVEL
         value: INFO
       - key: THE_ODDS_API_KEY
         sync: false  # optional - the app runs fine without it (see backend/.env.example)
-
-  - type: worker
-    name: afl-live-cycle-scheduler
-    runtime: docker
-    dockerfilePath: ./backend/Dockerfile
-    dockerContext: ./backend
-    dockerCommand: python -m app.player_modelling.cli run-scheduler
-    plan: free
-    envVars:
-      - key: APP_ENV
-        value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: afl-postgres
-          property: connectionString
-      - key: LOG_LEVEL
-        value: INFO
-      - key: THE_ODDS_API_KEY
-        sync: false
 
   - type: web
     name: afl-frontend

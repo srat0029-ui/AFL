@@ -2,9 +2,14 @@
 # otherwise get to exercise (dev defaults to SQLite - see backend/.env).
 # `docker compose up` gives a real Postgres to run migrations/tests/the app
 # against without needing any cloud account. See docs/DEPLOYMENT.md.
+#
+# Pinned to 18 to match the actual production target (Layerbase's managed
+# Postgres) - this is the production-parity environment, not the CI
+# baseline-compatibility check (ci.yml's postgres-integration job runs a
+# 16/18 matrix instead; see docs/DEPLOYMENT.md's "PostgreSQL version").
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     environment:
       POSTGRES_USER: afl
       POSTGRES_PASSWORD: afl
