@@ -45,6 +45,13 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Run one live cycle from the CI-verified image
+        # Pinned to sha-c3bac96 (fix(db): normalize PostgreSQL URLs for
+        # psycopg3) - the first production run failed before this fix
+        # existed, importing the wrong driver for Layerbase's bare
+        # postgresql:// connection string. Do not repoint this at a later
+        # commit's own image without re-verifying it the same way this one
+        # was (CI green, GHCR digest confirmed, driver-selection checked
+        # inside the actual image) - see docs/DEPLOYMENT.md.
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
@@ -58,7 +65,7 @@ jobs:
             -e DATABASE_URL \
             -e THE_ODDS_API_KEY \
             -e APP_ENV=production \
-            ghcr.io/srat0029-ui/afl/backend:sha-4d496ad \
+            ghcr.io/srat0029-ui/afl/backend:sha-c3bac96 \
             python -m app.player_modelling.cli run-live-cycle
         # No further steps and no `|| true` anywhere in this job: the
         # container's exit code (0=ok, 1=partial, 2=blocked - see
