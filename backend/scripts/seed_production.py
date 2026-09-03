@@ -54,6 +54,7 @@ from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from app.config import normalize_database_url
 from app.models import (
     AnomalyAlertSnapshot,
     AnomalyCaseFollowUp,
@@ -297,11 +298,15 @@ def verify_against_manifest(target_db: Session, manifest: dict) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-sqlite-path", required=True, help="Path to the local afl.db SQLite file")
-    parser.add_argument("--target-url", required=True, help="SQLAlchemy URL for the target PostgreSQL database")
+    parser.add_argument(
+        "--target-url", required=True,
+        help="Connection URL for the target PostgreSQL database - a bare provider-issued "
+        "postgresql:// URL is accepted directly, normalized to postgresql+psycopg:// internally",
+    )
     args = parser.parse_args()
 
     source_engine = create_engine(f"sqlite:///{args.source_sqlite_path}")
-    target_engine = create_engine(args.target_url)
+    target_engine = create_engine(normalize_database_url(args.target_url))
 
     print(f"source: {_redacted(source_engine)}")
     print(f"target: {_redacted(target_engine)}")

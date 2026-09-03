@@ -2,13 +2,39 @@
 
 from functools import lru_cache
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def normalize_database_url(value: str) -> str:
+    """Managed Postgres providers (Layerbase included) issue the standard
+    `postgresql://` scheme, which SQLAlchemy maps to psycopg2 by default -
+    not installed here, since this project standardized on Psycopg 3 (see
+    requirements.txt). Normalizing the scheme once, centrally, means a real
+    provider's connection string works exactly as issued, with no manual
+    `+psycopg` rewrite required at deploy time. Only the bare
+    `postgresql://` prefix is touched - an already explicit driver
+    (`postgresql+psycopg://`, or any other), SQLite URLs, and every query
+    parameter (`sslmode`, custom ports, etc.) pass through completely
+    unchanged. Shared by Settings (the running application) and
+    scripts/seed_production.py (which takes a target URL directly on the
+    command line, bypassing Settings entirely) - the same bug is possible
+    in both places, so both call this one function rather than each
+    re-implementing the check."""
+    if value.startswith("postgresql://"):
+        return "postgresql+psycopg://" + value[len("postgresql://") :]
+    return value
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     database_url: str = "sqlite:///./afl.db"
+
+    @field_validator("database_url")
+    @classmethod
+    def _normalize_database_url(cls, value: str) -> str:
+        return normalize_database_url(value)
     app_env: str = "local"
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     api_host: str = "127.0.0.1"
