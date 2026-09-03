@@ -11,8 +11,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 # libgomp1: XGBoost/LightGBM link against OpenMP at runtime, which isn't
 # present on the slim base image - the app fails at import time without it.
+# curl: app/providers/afl/squiggle.py deliberately shells out to the real
+# curl binary rather than Python's requests library (Squiggle's API serves
+# different content depending on TLS/HTTP client fingerprinting - curl
+# reliably gets JSON, requests intermittently doesn't) - not present on the
+# slim base image either, and its absence broke the first real production
+# live cycle's fixture refresh step. Same apt layer as libgomp1, not a new
+# one.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libgomp1 \
+    && apt-get install -y --no-install-recommends libgomp1 curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

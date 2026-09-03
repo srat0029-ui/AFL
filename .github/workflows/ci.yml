@@ -179,6 +179,14 @@ jobs:
           cache-to: type=gha,mode=max
           tags: afl-backend:ci
 
+      - name: Verify curl is present in the built image
+        # app/providers/afl/squiggle.py shells out to the real curl binary
+        # (see its module docstring) - its absence from the base image
+        # broke the first real production live cycle's fixture refresh
+        # step silently, only discovered against Layerbase. This makes
+        # that a build-time failure instead of a runtime one.
+        run: docker run --rm afl-backend:ci curl --version
+
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'
         uses: docker/login-action@v3
