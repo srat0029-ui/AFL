@@ -238,27 +238,92 @@ Both migration paths were re-verified for real against a genuine
 `postgres:18-alpine` container once 18 became the production target (see
 "PostgreSQL version" above) — no incompatibility surfaced.
 
+## Production seeding
+
+Production's schema is created first (migrations above), against an
+otherwise **empty** database — then, once, a deterministic seed populates
+only genuine historical/reference/model data, never any of the local dev
+DB's operational or personal data.
+
+**Scope: exactly 17 tables**, audited table-by-table against the real
+runtime dependency graph (not assumed from a prior pass) — `sports`,
+`seasons`, `teams`, `venues`, `rounds`, `matches` (**`status='completed'`
+only** — a locally SCHEDULED-but-unplayed fixture is stale dev state, not
+a genuine current AFL fixture; production's own first live cycle refreshes
+real upcoming fixtures itself), `team_match_stats`, `players`,
+`player_match_stats`, `model_runs` + `model_validation_metrics` (Elo/
+Poisson config and their live edge-gating metrics), `player_model_runs` +
+`player_model_validation_metrics`, `goal_model_runs` +
+`goal_model_validation_metrics` (all 10 runs each, not only the promoted
+champion — Model Registry needs the full challenger/rejected history to
+be genuinely complete), `model_promotion_events`, and
+`sgm_dependence_coefficients`. Roughly 17.5MB raw (~20-25MB with Postgres
+indexes), not the ~423MB local dev file — the two largest local tables
+(`player_disposal_predictions`, `player_goal_predictions`, ~140MB
+combined) are deliberately excluded: they're written only by the offline
+`disposal_cli`/`goal_cli` backtest commands, never read by `run-live-cycle`
+or live projection generation, and are fully reproducible by re-running
+those commands against the seeded historical data if the calibration/
+example-prediction report pages are wanted.
+
+No promoted model needs a filesystem artifact of any kind — every
+disposal/goal/team model is a specification stored as `config_json`,
+refit live from `player_match_stats`/`matches` on each cycle (see
+`app/player_modelling/live_engine.py`). The seed's job is to give that
+live refit path real historical data and the right promoted config, not
+to ship a trained object.
+
+**`backend/scripts/seed_production.py` is the canonical, sole import
+mechanism** — never a manual `pg_dump`/`pg_restore` of the dev database,
+never hand-written SQL. It uses the application's own SQLAlchemy models on
+both the SQLite source and the Postgres target (so `JSON`/`DateTime`/
+`Boolean` conversion is handled identically in both directions), and
+refuses to run unless every one of the following holds:
+
+- source is SQLite, target is PostgreSQL, and they're not the same database
+- target's PostgreSQL major version is exactly 18
+- target's current Alembic revision equals the real migration head
+  (computed from `alembic/versions/`, never hardcoded)
+- every one of the 17 seed tables is empty on the target
+- every protected prospective/operational table (the full audited set
+  below, not merely the original 7) is also empty on the target
+
+It builds a manifest from the source **before** writing anything, imports
+everything in one explicit transaction with source primary keys preserved,
+repairs every seeded table's identity sequence afterward, and then
+automatically re-verifies target counts against the manifest, sequence
+correctness, and that every protected table is still exactly zero — any
+verification failure rolls the whole transaction back rather than leaving
+a partially-trusted seed committed. See `backend/tests/
+test_seed_production.py` for guard-level coverage of all of the above.
+
 ## Prospective evidence boundary
 
-The external production database is created empty and stays that way
-until the first real `run-live-cycle` invocation — **no local development
-data is ever imported.** This phase's audit measured the local dev
-database and classified every table; only a small "legitimate historical/
-model seed" (matches, teams, player match-history, fitted model
-coefficients and promotion records — roughly 20MB, not the full ~423MB
-local file) is a candidate for a future production import, and that
-import has not happened yet.
+The external production database is created empty and stays that way for
+every prospective/operational table until the **first real
+`run-live-cycle` invocation** — seeding (above) never touches these
+tables, and there is no path in `seed_production.py` that can write to
+them.
 
-Explicitly excluded from any future production import, because these
-tables hold dev-era data sitting in exactly the columns that must be the
-*authoritative* prospective record: `prop_market_observations`,
-`pricing_snapshots`, `sgm_price_snapshots` and `sgm_snapshot_legs`,
-`model_value_observations`, `live_cycle_runs`, `api_usage_records`, any
-dev-era settlement outcomes, `placed_bets` (personal test data), and the
-Trading Monitor's dev-era anomaly-case tables. The timestamp of the first
-successful production `run-live-cycle` is the production prospective-
-tracking start date — everything in those tables from that point on is
-real.
+Tables that must start empty and stay that way until genuine production
+operation writes to them: `pricing_snapshots`, `sgm_price_snapshots` and
+`sgm_snapshot_legs`, `prop_market_observations`, `model_value_observations`,
+`live_cycle_runs`, `api_usage_records`, `anomaly_case_records`,
+`anomaly_alert_snapshots`, `anomaly_case_snapshots`,
+`anomaly_case_followups`, `expected_lineups`, `player_disposal_projections`,
+`player_goal_projections`, `venue_weather_snapshots`,
+`weekly_shortlist_snapshots` and `weekly_shortlist_snapshot_items`,
+`match_context_items` — plus every local-only table that is simply never
+imported at all: `placed_bets` (personal betting record), local
+`player_prop_markets` and `odds_quotes` history, and dev-era API
+consumers/keys (production credentials are always issued fresh via
+`api_platform/cli.py create-key`, never copied from dev).
+
+**The timestamp of the first successful production `run-live-cycle` — not
+the seed's import time — is `PRODUCTION_PROSPECTIVE_TRACKING_START`, the
+authoritative boundary for genuine prospective evidence.** Nothing is ever
+retroactively imported into a prospective table after that boundary is
+established.
 
 ## Live-cycle scheduling (GitHub Actions, not a Render worker)
 

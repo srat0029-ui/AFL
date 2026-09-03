@@ -7,6 +7,13 @@
 # Postgres) - this is the production-parity environment, not the CI
 # baseline-compatibility check (ci.yml's postgres-integration job runs a
 # 16/18 matrix instead; see docs/DEPLOYMENT.md's "PostgreSQL version").
+#
+# Volume mount is /var/lib/postgresql (not .../data) - the postgres:18-alpine
+# image's entrypoint now refuses to start against the old single-directory
+# .../data mount (real breaking change discovered running this file locally
+# against the image as pulled 2026-08-14; see
+# https://github.com/docker-library/postgres/pull/1259). This is the image's
+# own documented new mount point, not a project-specific workaround.
 services:
   db:
     image: postgres:18-alpine
@@ -17,7 +24,7 @@ services:
     ports:
       - "5433:5432"  # host 5433 to avoid clashing with any other local Postgres on the default port
     volumes:
-      - afl_postgres_data:/var/lib/postgresql/data
+      - afl_postgres_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U afl"]
       interval: 5s
