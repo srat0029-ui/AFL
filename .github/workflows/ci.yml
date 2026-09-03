@@ -172,6 +172,12 @@ jobs:
         with:
           context: backend
           push: false
+          # load: true - without it, buildx's docker-container driver (set
+          # up by setup-buildx-action above) keeps the result only in its
+          # own build cache; `docker run afl-backend:ci` in the next step
+          # can't find it ("Unable to find image ... locally"). Reproduced
+          # and confirmed locally with the same driver before adding this.
+          load: true
           build-args: |
             GIT_SHA=${{ steps.meta.outputs.git_sha }}
             BUILD_TIME=${{ steps.meta.outputs.build_time }}
