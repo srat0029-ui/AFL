@@ -54,19 +54,17 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Run one live cycle from the CI-verified image
-        # Pinned to sha-2e73ab4 - the actual published image containing
-        # fix(deploy): include curl for Squiggle ingestion (application
-        # commit 87bd850's own CI run failed at its Docker build job
-        # before ever pushing an image, so sha-87bd850 was never
-        # published; 2e73ab4's CI-only fix to ci.yml changed no
-        # application code, so this image's contents are identical to
-        # what 87bd850 would have produced). The second production run
-        # blocked on this exact gap: SquiggleFixtureProvider requires the
-        # curl binary, absent from the base image until this fix. Do not
-        # repoint this at a later commit's own image without
-        # re-verifying it the same way this one was (CI green, GHCR
-        # digest confirmed, curl + Squiggle fetch checked inside the
-        # actual image) - see docs/DEPLOYMENT.md.
+        # Pinned to sha-6ae6cb6 (fix(live-cycle): persist durable run audit
+        # progress) - adds the durable LiveCycleRun lifecycle
+        # (RUN_IN_PROGRESS before the first mutating step, per-step audit
+        # persistence via the fail-closed _execute_durable_write path, and
+        # RUN_INTERRUPTED reconciliation for a run that never finishes) so
+        # a run killed by this job's own timeout can no longer commit real
+        # mutations with zero audit trail. Do not repoint this at a later
+        # commit's own image without re-verifying it the same way this one
+        # was (CI green, GHCR digest confirmed, curl + durability-code +
+        # Squiggle fetch checked inside the actual image) - see
+        # docs/DEPLOYMENT.md.
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
@@ -80,7 +78,7 @@ jobs:
             -e DATABASE_URL \
             -e THE_ODDS_API_KEY \
             -e APP_ENV=production \
-            ghcr.io/srat0029-ui/afl/backend:sha-2e73ab4 \
+            ghcr.io/srat0029-ui/afl/backend:sha-6ae6cb6 \
             python -m app.player_modelling.cli run-live-cycle
         # No further steps and no `|| true` anywhere in this job: the
         # container's exit code (0=ok, 1=partial, 2=blocked - see
