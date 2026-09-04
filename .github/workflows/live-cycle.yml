@@ -41,8 +41,17 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || vars.LIVE_CYCLE_ENABLED == 'true' }}
     # A hung run must not permanently block every future scheduled run -
     # cancel-in-progress: false means later runs queue behind this one
-    # rather than cancel it, so a stuck job needs a hard ceiling.
-    timeout-minutes: 10
+    # rather than cancel it, so a stuck job needs a hard ceiling. Raised
+    # from 10 to 30: two real production dispatches were killed at ~615s
+    # once fixture data existed for the cycle to do genuine work against
+    # (team-context walk-forward + live model refit over the full
+    # historical set, via a remote pooled connection) - 10 minutes was
+    # only ever enough for the degenerate "nothing to do yet" case. The
+    # run itself is now durably recorded step-by-step (see
+    # app/player_modelling/live_cycle.py's "Durable run lifecycle" and
+    # STALE_RUN_THRESHOLD_MINUTES=35, kept safely above this value) so a
+    # timeout here no longer means a silent, unrecorded partial run.
+    timeout-minutes: 30
     steps:
       - name: Run one live cycle from the CI-verified image
         # Pinned to sha-2e73ab4 - the actual published image containing

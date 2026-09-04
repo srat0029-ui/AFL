@@ -29,6 +29,8 @@ from app.models.expected_lineup import (
 from app.models.goal_model_run import GoalModelRun, GoalModelValidationMetric, PlayerGoalPrediction
 from app.models.live_cycle_run import (
     RUN_BLOCKED,
+    RUN_IN_PROGRESS,
+    RUN_INTERRUPTED,
     RUN_OK,
     RUN_PARTIAL,
     STEP_BLOCKING_FAILURE,
@@ -132,6 +134,8 @@ __all__ = [
     "RUN_OK",
     "RUN_PARTIAL",
     "RUN_BLOCKED",
+    "RUN_IN_PROGRESS",
+    "RUN_INTERRUPTED",
     "STEP_SUCCESS",
     "STEP_WARNING",
     "STEP_RECOVERABLE_FAILURE",

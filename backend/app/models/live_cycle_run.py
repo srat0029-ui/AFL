@@ -2,11 +2,17 @@
 run-live-cycle` (Section 13 of the live-operations stage brief) — a
 persisted history of "what happened the last few times we ran the live
 cycle," so the Live Status UI can show real recent-run history rather than
-only "current state." One row per invocation; never updated in place after
-`finished_at` is set (append-only, matching this project's convention for
-history tables). No secrets are stored here — `steps` is a small JSON list
-of {step, status, detail} entries, `detail` is always a short human-readable
-message, never a raw exception/traceback or a credential.
+only "current state." One row per invocation, created and committed BEFORE
+the first mutating step runs (`overall_status=RUN_IN_PROGRESS`,
+`finished_at=None`), then updated in place as each step completes and once
+more when the cycle finishes normally - never a second row for the same
+invocation. This means a row that never reaches `finished_at` is genuine
+evidence a run was killed (timeout, crashed runner, host failure) partway
+through, not silence - see live_cycle.py's "Durable run lifecycle" section
+for the full design and RUN_INTERRUPTED for how a stale one gets closed
+out. No secrets are stored here — `steps` is a small JSON list of {step,
+status, detail, duration_seconds} entries, `detail` is always a short
+human-readable message, never a raw exception/traceback or a credential.
 """
 
 from datetime import datetime
@@ -27,6 +33,11 @@ STEP_BLOCKING_FAILURE = "blocking_failure"
 RUN_OK = "ok"  # every step succeeded or only warned
 RUN_PARTIAL = "partial"  # at least one recoverable failure, but the cycle still made progress
 RUN_BLOCKED = "blocked"  # a blocking failure occurred — see live_cycle.py for exactly when that's declared
+RUN_IN_PROGRESS = "in_progress"  # row created before the first mutating step; not yet finished
+RUN_INTERRUPTED = "interrupted"  # was in_progress, but a later invocation found it stale and
+# reconciled it - the process behind it never reached a normal finish (killed, timed out, crashed).
+# Steps recorded before the interruption are genuine and were not rolled back - see live_cycle.py's
+# "Durable run lifecycle" docstring section for the full design.
 
 
 class LiveCycleRun(TimestampMixin, Base):

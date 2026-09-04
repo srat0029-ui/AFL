@@ -23,12 +23,41 @@ while odds refresh still proceeds normally.
 
 Section 14 requires settlement to run BEFORE new data collection, hence the
 step order below (settle_props is step 3, before regeneration/odds).
+
+Durable run lifecycle: a real production run was once killed (workflow
+timeout) after its fixture-refresh step had already committed genuine new
+matches, but before the cycle finished — leaving that write with no
+LiveCycleRun record of it ever happening. `_start_run()` creates and
+commits a LiveCycleRun row (`overall_status=RUN_IN_PROGRESS`,
+`finished_at=None`) BEFORE the first mutating step runs, and
+`_persist_steps_durable()` is called explicitly after every step completes
+(outside that step's own try/except, never inside it - see below), so the
+step's audit record is committed before the NEXT mutating step is allowed
+to begin. `_finish_run()` closes the row out normally at the very end.
+
+Fail-closed, not fail-open: `_persist_steps_durable()`/`_finish_run()` both
+go through the single `_execute_durable_write()` path, which NEVER
+swallows a write failure - it rolls back and raises AuditPersistenceError.
+That exception is deliberately placed OUTSIDE every individual step's own
+`except Exception as exc:` block (a persist call is a separate statement
+AFTER that block, not inside it), so a broad per-step handler can never
+accidentally catch it and wrongly continue on to the next mutating step.
+It propagates up to `run_live_cycle()`'s own outer handler, which stops
+immediately: no further step runs, and the row is left exactly as it last
+was durably written (usually still RUN_IN_PROGRESS) rather than a fabricated
+terminal status the database itself never confirmed. A later invocation's
+`_reconcile_stale_runs()` closes such a row out as RUN_INTERRUPTED once it's
+old enough (STALE_RUN_THRESHOLD_MINUTES) to be confident it isn't still a
+genuinely active run - see that function's docstring for the exact
+reasoning and its accepted edge case.
 """
 
+import logging
+import time
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -36,6 +65,8 @@ from app.ingestion.fixtures import ingest_fixtures
 from app.ingestion.player_stats import ingest_player_stats
 from app.models import (
     RUN_BLOCKED,
+    RUN_IN_PROGRESS,
+    RUN_INTERRUPTED,
     RUN_OK,
     RUN_PARTIAL,
     STEP_BLOCKING_FAILURE,
@@ -69,6 +100,8 @@ from app.providers.afl.afltables_players import AFLTablesPlayerStatsProvider
 from app.providers.afl.squiggle import SquiggleFixtureProvider
 from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiProvider
 
+logger = logging.getLogger(__name__)
+
 # How much staler than the match-time-aware odds interval (Section 4, see
 # prop_odds_quota.py) team odds are allowed to get before a manual refresh
 # spends quota on the standard-match-odds call again. Team odds are one
@@ -78,12 +111,47 @@ from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiProvi
 # prop refresh interval right now.
 TEAM_ODDS_STALENESS_MULTIPLIER = 1
 
+# Safely above live-cycle.yml's job timeout-minutes (30): a row still
+# RUN_IN_PROGRESS after this long cannot legitimately still be executing.
+# The 5-minute buffer above the 30-minute timeout is intentional, not
+# arbitrary - it exists so a run that finishes writing its LAST step just
+# before GitHub kills it at 30:00 isn't immediately reconciled by the very
+# next scheduled tick a few seconds later; 35 gives real clock/scheduling
+# jitter room without meaningfully delaying real reconciliation.
+#
+# Known accepted edge case: an immediate MANUAL retry run right after a
+# 30-minute timeout will see the previous row at only ~30 minutes old -
+# not yet >35, so _reconcile_stale_runs() correctly leaves it alone rather
+# than guessing. This is not destructive: _start_run() always creates a
+# brand new row for the new invocation regardless (never overwrites an
+# existing one), so the old row simply stays RUN_IN_PROGRESS a little
+# longer until some LATER invocation's reconciliation check finally closes
+# it out. No locking is added to close this cosmetic window - the
+# workflow's own concurrency.group=live-cycle already prevents two
+# GitHub-triggered runs from ever truly executing at the same time, and a
+# harmless few-hour delay in marking one old row RUN_INTERRUPTED is a
+# purely cosmetic gap, not a correctness one.
+STALE_RUN_THRESHOLD_MINUTES = 35
+
+
+class AuditPersistenceError(RuntimeError):
+    """Raised when the LiveCycleRun audit record (per-step progress or
+    final completion) could not be durably written. Deliberately never
+    caught by any individual step's own `except Exception` handler (every
+    call site that can raise this sits outside those blocks) - it's meant
+    to propagate all the way up to run_live_cycle()'s own outer handler,
+    which stops the cycle rather than starting another mutating step
+    without a durable record of the one that just finished. Only ever
+    wraps the underlying DB exception's own message - never adds a
+    connection string or any other secret."""
+
 
 @dataclass
 class StepResult:
     step: str
     status: str
     detail: str
+    duration_seconds: float | None = None
 
 
 @dataclass
@@ -98,8 +166,17 @@ class LiveCycleReport:
     odds_credits_consumed: int | None = None
     odds_credits_remaining: int | None = None
 
-    def add(self, step: str, status: str, detail: str) -> None:
-        self.steps.append(StepResult(step=step, status=status, detail=detail))
+    def add(self, step: str, status: str, detail: str, duration_seconds: float | None = None) -> None:
+        """Pure in-memory + a log line - never touches the database itself.
+        Durable persistence is a separate, explicit call
+        (_persist_steps_durable) made by run_live_cycle right after each
+        step's own try/except block - see module docstring for why that
+        separation is what makes fail-closed behavior actually work."""
+        self.steps.append(StepResult(step=step, status=status, detail=detail, duration_seconds=duration_seconds))
+        logger.info(
+            "live_cycle step=%s status=%s duration_s=%s",
+            step, status, f"{duration_seconds:.2f}" if duration_seconds is not None else "n/a",
+        )
 
     @property
     def overall_status(self) -> str:
@@ -120,6 +197,106 @@ class LiveCycleReport:
         if status == RUN_PARTIAL:
             return 1
         return 0
+
+
+def _steps_json(steps: list[StepResult]) -> list[dict]:
+    return [{"step": s.step, "status": s.status, "detail": s.detail, "duration_seconds": s.duration_seconds} for s in steps]
+
+
+def _execute_durable_write(db: Session, run_id: int, values: dict) -> None:
+    """The single central path every LiveCycleRun audit write in this
+    module goes through (both per-step progress and final completion) -
+    fail-closed by design: rolls back and raises AuditPersistenceError,
+    never swallows a failure. Every caller's fail-closed guarantee comes
+    from this one function, not from each call site re-implementing it."""
+    try:
+        db.execute(update(LiveCycleRun).where(LiveCycleRun.id == run_id).values(**values))
+        db.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.error("live_cycle: failed to durably persist LiveCycleRun id=%s: %s", run_id, exc)
+        try:
+            db.rollback()
+        except Exception:  # noqa: BLE001
+            pass
+        raise AuditPersistenceError(f"could not durably persist LiveCycleRun id={run_id}") from exc
+
+
+def _persist_steps_durable(db: Session, run_id: int, steps: list[StepResult]) -> None:
+    _execute_durable_write(db, run_id, {"steps": _steps_json(steps)})
+
+
+def _reconcile_stale_runs(db: Session, now: datetime) -> int:
+    """Closes out any LiveCycleRun row still RUN_IN_PROGRESS after
+    STALE_RUN_THRESHOLD_MINUTES as RUN_INTERRUPTED - narrowly scoped: only
+    ever touches OLD rows, never the row this invocation is about to
+    create for itself (that happens afterward, in _start_run). Returns the
+    number of runs reconciled (0 in the overwhelmingly common case).
+
+    Deliberately NOT wrapped in the same fail-closed AuditPersistenceError
+    path as the rest of this module: this runs before this invocation's
+    own row exists, so there's nothing yet to protect by degrading
+    gracefully - if the database can't even be reached for this, letting
+    the exception propagate immediately and loudly is the correct, honest
+    behavior (matches what would happen anyway the moment _start_run is
+    attempted next)."""
+    threshold = now - timedelta(minutes=STALE_RUN_THRESHOLD_MINUTES)
+    stale_runs = db.scalars(
+        select(LiveCycleRun).where(LiveCycleRun.overall_status == RUN_IN_PROGRESS, LiveCycleRun.run_at < threshold)
+    ).all()
+    for stale in stale_runs:
+        steps = list(stale.steps) + [{
+            "step": "system_reconciliation",
+            "status": STEP_WARNING,
+            "detail": (
+                f"marked interrupted by a later invocation's startup check at {now.isoformat()} - this "
+                "run's process never reached a normal finish (killed, timed out, or crashed); any writes "
+                "already made by the steps recorded above are genuine and were not rolled back"
+            ),
+            "duration_seconds": None,
+        }]
+        db.execute(
+            update(LiveCycleRun).where(LiveCycleRun.id == stale.id).values(
+                overall_status=RUN_INTERRUPTED, finished_at=now, steps=steps,
+            )
+        )
+        logger.warning("live_cycle: reconciled stale in_progress run id=%s (run_at=%s) as interrupted", stale.id, stale.run_at)
+    if stale_runs:
+        db.commit()
+    return len(stale_runs)
+
+
+def _start_run(db: Session, run_at: datetime) -> LiveCycleRun:
+    """Creates and commits the durable LiveCycleRun row BEFORE the first
+    mutating step begins - see module docstring's "Durable run lifecycle"
+    section. Any step that runs after this point is genuinely associated
+    with a real, already-visible production run, even if the process is
+    killed before _finish_run() ever executes. Not routed through
+    _execute_durable_write: this is a fresh INSERT (db.add), not an UPDATE
+    by id, and if it fails there is no row yet to protect - the exception
+    propagates directly and immediately, which is correct."""
+    row = LiveCycleRun(run_at=run_at, finished_at=None, overall_status=RUN_IN_PROGRESS, steps=[])
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+def _finish_run(db: Session, row: LiveCycleRun, report: LiveCycleReport) -> LiveCycleRun:
+    _execute_durable_write(db, row.id, {
+        "finished_at": datetime.now(timezone.utc),
+        "overall_status": report.overall_status,
+        "steps": _steps_json(report.steps),
+        "odds_credits_consumed": report.odds_credits_consumed,
+        "odds_credits_remaining": report.odds_credits_remaining,
+        "matches_affected": len(report.matches_affected),
+        "quotes_added": report.quotes_added,
+        "observations_added": report.observations_added,
+        "observations_settled": report.observations_settled,
+        "team_odds_quotes_added": report.team_odds_quotes_added,
+        "weather_snapshots_added": report.weather_snapshots_added,
+    })
+    db.refresh(row)
+    return row
 
 
 def _update_completed_player_stats(db: Session) -> tuple[int, int]:
@@ -189,10 +366,46 @@ def _team_odds_needs_refresh(db: Session, upcoming_matches: list[UpcomingMatchTe
 
 
 def run_live_cycle(db: Session) -> LiveCycleRun:
-    report = LiveCycleReport()
     now = datetime.now(timezone.utc)
+    _reconcile_stale_runs(db, now)
+    row = _start_run(db, now)
+    report = LiveCycleReport()
 
+    try:
+        return _run_steps(db, row, report, now)
+    except AuditPersistenceError:
+        # Fail closed: a step's own mutation may have already committed
+        # (see module docstring), but its audit record didn't, so no
+        # further mutating step was allowed to start. Leave the row as
+        # whatever it last durably was (normally still RUN_IN_PROGRESS) -
+        # never fabricate a terminal status the database itself couldn't
+        # confirm. A later invocation's _reconcile_stale_runs will close
+        # it out once it's old enough to be confident it isn't still
+        # active.
+        logger.error(
+            "live_cycle: run id=%s stopped mid-cycle - could not durably persist an audit record; "
+            "left as-is for a later invocation's stale-run reconciliation rather than fabricating a "
+            "final status the database itself never confirmed",
+            row.id,
+        )
+        try:
+            db.rollback()
+            db.refresh(row)
+        except Exception:  # noqa: BLE001
+            pass
+        return row
+
+
+def _run_steps(db: Session, row: LiveCycleRun, report: LiveCycleReport, now: datetime) -> LiveCycleRun:
+    """The actual step sequence, extracted from run_live_cycle() so that
+    function's own try/except AuditPersistenceError wraps the whole thing
+    without needing to re-indent every existing step block. Every
+    _persist_steps_durable() call below sits OUTSIDE the step's own
+    try/except - see module docstring for why that placement is what
+    makes an audit-persistence failure impossible to accidentally swallow
+    as if it were that step's own business-logic failure."""
     # Step 1: refresh upcoming AFL fixtures/results (free — Squiggle).
+    _t0 = time.monotonic()
     try:
         fixture_provider = SquiggleFixtureProvider()
         fixtures = fixture_provider.get_upcoming_fixtures("AFL")
@@ -200,40 +413,48 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
         report.add(
             "refresh_fixtures", STEP_SUCCESS,
             f"{len(fixtures)} fixtures seen, created={result.matches_created} updated={result.matches_updated} unchanged={result.matches_unchanged}",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("refresh_fixtures", STEP_RECOVERABLE_FAILURE, f"fixture refresh failed: {exc}")
+        report.add("refresh_fixtures", STEP_RECOVERABLE_FAILURE, f"fixture refresh failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 2: identify the round to operate on. This is the ONLY step that
     # can BLOCK the cycle — every following step needs a round to work with,
     # and if fixtures were never ingested at all (fresh database, or the
     # fixture refresh above failed AND nothing was ever ingested before),
     # there is genuinely nothing meaningful left to do this cycle.
+    _t0 = time.monotonic()
     upcoming_matches = load_next_upcoming_round(db)
     if not upcoming_matches:
         report.add(
             "identify_upcoming_round", STEP_BLOCKING_FAILURE if not any(s.step == "refresh_fixtures" and s.status == STEP_SUCCESS for s in report.steps) else STEP_WARNING,
             "no upcoming (scheduled) AFL matches found in the database",
+            duration_seconds=time.monotonic() - _t0,
         )
-        return _persist_run(db, report, now)
-    report.add("identify_upcoming_round", STEP_SUCCESS, f"{len(upcoming_matches)} upcoming match(es)")
+        return _finish_run(db, row, report)
+    report.add("identify_upcoming_round", STEP_SUCCESS, f"{len(upcoming_matches)} upcoming match(es)", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
     report.matches_affected.update(m.match_id for m in upcoming_matches)
 
     # Step 3: update newly-completed player data where available.
+    _t0 = time.monotonic()
     try:
         updated, failed = _update_completed_player_stats(db)
         if updated == 0 and failed == 0:
-            report.add("update_completed_player_stats", STEP_SUCCESS, "no completed matches are missing player stats")
+            report.add("update_completed_player_stats", STEP_SUCCESS, "no completed matches are missing player stats", duration_seconds=time.monotonic() - _t0)
         elif failed and not updated:
-            report.add("update_completed_player_stats", STEP_RECOVERABLE_FAILURE, f"player-stat source temporarily unavailable for all {failed} team-season(s) attempted")
+            report.add("update_completed_player_stats", STEP_RECOVERABLE_FAILURE, f"player-stat source temporarily unavailable for all {failed} team-season(s) attempted", duration_seconds=time.monotonic() - _t0)
         else:
             status = STEP_SUCCESS if not failed else STEP_RECOVERABLE_FAILURE
-            report.add("update_completed_player_stats", status, f"{updated} team-season(s) updated, {failed} failed")
+            report.add("update_completed_player_stats", status, f"{updated} team-season(s) updated, {failed} failed", duration_seconds=time.monotonic() - _t0)
     except Exception as exc:  # noqa: BLE001
-        report.add("update_completed_player_stats", STEP_RECOVERABLE_FAILURE, f"player-stat update failed: {exc}")
+        report.add("update_completed_player_stats", STEP_RECOVERABLE_FAILURE, f"player-stat update failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 4: settle completed prop observations BEFORE collecting new data
     # (Section 14 — settlement must never be starved by new-data collection).
+    _t0 = time.monotonic()
     try:
         settlement = settle_all_completed_matches(db)
         report.observations_settled += settlement.observations_settled
@@ -242,14 +463,16 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
             f"push={settlement.observations_pushed} void={settlement.observations_voided}), "
             f"{settlement.awaiting_player_stats} awaiting player stats, {settlement.observations_flagged_for_review} flagged for review"
         )
-        report.add("settle_props", STEP_SUCCESS, detail)
+        report.add("settle_props", STEP_SUCCESS, detail, duration_seconds=time.monotonic() - _t0)
     except Exception as exc:  # noqa: BLE001
-        report.add("settle_props", STEP_RECOVERABLE_FAILURE, f"settlement failed: {exc}")
+        report.add("settle_props", STEP_RECOVERABLE_FAILURE, f"settlement failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 4b: settle any pending PlacedBet rows the same way, right after
     # prop settlement and before new-data collection (same Section 14
     # reasoning) - see app/player_modelling/placed_bets.py, which reuses
     # this exact settlement math rather than duplicating it.
+    _t0 = time.monotonic()
     try:
         bet_settlement = settle_placed_bets(db)
         detail = (
@@ -265,28 +488,33 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
                 f", {bet_settlement.multis_settled} multi(s) settled "
                 f"(won={bet_settlement.multis_won} lost={bet_settlement.multis_lost} void={bet_settlement.multis_voided})"
             )
-        report.add("settle_placed_bets", STEP_SUCCESS, detail)
+        report.add("settle_placed_bets", STEP_SUCCESS, detail, duration_seconds=time.monotonic() - _t0)
     except Exception as exc:  # noqa: BLE001
-        report.add("settle_placed_bets", STEP_RECOVERABLE_FAILURE, f"placed-bet settlement failed: {exc}")
+        report.add("settle_placed_bets", STEP_RECOVERABLE_FAILURE, f"placed-bet settlement failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 4c: settle any pending PricingSnapshot rows (B2B Pricing Engine's
     # prospective evaluation dataset) - same Section 14 reasoning: before
     # new-data collection, reusing the exact same settlement primitives as
     # every other settlement step above (see app/pricing/snapshot_service.py).
+    _t0 = time.monotonic()
     try:
         snap_settlement = settle_pricing_snapshots(db)
         report.add(
             "settle_pricing_snapshots", STEP_SUCCESS,
             f"settled {snap_settlement.settled} (won={snap_settlement.won} lost={snap_settlement.lost} "
             f"push={snap_settlement.pushed} void={snap_settlement.voided}), {snap_settlement.awaiting_data} awaiting data",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("settle_pricing_snapshots", STEP_RECOVERABLE_FAILURE, f"pricing snapshot settlement failed: {exc}")
+        report.add("settle_pricing_snapshots", STEP_RECOVERABLE_FAILURE, f"pricing snapshot settlement failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 4d: settle any pending SgmPriceSnapshot rows (Same Game Multi's
     # own prospective evaluation dataset) - same Section 14 reasoning as
     # step 4c, and the same shared settlement primitives underneath (see
     # app/pricing/sgm_snapshot_service.py's module docstring).
+    _t0 = time.monotonic()
     try:
         sgm_settlement = settle_sgm_snapshots(db)
         report.add(
@@ -294,42 +522,51 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
             f"settled {sgm_settlement.combos_settled} (won={sgm_settlement.combos_won} lost={sgm_settlement.combos_lost} "
             f"void={sgm_settlement.combos_voided}), {sgm_settlement.legs_resolved} leg(s) newly resolved, "
             f"{sgm_settlement.awaiting_data} awaiting data",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("settle_sgm_snapshots", STEP_RECOVERABLE_FAILURE, f"SGM snapshot settlement failed: {exc}")
+        report.add("settle_sgm_snapshots", STEP_RECOVERABLE_FAILURE, f"SGM snapshot settlement failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 5-6: detect stale projections and regenerate only those (reuses
     # exactly what `refresh-live` already does — see cli.py's _refresh_live).
+    # generate_live_projections() itself logs finer-grained timing for team-
+    # context construction and disposal/goal model refit (see
+    # live_engine.py) - this step's own duration_seconds is the total.
     changed_match_ids: set[int] = set()
+    _t0 = time.monotonic()
     try:
         changed_match_ids = detect_matches_needing_regeneration(db, upcoming_matches)
         if not changed_match_ids:
-            report.add("regenerate_projections", STEP_SUCCESS, "no matches need regeneration — every persisted projection is already current")
+            report.add("regenerate_projections", STEP_SUCCESS, "no matches need regeneration — every persisted projection is already current", duration_seconds=time.monotonic() - _t0)
         else:
             run = generate_live_projections(db, target_match_ids=changed_match_ids)
             n_disposals, n_goals = persist_projection_run(db, run)
-            report.add("regenerate_projections", STEP_SUCCESS, f"regenerated {len(changed_match_ids)} match(es): {n_disposals} disposal + {n_goals} goal projections")
+            report.add("regenerate_projections", STEP_SUCCESS, f"regenerated {len(changed_match_ids)} match(es): {n_disposals} disposal + {n_goals} goal projections", duration_seconds=time.monotonic() - _t0)
 
             # Step 9 (sanity checks) - only meaningful right after a
             # regeneration, since it inspects the in-memory run just built.
+            _t1 = time.monotonic()
             confirmed_out_by_match = confirmed_out_player_ids_by_match(db, [m.match_id for m in run.upcoming_matches])
             anomalies = run_all_sanity_checks(run, confirmed_out_by_match)
             if anomalies:
-                report.add("sanity_checks", STEP_WARNING, f"{len(anomalies)} anomaly/anomalies flagged (see live_sanity.py)")
+                report.add("sanity_checks", STEP_WARNING, f"{len(anomalies)} anomaly/anomalies flagged (see live_sanity.py)", duration_seconds=time.monotonic() - _t1)
             else:
-                report.add("sanity_checks", STEP_SUCCESS, "no anomalies found")
+                report.add("sanity_checks", STEP_SUCCESS, "no anomalies found", duration_seconds=time.monotonic() - _t1)
     except (ModelsUnavailableError, PromotedModelsUnavailableError) as exc:
-        report.add("regenerate_projections", STEP_RECOVERABLE_FAILURE, f"models unavailable: {exc}")
+        report.add("regenerate_projections", STEP_RECOVERABLE_FAILURE, f"models unavailable: {exc}", duration_seconds=time.monotonic() - _t0)
     except Exception as exc:  # noqa: BLE001
-        report.add("regenerate_projections", STEP_RECOVERABLE_FAILURE, f"projection regeneration failed: {exc}")
+        report.add("regenerate_projections", STEP_RECOVERABLE_FAILURE, f"projection regeneration failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 7-8: quota-aware, match-time-aware odds refresh + frozen
     # model-market observation creation for whatever changed.
+    _t0 = time.monotonic()
     try:
         settings = get_settings()
         odds_provider = TheOddsApiProvider(api_key=settings.the_odds_api_key)
         if not odds_provider.is_available:
-            report.add("refresh_prop_odds", STEP_WARNING, "THE_ODDS_API_KEY not configured — skipped (manual prop entry still works)")
+            report.add("refresh_prop_odds", STEP_WARNING, "THE_ODDS_API_KEY not configured — skipped (manual prop entry still works)", duration_seconds=time.monotonic() - _t0)
         else:
             odds_report = run_prop_odds_refresh(db, odds_provider, upcoming_matches, MODELLED_MARKET_KEYS)  # min_refresh_interval=None -> match-time-aware policy
             report.quotes_added += odds_report.quotes_created
@@ -340,30 +577,34 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
                 "refresh_prop_odds", STEP_SUCCESS,
                 f"{odds_report.matches_resolved} match(es) refreshed, {odds_report.quotes_created} new quote(s), "
                 f"{odds_report.matches_skipped_fresh} skipped (still within their refresh interval)",
+                duration_seconds=time.monotonic() - _t0,
             )
 
+            _t1 = time.monotonic()
             obs_report = ObservationCreationReport()
             for m in upcoming_matches:
                 match_report = create_observations_for_match(db, m.match_id)
                 obs_report.observations_created += match_report.observations_created
                 obs_report.observations_unchanged += match_report.observations_unchanged
             report.observations_added += obs_report.observations_created
-            report.add("create_observations", STEP_SUCCESS, f"{obs_report.observations_created} new observation(s), {obs_report.observations_unchanged} unchanged (idempotent)")
+            report.add("create_observations", STEP_SUCCESS, f"{obs_report.observations_created} new observation(s), {obs_report.observations_unchanged} unchanged (idempotent)", duration_seconds=time.monotonic() - _t1)
     except Exception as exc:  # noqa: BLE001
-        report.add("refresh_prop_odds", STEP_RECOVERABLE_FAILURE, f"odds refresh failed: {exc}")
+        report.add("refresh_prop_odds", STEP_RECOVERABLE_FAILURE, f"odds refresh failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 10: quota-aware standard team-market (h2h/spreads/totals) odds
     # refresh - one call covers every upcoming match, so it's gated as a
     # single freshness check rather than per-match (see
     # _team_odds_needs_refresh). Reuses ingest_team_odds/
     # get_standard_match_odds exactly as `refresh-team-odds` does.
+    _t0 = time.monotonic()
     try:
         settings = get_settings()
         team_odds_provider = TheOddsApiProvider(api_key=settings.the_odds_api_key)
         if not team_odds_provider.is_available:
-            report.add("refresh_team_odds", STEP_WARNING, "THE_ODDS_API_KEY not configured — skipped (manual team odds entry still works)")
+            report.add("refresh_team_odds", STEP_WARNING, "THE_ODDS_API_KEY not configured — skipped (manual team odds entry still works)", duration_seconds=time.monotonic() - _t0)
         elif not _team_odds_needs_refresh(db, upcoming_matches):
-            report.add("refresh_team_odds", STEP_SUCCESS, "skipped — still within the match-time-aware refresh interval")
+            report.add("refresh_team_odds", STEP_SUCCESS, "skipped — still within the match-time-aware refresh interval", duration_seconds=time.monotonic() - _t0)
         else:
             odds_result = team_odds_provider.get_standard_match_odds("AFL")
             team_odds_report = ingest_team_odds(db, odds_result)
@@ -371,9 +612,11 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
             report.add(
                 "refresh_team_odds", STEP_SUCCESS,
                 f"{team_odds_report.matches_resolved} match(es) resolved, {team_odds_report.quotes_created} new quote(s)",
+                duration_seconds=time.monotonic() - _t0,
             )
     except Exception as exc:  # noqa: BLE001
-        report.add("refresh_team_odds", STEP_RECOVERABLE_FAILURE, f"team odds refresh failed: {exc}")
+        report.add("refresh_team_odds", STEP_RECOVERABLE_FAILURE, f"team odds refresh failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 10a: Finals Market Readiness + Auto-Population stage, items 1-2,
     # 5: turn freshly-refreshed, already-resolved player-prop evidence
@@ -386,6 +629,7 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     # restart or a second cycle. Reuses generate_live_projections/
     # persist_projection_run identically to steps 5-6 above; this is a
     # second, narrowly-targeted pass, never new model/projection logic.
+    _t0 = time.monotonic()
     try:
         from app.player_modelling.provisional_roster import populate_provisional_roster
 
@@ -404,13 +648,15 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
                 "populate_provisional_rosters", STEP_SUCCESS,
                 f"{total_players_added} provisional player(s) added across {len(matches_with_new_provisional_players)} match(es); "
                 f"{n_disposals} disposal + {n_goals} goal projection(s) regenerated",
+                duration_seconds=time.monotonic() - _t0,
             )
         else:
-            report.add("populate_provisional_rosters", STEP_SUCCESS, "no new provisional players found")
+            report.add("populate_provisional_rosters", STEP_SUCCESS, "no new provisional players found", duration_seconds=time.monotonic() - _t0)
     except (ModelsUnavailableError, PromotedModelsUnavailableError) as exc:
-        report.add("populate_provisional_rosters", STEP_RECOVERABLE_FAILURE, f"models unavailable: {exc}")
+        report.add("populate_provisional_rosters", STEP_RECOVERABLE_FAILURE, f"models unavailable: {exc}", duration_seconds=time.monotonic() - _t0)
     except Exception as exc:  # noqa: BLE001
-        report.add("populate_provisional_rosters", STEP_RECOVERABLE_FAILURE, f"provisional roster population failed: {exc}")
+        report.add("populate_provisional_rosters", STEP_RECOVERABLE_FAILURE, f"provisional roster population failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 10b: freeze this cycle's pricing into the prospective evaluation
     # dataset (B2B Pricing Engine item 5) - deliberately AFTER odds refresh
@@ -418,6 +664,7 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     # alongside the model price, not a stale market snapshot from before
     # this cycle's odds refresh ran. Idempotent per model_version (see
     # snapshot_price's docstring) - safe to run every cycle.
+    _t0 = time.monotonic()
     try:
         snap_report = snapshot_round_pricing(db, [m.match_id for m in upcoming_matches])
         report.add(
@@ -425,9 +672,11 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
             f"{snap_report.matches_considered} match(es) considered: "
             f"{snap_report.team_snapshots_created} team, {snap_report.disposal_snapshots_created} disposal, "
             f"{snap_report.goal_snapshots_created} goal snapshot(s) newly frozen",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("snapshot_pricing", STEP_RECOVERABLE_FAILURE, f"pricing snapshot creation failed: {exc}")
+        report.add("snapshot_pricing", STEP_RECOVERABLE_FAILURE, f"pricing snapshot creation failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 10b-ii: freeze this cycle's Same Game Multi joint prices, same
     # placement reasoning as step 10b (after odds refresh, so leg
@@ -435,14 +684,17 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     # app/pricing/sgm_snapshot_service.py. Which combos get frozen is
     # whatever Multi Builder's own existing combo search actually surfaces
     # this cycle, not a separately invented selection.
+    _t0 = time.monotonic()
     try:
         sgm_snap_report = snapshot_sgm_pricing(db, [m.match_id for m in upcoming_matches])
         report.add(
             "snapshot_sgm_pricing", STEP_SUCCESS,
             f"{sgm_snap_report.matches_considered} match(es) considered: {sgm_snap_report.snapshots_created} SGM snapshot(s) newly frozen",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("snapshot_sgm_pricing", STEP_RECOVERABLE_FAILURE, f"SGM snapshot creation failed: {exc}")
+        report.add("snapshot_sgm_pricing", STEP_RECOVERABLE_FAILURE, f"SGM snapshot creation failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 10b-iii: capture this cycle's model-side values (team win
     # probability, player projections) into ModelValueObservation - the
@@ -452,14 +704,17 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     # as 10b/10b-ii: after odds refresh, so this reflects the cycle's real
     # state. Insert-only-on-change, so a normal cycle with no real movement
     # writes nothing new.
+    _t0 = time.monotonic()
     try:
         obs_report = record_model_value_observations(db, [m.match_id for m in upcoming_matches])
         report.add(
             "record_model_value_observations", STEP_SUCCESS,
             f"{obs_report.matches_considered} match(es) considered: {obs_report.observations_created} observation(s) newly recorded",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("record_model_value_observations", STEP_RECOVERABLE_FAILURE, f"model value observation capture failed: {exc}")
+        report.add("record_model_value_observations", STEP_RECOVERABLE_FAILURE, f"model value observation capture failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 10c: freeze/refresh/settle High Priority + Critical Market
     # Monitor cases (Genuine Prospective Operation stage, item 1) - same
@@ -468,6 +723,7 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     # every match active_match_ids() considers live (not just this round),
     # matching the API's own /cases breadth - never a separate poll loop
     # (item 3), just piggybacking on however often this cycle already runs.
+    _t0 = time.monotonic()
     try:
         from app.market_monitor.case_snapshot_service import freeze_or_refresh_case_snapshots, settle_case_snapshots
         from app.market_monitor.detector import active_match_ids as monitor_active_match_ids
@@ -480,9 +736,11 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
         report.add(
             "market_monitor_prospective_snapshots", STEP_SUCCESS,
             f"{len(monitor_match_ids)} match(es) scanned: {n_new_cases} case(s) newly frozen, {n_refreshed_cases} refreshed, {n_settled_cases} settled",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("market_monitor_prospective_snapshots", STEP_RECOVERABLE_FAILURE, f"case snapshot freeze/settle failed: {exc}")
+        report.add("market_monitor_prospective_snapshots", STEP_RECOVERABLE_FAILURE, f"case snapshot freeze/settle failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 10d: freeze/evaluate the finer-grained per-ALERT prospective
     # snapshots (B2B Market Anomaly / Trading QA Engine, item 8) - this
@@ -498,6 +756,7 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
     # block (not reusing step 10c's match list) so a failure in either
     # prospective-snapshot step never masks the other, per this module's
     # own failure-isolation design.
+    _t0 = time.monotonic()
     try:
         from app.market_monitor.detector import active_match_ids as alert_active_match_ids
         from app.market_monitor.snapshot_service import evaluate_anomaly_snapshots, freeze_anomaly_alerts
@@ -508,45 +767,32 @@ def run_live_cycle(db: Session) -> LiveCycleRun:
         report.add(
             "market_monitor_alert_snapshots", STEP_SUCCESS,
             f"{len(alert_match_ids)} match(es) scanned: {n_alerts_frozen} alert(s) newly frozen, {n_alerts_evaluated} evaluated",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("market_monitor_alert_snapshots", STEP_RECOVERABLE_FAILURE, f"alert snapshot freeze/evaluate failed: {exc}")
+        report.add("market_monitor_alert_snapshots", STEP_RECOVERABLE_FAILURE, f"alert snapshot freeze/evaluate failed: {exc}", duration_seconds=time.monotonic() - _t0)
+    _persist_steps_durable(db, row.id, report.steps)
 
     # Step 11: venue-local weather forecast refresh (free, keyless Open-Meteo
     # — reuses refresh_weather_for_matches exactly as `refresh-weather` does).
+    # No explicit _persist_steps_durable call after this one - _finish_run
+    # immediately below writes the full steps list (including this one) as
+    # part of closing the run out, and no further mutating step follows it
+    # this cycle, so there's no gap for a separate persist to protect.
+    _t0 = time.monotonic()
     try:
         weather_report = refresh_weather_for_matches(db, upcoming_matches)
         report.weather_snapshots_added += weather_report.snapshots_created
         report.add(
             "refresh_weather", STEP_SUCCESS,
             f"{weather_report.snapshots_created} snapshot(s) created of {weather_report.matches_considered} match(es) considered",
+            duration_seconds=time.monotonic() - _t0,
         )
     except Exception as exc:  # noqa: BLE001
-        report.add("refresh_weather", STEP_RECOVERABLE_FAILURE, f"weather refresh failed: {exc}")
+        report.add("refresh_weather", STEP_RECOVERABLE_FAILURE, f"weather refresh failed: {exc}", duration_seconds=time.monotonic() - _t0)
 
     from app.player_modelling.request_cache import clear_model_fit_cache, clear_ttl_cache
 
     clear_ttl_cache()
     clear_model_fit_cache()
-    return _persist_run(db, report, now)
-
-
-def _persist_run(db: Session, report: LiveCycleReport, run_at: datetime) -> LiveCycleRun:
-    row = LiveCycleRun(
-        run_at=run_at,
-        finished_at=datetime.now(timezone.utc),
-        overall_status=report.overall_status,
-        steps=[{"step": s.step, "status": s.status, "detail": s.detail} for s in report.steps],
-        odds_credits_consumed=report.odds_credits_consumed,
-        odds_credits_remaining=report.odds_credits_remaining,
-        matches_affected=len(report.matches_affected),
-        quotes_added=report.quotes_added,
-        observations_added=report.observations_added,
-        observations_settled=report.observations_settled,
-        team_odds_quotes_added=report.team_odds_quotes_added,
-        weather_snapshots_added=report.weather_snapshots_added,
-    )
-    db.add(row)
-    db.commit()
-    db.refresh(row)
-    return row
+    return _finish_run(db, row, report)

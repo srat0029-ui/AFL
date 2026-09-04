@@ -72,6 +72,7 @@ from datetime import timedelta
 from app.config import get_settings
 from app.database import SessionLocal
 from app.player_modelling.live_change_detection import detect_matches_needing_regeneration
+from app.models import RUN_IN_PROGRESS, RUN_INTERRUPTED
 from app.player_modelling.live_cycle import run_live_cycle
 from app.player_modelling.scheduler import SchedulerAlreadyRunningError, is_paused, pause, resume, run_scheduler_loop
 from app.player_modelling.live_engine import (
@@ -452,7 +453,18 @@ def _run_live_cycle() -> int:
         print(f"  weather snapshots added: {run.weather_snapshots_added}")
         if run.odds_credits_consumed is not None:
             print(f"  odds API: requests_used={run.odds_credits_consumed} requests_remaining={run.odds_credits_remaining}")
-        exit_code = {"ok": 0, "partial": 1, "blocked": 2}[run.overall_status]
+        if run.overall_status in (RUN_IN_PROGRESS, RUN_INTERRUPTED):
+            print(
+                "\nWARNING: this run did not reach a normal finish - the audit database became "
+                "unreachable mid-cycle, so it was stopped rather than continuing without a durable "
+                f"record. LiveCycleRun id={run.id} reflects exactly which steps completed before the "
+                "stop; a later invocation's stale-run reconciliation will close it out."
+            )
+        # .get(..., 2): any status other than the three normal terminal ones
+        # (in_progress/interrupted included) is treated as failure-severity -
+        # never silently reported as success when the run didn't actually
+        # finish normally.
+        exit_code = {"ok": 0, "partial": 1, "blocked": 2}.get(run.overall_status, 2)
         return exit_code
     finally:
         db.close()

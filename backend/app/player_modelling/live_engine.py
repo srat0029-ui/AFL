@@ -8,6 +8,8 @@ for the CLI to report and live_persistence.py to upsert. Nothing here
 touches the database for writes — this module only reads and computes.
 """
 
+import logging
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -30,6 +32,8 @@ from app.player_modelling.upcoming_features import (
     load_next_upcoming_round,
 )
 from app.player_modelling.upcoming_team_context import ModelsUnavailableError, build_upcoming_team_context
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "ModelsUnavailableError",
@@ -157,7 +161,14 @@ def generate_live_projections(db: Session, target_match_ids: set[int] | None = N
     # yet — deliberately left to propagate to the caller (see cli.py),
     # since a live projection without team context would be silently
     # missing a real, validated input rather than failing loudly.
+    # Timed and logged (not just left implicit in the caller's overall step
+    # duration) since walk-forward Elo/Poisson over the full match history
+    # is one of the two real candidates for where a live cycle's time
+    # actually goes against a remote database - see live_cycle.py's
+    # "Durable run lifecycle" docstring for why this was worth knowing.
+    _t0 = time.monotonic()
     upcoming_team_context = build_upcoming_team_context(db, upcoming_matches)
+    logger.info("live_engine phase=team_context_construction duration_s=%.2f", time.monotonic() - _t0)
 
     disposal_feature_by_key = build_upcoming_disposal_features(db, upcoming_matches, expected_players, upcoming_team_context)
     goal_feature_by_key = build_upcoming_goal_features(db, upcoming_matches, expected_players, upcoming_team_context)
@@ -166,18 +177,30 @@ def generate_live_projections(db: Session, target_match_ids: set[int] | None = N
     # PlayerMatchStat rows and the promoted run's config, never on any
     # match's lineup, so a lineup edit shouldn't pay to refit them - see
     # request_cache.py's "Live-projection model-fit cache" section.
+    # Dataset build (the historical DB read) and model fit (CPU-bound MLE)
+    # are timed separately - the other real candidate for where cycle time
+    # goes is a full-history query against a remote pooled connection,
+    # which this distinguishes from the fit itself.
+    _t0 = time.monotonic()
     disposal_train_rows = cached_model_fit(db, ("live_disposal_train_rows",), lambda: build_disposal_dataset(db).all_rows)
+    logger.info("live_engine phase=disposal_dataset_build duration_s=%.2f rows=%d", time.monotonic() - _t0, len(disposal_train_rows))
+    _t0 = time.monotonic()
     goal_train_rows = cached_model_fit(db, ("live_goal_train_rows",), lambda: build_goal_dataset(db).all_rows)
+    logger.info("live_engine phase=goal_dataset_build duration_s=%.2f rows=%d", time.monotonic() - _t0, len(goal_train_rows))
     data_cutoff = max((r.scheduled_start for r in disposal_train_rows), default=now)
 
+    _t0 = time.monotonic()
     live_disposal_model = cached_model_fit(
         db, ("live_disposal_model", disposal_run.id, disposal_run.run_at),
         lambda: fit_live_disposal_model(disposal_train_rows, disposal_run),
     )
+    logger.info("live_engine phase=disposal_model_refit duration_s=%.2f", time.monotonic() - _t0)
+    _t0 = time.monotonic()
     live_goal_model = cached_model_fit(
         db, ("live_goal_model", goal_run.id, goal_run.run_at),
         lambda: fit_live_goal_model(goal_train_rows, goal_run),
     )
+    logger.info("live_engine phase=goal_model_refit duration_s=%.2f", time.monotonic() - _t0)
 
     disposal_model_version = f"{disposal_run.model_name}@{disposal_run.run_at.isoformat()}"
     goal_model_version = f"{goal_run.model_name}@{goal_run.run_at.isoformat()}"
