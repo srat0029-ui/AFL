@@ -107,8 +107,9 @@ jobs:
         # dialect-sensitive behavior) - this reuses real assertions from the
         # tests that cover PricingSnapshot, SgmPriceSnapshot, OddsQuote/
         # PropMarketObservation, ModelValueObservation, ApiUsageRecord/rate
-        # limiting, settlement, and live-cycle idempotency (see
-        # docs/DEPLOYMENT.md for why these specifically).
+        # limiting, settlement, live-cycle idempotency/durability, and the
+        # prop-odds bulk-insert/query-count fix (see docs/DEPLOYMENT.md for
+        # why these specifically).
         run: |
           pytest -q \
             tests/test_pricing.py \
@@ -118,8 +119,13 @@ jobs:
             tests/test_model_value_observations.py \
             tests/test_prop_settlement.py \
             tests/test_live_cycle.py \
+            tests/test_live_cycle_durability.py \
             tests/test_api_platform_usage_and_rate_limit.py \
-            tests/test_api_platform_rate_limit.py
+            tests/test_api_platform_rate_limit.py \
+            tests/test_prop_player_resolution.py \
+            tests/test_prop_odds_ingestion.py \
+            tests/test_prop_odds_performance.py \
+            tests/test_real_fixture_regression.py
 
   frontend-test:
     name: Frontend tests

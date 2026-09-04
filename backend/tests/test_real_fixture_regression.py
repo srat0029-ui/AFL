@@ -28,8 +28,13 @@ from pathlib import Path
 from dateutil import parser as dtparser
 
 from app.models import Match, MatchStatus, Player, PlayerPropMarket, Round, Season, Sport, Team
-from app.player_modelling.prop_odds_ingestion import PropOddsRefreshReport, _ingest_one_quote
-from app.player_modelling.prop_player_resolution import RESOLUTION_EXACT, RESOLUTION_SAFELY_RESOLVED, resolve_prop_player
+from app.player_modelling.prop_odds_ingestion import PropOddsRefreshReport, _prepare_quote
+from app.player_modelling.prop_player_resolution import (
+    RESOLUTION_EXACT,
+    RESOLUTION_SAFELY_RESOLVED,
+    build_match_resolution_context,
+    resolve_prop_player,
+)
 from app.providers.types import PlayerPropQuote
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "the_odds_api_real_event_odds_response.json"
@@ -114,14 +119,18 @@ def test_lachlan_resolves_to_lachie(db_session):
 
 def test_reprocessing_real_fixture_end_to_end_persists_expected_quotes(db_session):
     """Feeds every real outcome for Nick Daicos through the actual
-    ingestion path (_ingest_one_quote) exactly as refresh-prop-odds would,
-    proving the full real response shape -> normalize -> resolve ->
-    persist pipeline works end to end against real data, with zero API
-    calls (Section 4's stated purpose for this fixture)."""
+    per-quote preparation path (_prepare_quote, using a preloaded
+    MatchResolutionContext exactly as run_prop_odds_refresh does), proving
+    the full real response shape -> normalize -> resolve -> persist
+    pipeline works end to end against real data, with zero API calls
+    (Section 4's stated purpose for this fixture)."""
     match, home, away, players = _seed_collingwood_v_brisbane(db_session)
     body = _load_fixture()
     fetched_at = datetime.now(timezone.utc)
     report = PropOddsRefreshReport()
+    context = build_match_resolution_context(db_session, match)
+    existing_by_key: dict = {}
+    bookmaker_cache: dict = {}
 
     daicos_outcomes = [
         o for bm in body["bookmakers"] for mk in bm["markets"] for o in mk["outcomes"] if o.get("description") == "Nick Daicos"
@@ -129,6 +138,7 @@ def test_reprocessing_real_fixture_end_to_end_persists_expected_quotes(db_sessio
     assert len(daicos_outcomes) > 0
     market_last_update = dtparser.isoparse(body["bookmakers"][0]["markets"][0]["last_update"])
 
+    new_rows = []
     for outcome in daicos_outcomes:
         quote = PlayerPropQuote(
             provider="the_odds_api", event_id=body["id"], sport_code="AFL", bookmaker_key="sportsbet",
@@ -136,7 +146,12 @@ def test_reprocessing_real_fixture_end_to_end_persists_expected_quotes(db_sessio
             player_name="Nick Daicos", selection=outcome["name"], price_decimal=float(outcome["price"]),
             bookmaker_last_update=market_last_update, fetched_at=fetched_at, threshold=outcome.get("point"), raw_outcome=outcome,
         )
-        _ingest_one_quote(db_session, match, quote, report)
+        report.quotes_seen += 1
+        row = _prepare_quote(context, match, quote, report, existing_by_key, bookmaker_cache, db_session)
+        if row is not None:
+            new_rows.append(row)
+    if new_rows:
+        db_session.execute(PlayerPropMarket.__table__.insert(), new_rows)
     db_session.commit()
 
     assert report.quotes_created == len(daicos_outcomes)

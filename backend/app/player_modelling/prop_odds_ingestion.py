@@ -8,22 +8,53 @@ Deliberately provider-agnostic past the PlayerPropOddsProvider boundary —
 this module never imports TheOddsApiProvider directly (see
 run_prop_odds_refresh's `provider` parameter), so a second provider is a
 new class satisfying that interface, not a change here.
+
+Performance note: a real production Live Cycle run was killed by its
+30-minute workflow timeout inside this function. Profiling (see
+app/player_modelling/prop_player_resolution.py's docstring) traced it to
+per-quote database round trips: player resolution (~10 queries/quote) plus
+a duplicate-existence SELECT and a bookmaker lookup, both also issued once
+per quote. A benchmark of ~2,800 realistic quotes for one match measured
+~27,700 SQL queries against a real database before this fix.
+
+The redesign, per match: (1) build ONE MatchResolutionContext up front
+(fixed query count, see prop_player_resolution.py); (2) load every
+existing PlayerPropMarket row for this match+source ONCE and reduce it to
+"latest row per identity key" in memory; (3) resolve, classify, and
+identity-check every quote purely in memory against that context and
+map - zero queries per quote; (4) bulk-insert every genuinely new row in
+one statement, then one commit per match (unchanged from before - commits
+were already per-match, never per-quote). A within-batch duplicate quote
+(the same identity key appearing twice in one provider response) is
+caught the same way a same-batch duplicate always was: the in-memory
+"latest key" map is updated the moment a new row is prepared, so a later
+duplicate in the same loop sees it immediately, before ever reaching the
+database.
 """
 
+import logging
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Match, PlayerPropMarket
+from app.models import Bookmaker, Match, PlayerPropMarket
 from app.player_modelling.prop_market_mapping import NormalizedProp, UnsupportedMarket, normalize_prop_quote
 from app.player_modelling.prop_odds_matching import get_or_create_bookmaker, resolve_event_to_match
 from app.player_modelling.prop_odds_quota import event_needs_refresh, recommended_refresh_interval
-from app.player_modelling.prop_player_resolution import TRUSTED_TIERS, resolve_prop_player
+from app.player_modelling.prop_player_resolution import (
+    TRUSTED_TIERS,
+    MatchResolutionContext,
+    build_match_resolution_context,
+    resolve_prop_player_with_context,
+)
 from app.player_modelling.upcoming_features import UpcomingMatchTeams
 from app.providers.player_prop_odds import PlayerPropOddsProvider, QuotaStatus
 from app.providers.types import PlayerPropQuote
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -66,52 +97,111 @@ def _same_instant(a: datetime, b: datetime) -> bool:
     return a == b
 
 
-def _persist_normalized_quote(db: Session, match: Match, normalized: NormalizedProp, player_id: int, bookmaker_id: int) -> bool:
-    """Returns True if a new row was created, False if an identical
-    snapshot already existed (idempotent re-fetch — Section 9)."""
-    q = normalized.quote
-    latest = db.scalar(
-        select(PlayerPropMarket)
-        .where(
-            PlayerPropMarket.match_id == match.id,
-            PlayerPropMarket.player_id == player_id,
-            PlayerPropMarket.bookmaker_id == bookmaker_id,
-            PlayerPropMarket.market_type == normalized.market.value,
-            PlayerPropMarket.line_type == normalized.line_type.value,
-            PlayerPropMarket.threshold == normalized.threshold,
-            PlayerPropMarket.selection == normalized.selection,
-            PlayerPropMarket.source == q.provider,
-        )
-        .order_by(PlayerPropMarket.recorded_at.desc())
-        .limit(1)
+def _identity_key(match_id: int, player_id: int, bookmaker_id: int, normalized: NormalizedProp, source: str) -> tuple:
+    return (
+        match_id, player_id, bookmaker_id, normalized.market.value, normalized.line_type.value,
+        normalized.threshold, normalized.selection, source,
     )
-    if (
-        latest is not None
-        and latest.bookmaker_last_update is not None
-        and _same_instant(latest.bookmaker_last_update, q.bookmaker_last_update)
-        and latest.price_decimal == q.price_decimal
-    ):
-        return False
 
-    db.add(
-        PlayerPropMarket(
-            match_id=match.id,
-            player_id=player_id,
-            bookmaker_id=bookmaker_id,
-            market_type=normalized.market.value,
-            line_type=normalized.line_type.value,
-            threshold=normalized.threshold,
-            selection=normalized.selection,
-            price_decimal=q.price_decimal,
-            recorded_at=q.fetched_at,
-            source=q.provider,
-            provider_event_id=q.event_id,
-            provider_market_key=q.market_key,
-            bookmaker_last_update=q.bookmaker_last_update,
-            raw_outcome=q.raw_outcome,
-        )
-    )
-    return True
+
+def _load_latest_existing_by_key(db: Session, match_id: int, source: str) -> dict[tuple, dict]:
+    """ONE query per match+source (not per quote), reduced to "latest row
+    per identity key" in memory - replaces what was previously a separate
+    SELECT per quote. Values are plain dicts (not ORM rows) so a
+    not-yet-committed prepared row can be inserted into this same map with
+    the identical shape - see run_prop_odds_refresh's within-batch
+    duplicate handling."""
+    rows = db.scalars(
+        select(PlayerPropMarket).where(PlayerPropMarket.match_id == match_id, PlayerPropMarket.source == source)
+    ).all()
+    latest: dict[tuple, dict] = {}
+    for row in rows:
+        key = (row.match_id, row.player_id, row.bookmaker_id, row.market_type, row.line_type, row.threshold, row.selection, row.source)
+        current = latest.get(key)
+        if current is None or row.recorded_at > current["recorded_at"]:
+            latest[key] = {
+                "recorded_at": row.recorded_at,
+                "bookmaker_last_update": row.bookmaker_last_update,
+                "price_decimal": row.price_decimal,
+            }
+    return latest
+
+
+def _prepare_quote(
+    context: MatchResolutionContext,
+    match: Match,
+    quote: PlayerPropQuote,
+    report: PropOddsRefreshReport,
+    existing_by_key: dict[tuple, dict],
+    bookmaker_cache: dict[str, Bookmaker],
+    db: Session,
+) -> dict | None:
+    """Classifies and identity-checks one quote entirely in memory (no
+    queries except the one-off get_or_create_bookmaker on a cache miss,
+    which happens once per distinct bookmaker per run, not per quote).
+    Returns an insert-ready dict for a genuinely new row, or None (already
+    reported as unsupported/unresolved/ambiguous/unchanged). On returning
+    a new row, updates existing_by_key in place so a later duplicate quote
+    in the SAME batch is recognized without ever reaching the database."""
+    normalized = normalize_prop_quote(quote)
+    if isinstance(normalized, UnsupportedMarket):
+        report.unsupported_markets.append(f"{quote.market_key}: {normalized.reason}")
+        return None
+
+    resolution = resolve_prop_player_with_context(context, quote.player_name, source=quote.provider)
+    if resolution.tier == "ambiguous":
+        report.ambiguous_players.append(f"{quote.player_name} ({match.home_team.name} v {match.away_team.name})")
+        return None
+    if resolution.tier == "unresolved" or resolution.player is None:
+        report.unresolved_players.append(f"{quote.player_name} ({match.home_team.name} v {match.away_team.name})")
+        return None
+    if resolution.tier not in TRUSTED_TIERS:
+        report.unresolved_players.append(f"{quote.player_name}: untrusted resolution tier {resolution.tier!r}")
+        return None
+
+    bookmaker = bookmaker_cache.get(quote.bookmaker_title)
+    if bookmaker is None:
+        bookmaker = get_or_create_bookmaker(db, quote.bookmaker_key, quote.bookmaker_title, quote.bookmaker_region)
+        bookmaker_cache[quote.bookmaker_title] = bookmaker
+
+    key = _identity_key(match.id, resolution.player.id, bookmaker.id, normalized, quote.provider)
+    existing = existing_by_key.get(key)
+    if (
+        existing is not None
+        and existing["bookmaker_last_update"] is not None
+        and _same_instant(existing["bookmaker_last_update"], quote.bookmaker_last_update)
+        and existing["price_decimal"] == quote.price_decimal
+    ):
+        report.quotes_unchanged += 1
+        return None
+
+    row = {
+        "match_id": match.id,
+        "player_id": resolution.player.id,
+        "bookmaker_id": bookmaker.id,
+        "market_type": normalized.market.value,
+        "line_type": normalized.line_type.value,
+        "threshold": normalized.threshold,
+        "selection": normalized.selection,
+        "price_decimal": quote.price_decimal,
+        "recorded_at": quote.fetched_at,
+        "source": quote.provider,
+        "provider_event_id": quote.event_id,
+        "provider_market_key": quote.market_key,
+        "bookmaker_last_update": quote.bookmaker_last_update,
+        "raw_outcome": quote.raw_outcome,
+    }
+    # Visible to any later duplicate of this exact key within the same
+    # batch immediately - mirrors the old per-quote code's behavior, where
+    # SQLAlchemy's autoflush made an already-added-but-uncommitted row
+    # visible to the next SELECT in the same transaction.
+    existing_by_key[key] = {
+        "recorded_at": row["recorded_at"],
+        "bookmaker_last_update": row["bookmaker_last_update"],
+        "price_decimal": row["price_decimal"],
+    }
+    report.quotes_created += 1
+    return row
 
 
 def run_prop_odds_refresh(
@@ -135,8 +225,15 @@ def run_prop_odds_refresh(
         return report
 
     upcoming_match_ids = {m.match_id for m in upcoming_matches}
+    _t0 = time.monotonic()
     events = provider.list_events("AFL")
     report.events_seen = len(events)
+    logger.info("prop_odds_refresh phase=list_events duration_s=%.2f events=%d", time.monotonic() - _t0, len(events))
+
+    # Global for the whole run (bookmakers aren't match-scoped) - a handful
+    # of distinct bookmakers ever appear, so this turns what used to be one
+    # query per quote into at most one query per distinct bookmaker name.
+    bookmaker_cache: dict[str, Bookmaker] = {}
 
     for event in events:
         resolution = resolve_event_to_match(db, event)
@@ -162,39 +259,42 @@ def run_prop_odds_refresh(
             report.matches_skipped_fresh += 1
             continue
 
+        _t_fetch = time.monotonic()
         result = provider.get_player_prop_quotes("AFL", event, market_keys)
+        fetch_duration = time.monotonic() - _t_fetch
         report.last_quota = result.quota
         report.matches_resolved += 1
 
+        _t_context = time.monotonic()
+        context = build_match_resolution_context(db, match)
+        context_duration = time.monotonic() - _t_context
+
+        source = result.quotes[0].provider if result.quotes else event.provider
+        _t_existing = time.monotonic()
+        existing_by_key = _load_latest_existing_by_key(db, match.id, source)
+        existing_duration = time.monotonic() - _t_existing
+
+        _t_resolve = time.monotonic()
+        new_rows: list[dict] = []
         for quote in result.quotes:
             report.quotes_seen += 1
-            _ingest_one_quote(db, match, quote, report)
+            row = _prepare_quote(context, match, quote, report, existing_by_key, bookmaker_cache, db)
+            if row is not None:
+                new_rows.append(row)
+        resolve_duration = time.monotonic() - _t_resolve
 
+        _t_insert = time.monotonic()
+        if new_rows:
+            db.execute(PlayerPropMarket.__table__.insert(), new_rows)
         db.commit()
+        insert_duration = time.monotonic() - _t_insert
+
+        logger.info(
+            "prop_odds_refresh match_id=%s quotes=%d created=%d unchanged=%d "
+            "phase_fetch_s=%.2f phase_context_preload_s=%.2f phase_existing_lookup_s=%.2f "
+            "phase_resolve_s=%.2f phase_insert_s=%.2f",
+            match.id, len(result.quotes), len(new_rows), len(result.quotes) - len(new_rows),
+            fetch_duration, context_duration, existing_duration, resolve_duration, insert_duration,
+        )
 
     return report
-
-
-def _ingest_one_quote(db: Session, match: Match, quote: PlayerPropQuote, report: PropOddsRefreshReport) -> None:
-    normalized = normalize_prop_quote(quote)
-    if isinstance(normalized, UnsupportedMarket):
-        report.unsupported_markets.append(f"{quote.market_key}: {normalized.reason}")
-        return
-
-    resolution = resolve_prop_player(db, match, quote.player_name, source=quote.provider)
-    if resolution.tier == "ambiguous":
-        report.ambiguous_players.append(f"{quote.player_name} ({match.home_team.name} v {match.away_team.name})")
-        return
-    if resolution.tier == "unresolved" or resolution.player is None:
-        report.unresolved_players.append(f"{quote.player_name} ({match.home_team.name} v {match.away_team.name})")
-        return
-    if resolution.tier not in TRUSTED_TIERS:
-        report.unresolved_players.append(f"{quote.player_name}: untrusted resolution tier {resolution.tier!r}")
-        return
-
-    bookmaker = get_or_create_bookmaker(db, quote.bookmaker_key, quote.bookmaker_title, quote.bookmaker_region)
-    created = _persist_normalized_quote(db, match, normalized, resolution.player.id, bookmaker.id)
-    if created:
-        report.quotes_created += 1
-    else:
-        report.quotes_unchanged += 1
