@@ -54,17 +54,24 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Run one live cycle from the CI-verified image
-        # Pinned to sha-6ae6cb6 (fix(live-cycle): persist durable run audit
-        # progress) - adds the durable LiveCycleRun lifecycle
-        # (RUN_IN_PROGRESS before the first mutating step, per-step audit
-        # persistence via the fail-closed _execute_durable_write path, and
-        # RUN_INTERRUPTED reconciliation for a run that never finishes) so
-        # a run killed by this job's own timeout can no longer commit real
-        # mutations with zero audit trail. Do not repoint this at a later
-        # commit's own image without re-verifying it the same way this one
-        # was (CI green, GHCR digest confirmed, curl + durability-code +
-        # Squiggle fetch checked inside the actual image) - see
-        # docs/DEPLOYMENT.md.
+        # Pinned to sha-6c0575d (perf(prop-odds): batch player resolution
+        # and market persistence) - replaces resolve_prop_player()'s
+        # per-quote ~10-query resolution cascade and per-quote duplicate
+        # checks with a match-scoped preloaded MatchResolutionContext plus
+        # one batched existing-row lookup and one bulk insert per match.
+        # This is the actual fix for the real 30-minute production timeout
+        # (root-caused via the durable per-step timings this image's
+        # predecessor added): refresh_prop_odds was the dominant cost,
+        # confirmed via a realistic ~4,000-8,000-quote local benchmark to
+        # go from O(quote count) queries to a small constant per match.
+        # Verified in the exact published image before this pin: imports
+        # of the refactored symbols, curl present, and a real Squiggle
+        # fixture fetch, all with zero production access. Carries forward
+        # the durable run lifecycle from sha-6ae6cb6 unchanged. Do not
+        # repoint this at a later commit's own image without re-verifying
+        # it the same way (CI green, GHCR digest confirmed, curl +
+        # durability-code + Squiggle fetch checked inside the actual
+        # image) - see docs/DEPLOYMENT.md.
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
@@ -78,7 +85,7 @@ jobs:
             -e DATABASE_URL \
             -e THE_ODDS_API_KEY \
             -e APP_ENV=production \
-            ghcr.io/srat0029-ui/afl/backend:sha-6ae6cb6 \
+            ghcr.io/srat0029-ui/afl/backend:sha-6c0575d \
             python -m app.player_modelling.cli run-live-cycle
         # No further steps and no `|| true` anywhere in this job: the
         # container's exit code (0=ok, 1=partial, 2=blocked - see
