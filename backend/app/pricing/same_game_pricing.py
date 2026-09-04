@@ -245,6 +245,6 @@ def price_same_game_multi(
         data_cutoff=max(data_cutoffs) if data_cutoffs else None,
         dependence_coefficients_used=coefficients_used,
         legs=[SgmLegPriced(leg_type=lt, label=lb, naive_probability=np_) for lt, lb, np_ in zip(
-            [team_legs[0].leg_type] * len(team_legs) + [s.market for s in player_specs], leg_labels, all_naive
+            ([team_legs[0].leg_type] if team_legs else []) + [s.market for s in player_specs], leg_labels, all_naive
         )],
     )

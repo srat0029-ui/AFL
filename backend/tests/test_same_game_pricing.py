@@ -53,8 +53,8 @@ def _seed_model_runs(db):
     )
 
 
-def _seed_disposal_player(db, match, team, *, predicted_mean=22.0, nb_alpha=0.15):
-    player = Player(sport_id=match.sport_id, display_name="Test Disposals Player", source="afltables", source_player_id="test-disposals", current_team_id=team.id)
+def _seed_disposal_player(db, match, team, *, predicted_mean=22.0, nb_alpha=0.15, source_player_id="test-disposals"):
+    player = Player(sport_id=match.sport_id, display_name="Test Disposals Player", source="afltables", source_player_id=source_player_id, current_team_id=team.id)
     db.add(player)
     db.flush()
     db.add(PlayerDisposalProjection(
@@ -183,6 +183,27 @@ class TestPricing:
         p2 = price_same_game_multi(db_session, match.id, legs, n_simulations=20_000, seed=7)
 
         assert p1.model_probability == p2.model_probability
+
+    def test_prices_all_player_leg_combo_with_no_team_leg(self, db_session):
+        """Real production crash (IndexError in the legs= list comprehension
+        - team_legs[0] was indexed unconditionally even when team_legs was
+        empty): a combo of only player-prop legs, no team leg, is explicitly
+        a legal request (validation only requires >=1 player leg and <=1
+        team leg - see test_rejects_pure_team_combo for the other end of
+        that rule) and must price successfully, not crash."""
+        _seed_model_runs(db_session)
+        match, home, away = _seed_match(db_session)
+        player_a = _seed_disposal_player(db_session, match, home, source_player_id="test-disposals-a")
+        player_b = _seed_disposal_player(db_session, match, away, source_player_id="test-disposals-b")
+
+        price = price_same_game_multi(db_session, match.id, [
+            SgmLegRequest(leg_type="disposals", player_id=player_a.id, threshold=21.5),
+            SgmLegRequest(leg_type="disposals", player_id=player_b.id, threshold=18.5),
+        ], n_simulations=20_000, seed=1)
+
+        assert 0.0 < price.model_probability < 1.0
+        assert len(price.legs) == 2
+        assert all(leg.leg_type == "disposals" for leg in price.legs)
 
     def test_dependence_validated_when_coefficient_persisted(self, db_session):
         _seed_model_runs(db_session)
