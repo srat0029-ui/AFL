@@ -441,31 +441,70 @@ def _run_live_cycle() -> int:
     db = SessionLocal()
     try:
         run = run_live_cycle(db)
-        print(f"Live cycle run {run.id} — overall status: {run.overall_status.upper()}\n")
-        for step in run.steps:
-            print(f"  [{step['status']:>18}] {step['step']}: {step['detail']}")
-        print("\nSummary:")
-        print(f"  matches affected: {run.matches_affected}")
-        print(f"  quotes added: {run.quotes_added}")
-        print(f"  observations added: {run.observations_added}")
-        print(f"  observations settled: {run.observations_settled}")
-        print(f"  team odds quotes added: {run.team_odds_quotes_added}")
-        print(f"  weather snapshots added: {run.weather_snapshots_added}")
-        if run.odds_credits_consumed is not None:
-            print(f"  odds API: requests_used={run.odds_credits_consumed} requests_remaining={run.odds_credits_remaining}")
-        if run.overall_status in (RUN_IN_PROGRESS, RUN_INTERRUPTED):
+        # run_live_cycle() itself is fail-closed (see live_cycle.py): if a
+        # durable audit write failed mid-cycle, it already stopped rather
+        # than continuing, and its own best-effort db.rollback()/db.refresh
+        # may ALSO have failed silently if the underlying connection was
+        # genuinely dead - leaving `run`'s attributes expired/unloadable.
+        # Every attribute is therefore read into a plain local exactly once,
+        # in this one guarded block, so a second failure here (reporting)
+        # can never masquerade as an unrelated uncaught crash, and so the
+        # eventual report/exit code never depends on re-touching `run`
+        # after something has already gone wrong reading it.
+        run_id: int | None = None
+        try:
+            run_id = run.id
+            overall_status = run.overall_status
+            steps = run.steps
+            matches_affected = run.matches_affected
+            quotes_added = run.quotes_added
+            observations_added = run.observations_added
+            observations_settled = run.observations_settled
+            team_odds_quotes_added = run.team_odds_quotes_added
+            weather_snapshots_added = run.weather_snapshots_added
+            odds_credits_consumed = run.odds_credits_consumed
+            odds_credits_remaining = run.odds_credits_remaining
+
+            print(f"Live cycle run {run_id} — overall status: {overall_status.upper()}\n")
+            for step in steps:
+                print(f"  [{step['status']:>18}] {step['step']}: {step['detail']}")
+            print("\nSummary:")
+            print(f"  matches affected: {matches_affected}")
+            print(f"  quotes added: {quotes_added}")
+            print(f"  observations added: {observations_added}")
+            print(f"  observations settled: {observations_settled}")
+            print(f"  team odds quotes added: {team_odds_quotes_added}")
+            print(f"  weather snapshots added: {weather_snapshots_added}")
+            if odds_credits_consumed is not None:
+                print(f"  odds API: requests_used={odds_credits_consumed} requests_remaining={odds_credits_remaining}")
+            if overall_status in (RUN_IN_PROGRESS, RUN_INTERRUPTED):
+                print(
+                    "\nWARNING: this run did not reach a normal finish - the audit database became "
+                    "unreachable mid-cycle, so it was stopped rather than continuing without a durable "
+                    f"record. LiveCycleRun id={run_id} reflects exactly which steps completed before the "
+                    "stop; a later invocation's stale-run reconciliation will close it out."
+                )
+            # .get(..., 2): any status other than the three normal terminal
+            # ones (in_progress/interrupted included) is treated as
+            # failure-severity - never silently reported as success when
+            # the run didn't actually finish normally.
+            return {"ok": 0, "partial": 1, "blocked": 2}.get(overall_status, 2)
+        except Exception as report_exc:  # noqa: BLE001
+            # Reporting itself failed - most plausibly the same broken
+            # connection that caused run_live_cycle()'s own audit write to
+            # fail in the first place. Never issue another DB access here
+            # (that's exactly what just failed): use only whatever plain
+            # local was already captured above before the failure (run_id
+            # may or may not be set), and never fabricate a success exit
+            # code - this path always reports failure-severity.
             print(
-                "\nWARNING: this run did not reach a normal finish - the audit database became "
-                "unreachable mid-cycle, so it was stopped rather than continuing without a durable "
-                f"record. LiveCycleRun id={run.id} reflects exactly which steps completed before the "
-                "stop; a later invocation's stale-run reconciliation will close it out."
+                f"\nWARNING: Live Cycle run{f' {run_id}' if run_id is not None else ''} did not finish "
+                f"normally, and detailed reporting could not be completed ({report_exc}). This does not "
+                "change the outcome - the run's fail-closed audit design (see live_cycle.py) already "
+                "stopped the cycle rather than continue without a durable record; a later invocation's "
+                "stale-run reconciliation will close it out."
             )
-        # .get(..., 2): any status other than the three normal terminal ones
-        # (in_progress/interrupted included) is treated as failure-severity -
-        # never silently reported as success when the run didn't actually
-        # finish normally.
-        exit_code = {"ok": 0, "partial": 1, "blocked": 2}.get(run.overall_status, 2)
-        return exit_code
+            return 2
     finally:
         db.close()
 
