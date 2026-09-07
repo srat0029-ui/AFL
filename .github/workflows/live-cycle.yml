@@ -54,24 +54,24 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Run one live cycle from the CI-verified image
-        # Pinned to sha-6c0575d (perf(prop-odds): batch player resolution
-        # and market persistence) - replaces resolve_prop_player()'s
-        # per-quote ~10-query resolution cascade and per-quote duplicate
-        # checks with a match-scoped preloaded MatchResolutionContext plus
-        # one batched existing-row lookup and one bulk insert per match.
-        # This is the actual fix for the real 30-minute production timeout
-        # (root-caused via the durable per-step timings this image's
-        # predecessor added): refresh_prop_odds was the dominant cost,
-        # confirmed via a realistic ~4,000-8,000-quote local benchmark to
-        # go from O(quote count) queries to a small constant per match.
-        # Verified in the exact published image before this pin: imports
-        # of the refactored symbols, curl present, and a real Squiggle
-        # fixture fetch, all with zero production access. Carries forward
-        # the durable run lifecycle from sha-6ae6cb6 unchanged. Do not
-        # repoint this at a later commit's own image without re-verifying
-        # it the same way (CI green, GHCR digest confirmed, curl +
-        # durability-code + Squiggle fetch checked inside the actual
-        # image) - see docs/DEPLOYMENT.md.
+        # Pinned to sha-f89bc54 (fix(pricing): guard empty team_legs in SGM
+        # leg-type list) - fixes a real IndexError in price_same_game_multi
+        # that live_cycle.py's own snapshot_sgm_pricing step reaches on
+        # every cycle (via sgm_snapshot_service -> multi_builder ->
+        # price_same_game_multi): any all-player-leg SGM combo (no team
+        # leg - a legal, validated combo) crashed that step, degrading it
+        # to a recoverable per-step failure rather than a fatal one, but
+        # silently dropping SGM snapshots for the affected match. Also
+        # carries the prop-odds performance refactor from sha-6c0575d and
+        # the durable run lifecycle from sha-6ae6cb6, both unchanged.
+        # Verified in the exact published image before this pin (digest
+        # sha256:c09baa405e9bf5464203ab21c72a76a3f6386dc492dda4d92d9d3545037a278f):
+        # imports, psycopg3 URL normalization, curl, a real Squiggle fetch,
+        # the prop-odds refactor/SGM fix/durable-audit symbols each present
+        # by source inspection, and both entrypoints (run-live-cycle CLI,
+        # app.main:app) - all with zero production access. Do not repoint
+        # this at a later commit's own image without re-verifying it the
+        # same way - see docs/DEPLOYMENT.md.
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
@@ -85,7 +85,7 @@ jobs:
             -e DATABASE_URL \
             -e THE_ODDS_API_KEY \
             -e APP_ENV=production \
-            ghcr.io/srat0029-ui/afl/backend:sha-6c0575d \
+            ghcr.io/srat0029-ui/afl/backend:sha-f89bc54 \
             python -m app.player_modelling.cli run-live-cycle
         # No further steps and no `|| true` anywhere in this job: the
         # container's exit code (0=ok, 1=partial, 2=blocked - see
