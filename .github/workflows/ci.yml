@@ -125,7 +125,9 @@ jobs:
             tests/test_prop_player_resolution.py \
             tests/test_prop_odds_ingestion.py \
             tests/test_prop_odds_performance.py \
-            tests/test_real_fixture_regression.py
+            tests/test_real_fixture_regression.py \
+            tests/test_prop_observation.py \
+            tests/test_prop_observation_performance.py
 
   frontend-test:
     name: Frontend tests
