@@ -108,7 +108,14 @@ def _team_label(market_type: str, selection: str, line_value: float | None) -> s
 
 
 def _player_opportunities(db: Session, match_ids: set[int], *, include_uncertain: bool) -> list[dict]:
-    rows = load_normalized_prop_insights(db, include_uncertain=include_uncertain, opportunities_only=True)
+    # match_ids is already known here (the round this call cares about) -
+    # forwarded into the query itself rather than loading every historical
+    # match's PlayerPropMarket rows and filtering afterward (see
+    # load_normalized_prop_insights's docstring for the real production
+    # measurement this fixes). The `r["match_id"] not in match_ids` check
+    # below becomes a no-op in the normal case but is kept as a cheap,
+    # harmless safety net.
+    rows = load_normalized_prop_insights(db, include_uncertain=include_uncertain, opportunities_only=True, match_ids=frozenset(match_ids))
     results = []
     for r in rows:
         if r["match_id"] not in match_ids:

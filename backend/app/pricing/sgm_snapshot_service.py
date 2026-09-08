@@ -50,6 +50,7 @@ from app.models.sgm_price_snapshot import (
     SNAPSHOT_HORIZON_24H_PLUS,
     SNAPSHOT_HORIZON_UNDER_1H,
 )
+from app.player_modelling.best_opportunities import load_best_opportunities
 from app.player_modelling.market import PlayerMarket
 from app.player_modelling.multi_builder import (
     MODE_HIGH_PROBABILITY,
@@ -189,6 +190,21 @@ def snapshot_sgm_pricing(db: Session, match_ids: list[int]) -> SgmSnapshotReport
     report = SgmSnapshotReport()
     now = datetime.now(timezone.utc)
 
+    # Computed once and reused for every match's MODE_HIGH_PROBABILITY
+    # search below, rather than letting each match's own build_match_multis
+    # call recompute it (previously masked, not fixed, by
+    # load_normalized_prop_insights's incidental 60s TTL cache). Args
+    # mirror _all_alternate_legs's own default load_best_opportunities call
+    # exactly, so this changes nothing about which opportunities are
+    # eligible - only how many times the (now match-scoped, see
+    # prop_insights_normalized.py) query runs. MODE_VALUE never reads
+    # raw_opportunities (see build_match_multis) - passed only for
+    # MODE_HIGH_PROBABILITY below so VALUE mode's call is byte-identical to
+    # before this change.
+    raw_opportunities = load_best_opportunities(
+        db, market_scope="all", include_uncertain=True, include_stale=True, include_insufficient_history=True, limit=None,
+    )
+
     for match_id in match_ids:
         match = db.get(Match, match_id)
         if match is None or match.status != MatchStatus.SCHEDULED:
@@ -197,7 +213,10 @@ def snapshot_sgm_pricing(db: Session, match_ids: list[int]) -> SgmSnapshotReport
         hours_to_kickoff = (aware(match.scheduled_start) - now).total_seconds() / 3600.0
 
         for mode in (MODE_HIGH_PROBABILITY, MODE_VALUE):
-            result = build_match_multis(db, match_id, confirmed_only=True, mode=mode)
+            result = build_match_multis(
+                db, match_id, confirmed_only=True, mode=mode,
+                raw_opportunities=raw_opportunities if mode == MODE_HIGH_PROBABILITY else None,
+            )
             result_dict = match_multi_tiers_as_dict(db, result)
             for tier in result_dict["tiers"]:
                 for option in tier["options"]:

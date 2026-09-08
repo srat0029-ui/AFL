@@ -127,7 +127,11 @@ jobs:
             tests/test_prop_odds_performance.py \
             tests/test_real_fixture_regression.py \
             tests/test_prop_observation.py \
-            tests/test_prop_observation_performance.py
+            tests/test_prop_observation_performance.py \
+            tests/test_best_opportunities.py \
+            tests/test_prop_insights_normalized.py \
+            tests/test_multi_builder.py \
+            tests/test_sgm_scope_performance.py
 
   frontend-test:
     name: Frontend tests

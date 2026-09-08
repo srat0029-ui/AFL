@@ -78,6 +78,7 @@ def load_normalized_prop_insights(
     include_uncertain: bool = True,
     opportunities_only: bool = False,
     match_id: int | None = None,
+    match_ids: frozenset[int] | None = None,
     freshness_thresholds: FreshnessThresholds = DEFAULT_THRESHOLDS,
 ) -> list[dict]:
     """Short-TTL cross-request cache (see request_cache.py): the Weekly
@@ -88,11 +89,24 @@ def load_normalized_prop_insights(
     pass (~3s) up to 5 times per page load, every load, before this cache
     was added. The underlying data only changes when a live-cycle refresh
     runs, so a 60s TTL trades a small, disclosed staleness window for a
-    page that's fast to open repeatedly."""
-    key = ("normalized_prop_insights", market, min_confidence, include_uncertain, opportunities_only, match_id, freshness_thresholds)
+    page that's fast to open repeatedly.
+
+    match_id vs match_ids: match_id (unchanged) scopes to exactly one
+    match - existing callers (Prop Insights page, model_market_disagreements)
+    are untouched. match_ids (new, additive) scopes to a small known SET of
+    matches (e.g. the current upcoming round) instead of every historical
+    match ever recorded - see best_opportunities.py's _player_opportunities,
+    which already had this exact match set available and simply wasn't
+    forwarding it into the underlying query, so every call scanned and
+    per-group-queried the ENTIRE PlayerPropMarket table regardless of how
+    many matches the caller actually wanted (confirmed via a real local
+    PostgreSQL 18 measurement: query count tracked total table size 1:1
+    even with the target match's own data held fixed). Passing both
+    match_id and match_ids is not supported - callers use exactly one."""
+    key = ("normalized_prop_insights", market, min_confidence, include_uncertain, opportunities_only, match_id, match_ids, freshness_thresholds)
     return cached_with_ttl(db, key, lambda: _load_normalized_prop_insights_uncached(
         db, market=market, min_confidence=min_confidence, include_uncertain=include_uncertain,
-        opportunities_only=opportunities_only, match_id=match_id, freshness_thresholds=freshness_thresholds,
+        opportunities_only=opportunities_only, match_id=match_id, match_ids=match_ids, freshness_thresholds=freshness_thresholds,
     ))
 
 
@@ -104,13 +118,17 @@ def _load_normalized_prop_insights_uncached(
     include_uncertain: bool = True,
     opportunities_only: bool = False,
     match_id: int | None = None,
+    match_ids: frozenset[int] | None = None,
     freshness_thresholds: FreshnessThresholds = DEFAULT_THRESHOLDS,
 ) -> list[dict]:
+    assert match_id is None or match_ids is None, "pass match_id or match_ids, not both"
     stmt = select(PlayerPropMarket)
     if market is not None:
         stmt = stmt.where(PlayerPropMarket.market_type == market)
     if match_id is not None:
         stmt = stmt.where(PlayerPropMarket.match_id == match_id)
+    if match_ids is not None:
+        stmt = stmt.where(PlayerPropMarket.match_id.in_(match_ids))
     all_rows = db.scalars(stmt).all()
     bookmaker_info = load_bookmaker_info(db)
 
