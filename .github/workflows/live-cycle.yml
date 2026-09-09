@@ -54,37 +54,45 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Run one live cycle from the CI-verified image
-        # Pinned to sha-551c724 (fix(pricing): enforce player and team
-        # snapshot identity) - a real production forensic review
-        # (LiveCycleRun id=4's audit) found PricingSnapshot's existence
-        # check and its database UniqueConstraint both omitted player_id
-        # for player-market rows, and PostgreSQL's NULL-distinct
-        # uniqueness semantics meant the constraint gave no real
-        # protection either; this image replaces the single constraint
-        # with two partial unique indexes (team identity uses native
-        # PostgreSQL `NULLS NOT DISTINCT`, no sentinel value), and the
-        # corresponding production migration (75715f635e7a) has already
-        # been applied and independently verified before this pin. On top
-        # of sha-9aa2c1a's prior fixes (CLI reporting no longer crashes
-        # uncaught while reporting a fail-closed audit result;
-        # create_observations_for_match preloads its match-scoped context
-        # once instead of 2-4 per-quote queries - measured 390s -> well
-        # under a second locally at production-shaped scale), this image
-        # also carries the SGM full-table-scan fix from sha-1646928
-        # (opportunity loading scoped to active matches - query count
-        # flattened from up to 1,841 to a constant 21), the prop-odds
-        # performance refactor from sha-6c0575d, the SGM zero-team-leg fix
-        # from sha-f89bc54, and the durable run lifecycle from
-        # sha-6ae6cb6, all unchanged. Verified in the exact published
+        # Pinned to sha-18412a7 (perf(pricing): eliminate player-pricing
+        # query scaling) - the third and final round of local performance
+        # hardening this cycle, on top of sha-551c724's PricingSnapshot
+        # identity correctness fix (already applied to production as
+        # migration 75715f635e7a and independently verified). The first
+        # round (sha-8394e9f/sha-f509e1a) introduced MatchPricingContext -
+        # one shared, read-only per-match preload - collapsing
+        # snapshot_pricing's per-player-per-threshold market-intelligence
+        # queries and market-monitor's per-player Bookmaker/lineup/context
+        # reloads (measured 283.59s/377.80s in production;
+        # market_monitor_prospective_snapshots timed out at 0 cases
+        # frozen). This second round found and fixed the remaining
+        # per-player cost inside app/pricing/player_pricing.py's
+        # price_disposals/price_goals - each was independently re-querying
+        # the globally-promoted PlayerModelRun/GoalModelRun row twice
+        # (current_disposal_model_version/current_goal_model_version, and
+        # again inside historical_calibration_metrics's own internal
+        # lookup), plus a calibration-metric row and a player.display_name
+        # lazy-load, all once PER PLAYER - measured 287/563 queries at
+        # 46/92 players after the first round's fix. Extending
+        # MatchPricingContext with disposal_model_version/
+        # goal_model_version/calibration_by_key (keyed by the exact
+        # (market_type, threshold) pairs historical_calibration_metrics
+        # can ever be called with - a small fixed set, not reimplementing
+        # its methodology) and players_by_id flattened this to a constant
+        # 24 queries, confirmed identical at both 46 and 92 players - no
+        # remaining player-count scaling. Verified in the exact published
         # image before this pin (digest
-        # sha256:24f7815c6df9af0a45b653ba2ae343650916cef139e5283c4759a43c3c899c45):
+        # sha256:062b31d79c6bf80f9dd1d576af23f364a341f1973d9e0e04cfbfba80acb96a2a):
         # imports, psycopg3 URL normalization, curl, a real Squiggle
-        # fetch, migration head, both corrected index definitions, and
-        # every one of the above fixes present by source inspection, and
-        # both entrypoints (run-live-cycle CLI, app.main:app) - all with
-        # zero production access. Do not repoint this at a later commit's
-        # own image without re-verifying it the same way - see
-        # docs/DEPLOYMENT.md.
+        # fetch, migration head, both corrected PricingSnapshot index
+        # definitions, MatchPricingContext with all fields, price_disposals/
+        # price_goals/price_single_match all context-aware, and every
+        # prior fix (SGM active-match scoping, SGM zero-team-leg fix,
+        # observation batching, durable run lifecycle, CLI hardening)
+        # present by source inspection, and both entrypoints (run-live-cycle
+        # CLI, app.main:app) - all with zero production access. Do not
+        # repoint this at a later commit's own image without re-verifying
+        # it the same way - see docs/DEPLOYMENT.md.
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
@@ -98,7 +106,7 @@ jobs:
             -e DATABASE_URL \
             -e THE_ODDS_API_KEY \
             -e APP_ENV=production \
-            ghcr.io/srat0029-ui/afl/backend:sha-551c724 \
+            ghcr.io/srat0029-ui/afl/backend:sha-18412a7 \
             python -m app.player_modelling.cli run-live-cycle
         # No further steps and no `|| true` anywhere in this job: the
         # container's exit code (0=ok, 1=partial, 2=blocked - see
