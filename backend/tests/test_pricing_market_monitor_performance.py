@@ -37,6 +37,8 @@ from app.models import (
     AnomalyAlertSnapshot,
     Bookmaker,
     ExpectedLineup,
+    GoalModelRun,
+    GoalModelValidationMetric,
     Match,
     MatchStatus,
     ModelRun,
@@ -44,6 +46,8 @@ from app.models import (
     Player,
     PlayerDisposalProjection,
     PlayerGoalProjection,
+    PlayerModelRun,
+    PlayerModelValidationMetric,
     PlayerPropMarket,
     PricingSnapshot,
     Round,
@@ -53,7 +57,7 @@ from app.models import (
 )
 from app.pricing.market_intelligence import player_market_intelligence, team_market_intelligence
 from app.pricing.match_pricing_context import build_match_pricing_context
-from app.pricing.player_pricing import DEFAULT_DISPOSAL_THRESHOLDS, DEFAULT_GOAL_THRESHOLDS
+from app.pricing.player_pricing import DEFAULT_DISPOSAL_THRESHOLDS, DEFAULT_GOAL_THRESHOLDS, price_disposals, price_goals
 from app.pricing.snapshot_service import snapshot_round_pricing
 
 NOW = datetime.now(timezone.utc)
@@ -488,3 +492,335 @@ def test_batched_snapshot_pricing_existing_players_not_duplicated_when_new_playe
 
     after_existing_ids = {(r.player_id, r.threshold, r.id) for r in db_session.scalars(select(PricingSnapshot).where(PricingSnapshot.match_id == match.id, PricingSnapshot.market_type == "player_disposals")).all() if r.player_id in {p.id for p in first_wave}}
     assert after_existing_ids == before_ids, "existing players' rows were touched/duplicated by a later cycle that added a new player"
+
+
+# =============================================================================
+# Follow-up task: the remaining app/pricing/player_pricing.py N+1
+# (price_disposals/price_goals each independently re-querying the globally-
+# promoted PlayerModelRun/GoalModelRun row - once via current_disposal_model_
+# version/current_goal_model_version, and AGAIN inside historical_calibration_
+# metrics's own internal lookup - plus a calibration-metric row and a
+# player.display_name lazy-load, all once PER PLAYER). Fixed by extending
+# MatchPricingContext with disposal_model_version/goal_model_version/
+# calibration_by_key/players_by_id - see that module's docstring for the
+# exact query trace this was measured against.
+# =============================================================================
+
+
+def _seed_promoted_disposal_model(db, *, n=2000, ece=0.03, segment="threshold_25"):
+    existing = db.scalar(select(PlayerModelRun).where(PlayerModelRun.model_name == "disposals_ridge"))
+    if existing is not None:
+        return existing
+    pmr = PlayerModelRun(
+        model_name="disposals_ridge", market="player_disposals", feature_names=[], config_json={}, distribution_method="nb",
+        tune_start_year=2018, tune_end_year=2021, evaluation_start_year=2022, evaluation_end_year=2022, is_promoted=True, run_at=NOW,
+    )
+    db.add(pmr)
+    db.flush()
+    db.add(PlayerModelValidationMetric(model_run_id=pmr.id, segment=segment, metric_name="ece", n=n, value=ece))
+    db.commit()
+    return pmr
+
+
+def _seed_promoted_goal_model(db, *, n=2000, ece=0.05, segment="threshold_1"):
+    existing = db.scalar(select(GoalModelRun).where(GoalModelRun.model_name == "goals_hurdle"))
+    if existing is not None:
+        return existing
+    gmr = GoalModelRun(
+        model_name="goals_hurdle", market="player_goals", feature_names=[], config_json={}, distribution_kind="hurdle",
+        tune_start_year=2018, tune_end_year=2021, evaluation_start_year=2022, evaluation_end_year=2022, is_promoted=True, run_at=NOW,
+    )
+    db.add(gmr)
+    db.flush()
+    db.add(GoalModelValidationMetric(model_run_id=gmr.id, segment=segment, metric_name="ece", n=n, value=ece))
+    db.commit()
+    return gmr
+
+
+def _seed_one_player(db, match, team, *, suffix, mean=25.0, status="expected_in", selection_status="confirmed_selected", goal_mean=0.6):
+    p = Player(sport_id=team.sport_id, display_name=f"Player{suffix}", source="afltables", source_player_id=f"pp{suffix}", current_team_id=team.id)
+    db.add(p)
+    db.flush()
+    db.add(PlayerDisposalProjection(
+        match_id=match.id, player_id=p.id, team_id=team.id, model_name="disposals_ridge", model_version="v1",
+        generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=40,
+        predicted_mean=mean, distribution_method="nb", nb_alpha=3.0, confidence_tier="higher_confidence",
+        warnings=[], input_features={},
+    ))
+    db.add(PlayerGoalProjection(
+        match_id=match.id, player_id=p.id, team_id=team.id, model_name="goals_hurdle", model_version="v1",
+        generated_at=NOW, data_cutoff=NOW, lineup_status_at_generation="expected_in", games_of_history=40,
+        predicted_mean=goal_mean, distribution_kind="hurdle", nb_alpha=None,
+        p_score=0.5, mu_scored=1.2, alpha_scored=0.3, scoring_archetype="forward",
+        confidence_tier="higher_confidence", warnings=[], input_features={},
+    ))
+    db.add(ExpectedLineup(
+        match_id=match.id, player_id=p.id, team_id=team.id, status=status,
+        selection_status=selection_status, is_confirmed=(selection_status == "confirmed_selected"), recorded_at=NOW, source="manual",
+    ))
+    db.commit()
+    return p
+
+
+def _seed_bare_match(db, *, suffix):
+    sport = db.scalar(select(Sport).where(Sport.code == "AFL"))
+    if sport is None:
+        sport = Sport(code="AFL", name="Australian Football League")
+        db.add(sport)
+        db.flush()
+    season = db.scalar(select(Season).where(Season.sport_id == sport.id, Season.year == 2026))
+    if season is None:
+        season = Season(sport_id=sport.id, year=2026)
+        db.add(season)
+        db.flush()
+    existing_rounds = db.scalars(select(Round.round_number).where(Round.season_id == season.id)).all()
+    round_ = Round(season_id=season.id, round_number=max(existing_rounds, default=0) + 1)
+    home = Team(sport_id=sport.id, name=f"PPHome{suffix}", short_name=f"H{suffix}"[:3].upper())
+    away = Team(sport_id=sport.id, name=f"PPAway{suffix}", short_name=f"A{suffix}"[:3].upper())
+    db.add_all([round_, home, away])
+    db.flush()
+    match = Match(
+        sport_id=sport.id, season_id=season.id, round_id=round_.id, home_team_id=home.id, away_team_id=away.id,
+        scheduled_start=NOW + timedelta(days=2), status=MatchStatus.SCHEDULED,
+    )
+    db.add(match)
+    db.commit()
+    return match, home, away
+
+
+# --- Part E: price_disposals/price_goals equivalence -----------------------
+
+
+def _assert_disposal_price_equal(a, b):
+    assert a.player_id == b.player_id and a.match_id == b.match_id and a.player_name == b.player_name
+    assert a.model_version == b.model_version and a.lineup_status == b.lineup_status
+    assert a.confidence_tier == b.confidence_tier and a.expected == b.expected
+    assert a.is_stale == b.is_stale and a.stale_reasons == b.stale_reasons
+    assert [(t.threshold, t.probability, t.fair_odds) for t in a.thresholds] == [(t.threshold, t.probability, t.fair_odds) for t in b.thresholds]
+    a_cal = (a.calibration.ece, a.calibration.n, a.calibration.evaluated_threshold) if a.calibration else None
+    b_cal = (b.calibration.ece, b.calibration.n, b.calibration.evaluated_threshold) if b.calibration else None
+    assert a_cal == b_cal
+    assert a.usage_regime == b.usage_regime and a.usage_change_score == b.usage_change_score
+
+
+def _assert_goal_price_equal(a, b):
+    assert a.player_id == b.player_id and a.match_id == b.match_id and a.player_name == b.player_name
+    assert a.model_version == b.model_version and a.lineup_status == b.lineup_status
+    assert a.confidence_tier == b.confidence_tier and a.expected == b.expected
+    assert a.is_stale == b.is_stale and a.stale_reasons == b.stale_reasons
+    assert [(t.threshold, t.probability, t.fair_odds) for t in a.thresholds] == [(t.threshold, t.probability, t.fair_odds) for t in b.thresholds]
+    assert [(f.code, f.description) for f in a.model_risk_flags] == [(f.code, f.description) for f in b.model_risk_flags]
+    assert a.usage_regime == b.usage_regime and a.usage_change_score == b.usage_change_score
+
+
+def test_price_disposals_context_equivalent_confirmed_selected_with_calibration(db_session):
+    _seed_promoted_disposal_model(db_session)
+    match, home, away = _seed_bare_match(db_session, suffix="pe1")
+    p = _seed_one_player(db_session, match, home, suffix="pe1", mean=25.0, status="expected_in", selection_status="confirmed_selected")
+    match_ctx = build_match_pricing_context(db_session, match.id)
+    row = match_ctx.disposal_projections[0]
+
+    with_ctx = price_disposals(db_session, row, context=match_ctx)
+    without_ctx = price_disposals(db_session, row, context=None)
+    _assert_disposal_price_equal(with_ctx, without_ctx)
+    assert with_ctx.calibration is not None  # sufficient sample seeded - confirms calibration path is genuinely exercised, not just None==None
+
+
+def test_price_disposals_context_equivalent_uncertain_no_calibration_history(db_session):
+    # No promoted model seeded at all -> historical_calibration_metrics
+    # returns None on both paths; current_disposal_model_version is also None.
+    match, home, away = _seed_bare_match(db_session, suffix="pe2")
+    p = _seed_one_player(db_session, match, home, suffix="pe2", mean=18.0, status="uncertain", selection_status="uncertain")
+    match_ctx = build_match_pricing_context(db_session, match.id)
+    row = match_ctx.disposal_projections[0]
+
+    with_ctx = price_disposals(db_session, row, context=match_ctx)
+    without_ctx = price_disposals(db_session, row, context=None)
+    _assert_disposal_price_equal(with_ctx, without_ctx)
+    assert with_ctx.calibration is None
+    assert with_ctx.lineup_status == "expected_in"  # frozen at projection-generation time, unaffected by current lineup
+
+
+def test_price_disposals_context_equivalent_confirmed_out_player(db_session):
+    _seed_promoted_disposal_model(db_session)
+    match, home, away = _seed_bare_match(db_session, suffix="pe3")
+    p = _seed_one_player(db_session, match, home, suffix="pe3", mean=32.0, status="expected_out", selection_status="confirmed_out")
+    match_ctx = build_match_pricing_context(db_session, match.id)
+    row = match_ctx.disposal_projections[0]
+
+    with_ctx = price_disposals(db_session, row, context=match_ctx)
+    without_ctx = price_disposals(db_session, row, context=None)
+    _assert_disposal_price_equal(with_ctx, without_ctx)
+    # is_stale reflects the CURRENT lineup status diverging from the
+    # projection's generation-time status - must agree byte-for-byte
+    # between the two code paths regardless of what it evaluates to.
+    assert with_ctx.is_stale == without_ctx.is_stale
+
+
+def test_price_disposals_context_equivalent_multiple_thresholds(db_session):
+    _seed_promoted_disposal_model(db_session)
+    match, home, away = _seed_bare_match(db_session, suffix="pe4")
+    p = _seed_one_player(db_session, match, home, suffix="pe4", mean=28.0)
+    match_ctx = build_match_pricing_context(db_session, match.id)
+    row = match_ctx.disposal_projections[0]
+
+    with_ctx = price_disposals(db_session, row, extra_thresholds=[18.5, 22.5], context=match_ctx)
+    without_ctx = price_disposals(db_session, row, extra_thresholds=[18.5, 22.5], context=None)
+    _assert_disposal_price_equal(with_ctx, without_ctx)
+    assert len(with_ctx.thresholds) == len(DEFAULT_DISPOSAL_THRESHOLDS) + 2
+
+
+def test_price_goals_context_equivalent_confirmed_selected_with_calibration(db_session):
+    _seed_promoted_goal_model(db_session)
+    match, home, away = _seed_bare_match(db_session, suffix="pg1")
+    p = _seed_one_player(db_session, match, home, suffix="pg1", goal_mean=0.8, status="expected_in", selection_status="confirmed_selected")
+    match_ctx = build_match_pricing_context(db_session, match.id)
+    row = match_ctx.goal_projections[0]
+
+    with_ctx = price_goals(db_session, row, context=match_ctx)
+    without_ctx = price_goals(db_session, row, context=None)
+    _assert_goal_price_equal(with_ctx, without_ctx)
+    assert with_ctx.calibration is not None
+
+
+def test_price_goals_context_equivalent_no_calibration_history(db_session):
+    match, home, away = _seed_bare_match(db_session, suffix="pg2")
+    p = _seed_one_player(db_session, match, home, suffix="pg2", goal_mean=0.3, status="uncertain", selection_status="uncertain")
+    match_ctx = build_match_pricing_context(db_session, match.id)
+    row = match_ctx.goal_projections[0]
+
+    with_ctx = price_goals(db_session, row, context=match_ctx)
+    without_ctx = price_goals(db_session, row, context=None)
+    _assert_goal_price_equal(with_ctx, without_ctx)
+    assert with_ctx.calibration is None
+
+
+def test_price_goals_context_equivalent_confirmed_out_player(db_session):
+    _seed_promoted_goal_model(db_session)
+    match, home, away = _seed_bare_match(db_session, suffix="pg3")
+    p = _seed_one_player(db_session, match, home, suffix="pg3", goal_mean=1.0, status="expected_out", selection_status="confirmed_out")
+    match_ctx = build_match_pricing_context(db_session, match.id)
+    row = match_ctx.goal_projections[0]
+
+    with_ctx = price_goals(db_session, row, context=match_ctx)
+    without_ctx = price_goals(db_session, row, context=None)
+    _assert_goal_price_equal(with_ctx, without_ctx)
+
+
+def test_price_disposals_and_goals_context_equivalent_across_full_squad(db_session):
+    """Broader sweep: every player in a realistic mixed-status squad must
+    match exactly, not just hand-picked single-player cases above."""
+    _seed_promoted_disposal_model(db_session)
+    _seed_promoted_goal_model(db_session)
+    match, home, away = _seed_bare_match(db_session, suffix="pesq")
+    statuses = [
+        ("expected_in", "confirmed_selected"), ("uncertain", "uncertain"), ("expected_out", "confirmed_out"),
+        ("expected_in", "named_in_squad"), ("expected_in", "confirmed_selected"),
+    ]
+    for i, (status, sel) in enumerate(statuses):
+        team = home if i % 2 == 0 else away
+        _seed_one_player(db_session, match, team, suffix=f"sq{i}", mean=15.0 + i * 5, status=status, selection_status=sel)
+    match_ctx = build_match_pricing_context(db_session, match.id)
+
+    for row in match_ctx.disposal_projections:
+        _assert_disposal_price_equal(price_disposals(db_session, row, context=match_ctx), price_disposals(db_session, row, context=None))
+    for row in match_ctx.goal_projections:
+        _assert_goal_price_equal(price_goals(db_session, row, context=match_ctx), price_goals(db_session, row, context=None))
+
+
+# --- Part F: query-count regression for player pricing directly ------------
+
+
+def test_price_single_match_query_count_does_not_scale_with_player_count(db_session):
+    _seed_promoted_disposal_model(db_session)
+    _seed_promoted_goal_model(db_session)
+    match_small, home_s, away_s = _seed_bare_match(db_session, suffix="pqs")
+    for i in range(4):
+        _seed_one_player(db_session, match_small, home_s if i % 2 == 0 else away_s, suffix=f"pqs{i}", mean=20.0 + i)
+    match_large, home_l, away_l = _seed_bare_match(db_session, suffix="pql")
+    for i in range(8):
+        _seed_one_player(db_session, match_large, home_l if i % 2 == 0 else away_l, suffix=f"pql{i}", mean=20.0 + i)
+
+    ctx_small = build_match_pricing_context(db_session, match_small.id)
+    with count_queries(db_session) as counter:
+        price_single_match(db_session, match_small.id, pricing_context=ctx_small)
+    small_queries = counter["n"]
+
+    ctx_large = build_match_pricing_context(db_session, match_large.id)
+    with count_queries(db_session) as counter:
+        price_single_match(db_session, match_large.id, pricing_context=ctx_large)
+    large_queries = counter["n"]
+
+    assert large_queries < small_queries * 1.5, f"query count scaled with player count: {small_queries} (4 players) -> {large_queries} (8 players)"
+
+
+# --- Part G: prospective + alert path re-validation (context now reaches price_single_match too) ---
+
+
+def test_build_trader_inbox_equivalent_with_player_pricing_context_fix(db_session):
+    """Re-confirms output equivalence for the exact market_monitor_prospective_snapshots
+    call chain now that price_single_match is also context-aware."""
+    _seed_model_runs(db_session)
+    _seed_promoted_disposal_model(db_session)
+    _seed_promoted_goal_model(db_session)
+    books = _seed_bookmakers(db_session, ["BookA", "BookB", "BookC"])
+    match, *_ = _seed_match_with_players(db_session, suffix="ppinbox", n_players=4, bookmakers=books)
+
+    ranked_with_context = build_trader_inbox(db_session, [match.id], track_persistence=False)
+
+    # Reconstruct the equivalent legacy (context=None throughout) result via detect_match_anomalies's own pieces.
+    from app.market_monitor.detector import _Common
+
+    team, disposals, goals = price_single_match(db_session, match.id, pricing_context=None)
+    now = datetime.now(timezone.utc)
+    common = _Common(match_id=match.id, home_team=team.home_team, away_team=team.away_team, generated_at=now)
+    legacy_alerts = []
+    if team is not None:
+        legacy_alerts += detect_team_match_anomalies(db_session, team, common, context=None)
+    for price in disposals:
+        legacy_alerts += detect_player_family_anomalies(db_session, price, common, "player_disposals", context=None)
+    for price in goals:
+        legacy_alerts += detect_player_family_anomalies(db_session, price, common, "player_goals", context=None)
+
+    ranked_case_keys = {(r.case.match_id, r.case.player_id, r.case.market_type, r.case.selection, r.case.threshold) for r in ranked_with_context}
+    from app.market_monitor.case_builder import build_cases
+    legacy_case_keys = {(c.match_id, c.player_id, c.market_type, c.selection, c.threshold) for c in build_cases(legacy_alerts)}
+    assert ranked_case_keys == legacy_case_keys
+
+
+def test_freeze_anomaly_alerts_equivalent_with_player_pricing_context_fix(db_session):
+    _seed_promoted_disposal_model(db_session)
+    _seed_promoted_goal_model(db_session)
+    books = _seed_bookmakers(db_session, ["BookA", "BookB", "BookC"])
+    match, *_ = _seed_match_with_players(db_session, suffix="ppalert", n_players=4, bookmakers=books)
+
+    expected_alerts = detect_match_anomalies(db_session, match.id)
+    n_frozen = freeze_anomaly_alerts(db_session, [match.id])
+    persisted = db_session.scalars(select(AnomalyAlertSnapshot).where(AnomalyAlertSnapshot.match_id == match.id)).all()
+
+    assert n_frozen == len(expected_alerts)
+    assert len(persisted) == len(expected_alerts)
+
+
+def test_freeze_anomaly_alerts_query_count_substantially_reduced_and_bounded(db_session):
+    """The path that timed out entirely in production (LiveCycleRun's
+    controlled run #2). Confirms the player-pricing fix on top of the
+    prior shared-context fix keeps this well below the prior 287/563
+    query counts measured at 46/92 players (see benchmark script for the
+    exact real-Postgres numbers this test's SQLite run cannot replicate,
+    but the SAME flat-vs-scaling shape must hold on any backend)."""
+    _seed_promoted_disposal_model(db_session)
+    _seed_promoted_goal_model(db_session)
+    books = _seed_bookmakers(db_session, ["BookA", "BookB", "BookC"])
+    match_small, *_ = _seed_match_with_players(db_session, suffix="fasq_s", n_players=4, bookmakers=books)
+    match_large, *_ = _seed_match_with_players(db_session, suffix="fasq_l", n_players=8, bookmakers=books)
+
+    with count_queries(db_session) as counter:
+        freeze_anomaly_alerts(db_session, [match_small.id])
+    small_queries = counter["n"]
+
+    with count_queries(db_session) as counter:
+        freeze_anomaly_alerts(db_session, [match_large.id])
+    large_queries = counter["n"]
+
+    assert large_queries < small_queries * 1.5, f"query count scaled with player count: {small_queries} (4 players) -> {large_queries} (8 players)"

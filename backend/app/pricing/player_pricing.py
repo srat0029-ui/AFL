@@ -19,6 +19,7 @@ whatever threshold was requested — no retraining, ever, in this path.
 """
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from app.edges.fair_odds import fair_odds_from_probability
 from app.models import PlayerDisposalProjection, PlayerGoalProjection
@@ -35,6 +36,9 @@ from app.player_modelling.live_report_query import (
 from app.player_modelling.live_staleness import check_staleness
 from app.player_modelling.market import PlayerMarket
 from app.player_modelling.usage_regime import USAGE_REGIME_CHANGE_FLAG, ModelRiskFlag, goal_usage_risk_flags  # noqa: F401 - re-exported for app.pricing.player_pricing.USAGE_REGIME_CHANGE_FLAG callers
+
+if TYPE_CHECKING:
+    from app.pricing.match_pricing_context import MatchPricingContext
 
 DISPOSAL_MODEL_NAME = "disposal_nb"
 GOAL_MODEL_NAME = "goal_hurdle"
@@ -94,7 +98,9 @@ class DisposalPrice:
     model_risk_flags: list[ModelRiskFlag] = field(default_factory=list)
 
 
-def price_disposals(db, row: PlayerDisposalProjection, extra_thresholds: list[float] | None = None) -> DisposalPrice:
+def price_disposals(
+    db, row: PlayerDisposalProjection, extra_thresholds: list[float] | None = None, context: "MatchPricingContext | None" = None,
+) -> DisposalPrice:
     dist = disposal_distribution_for(row)
     thresholds = [_threshold_price(dist, t) for t in DEFAULT_DISPOSAL_THRESHOLDS]
     thresholds += [_threshold_price(dist, t) for t in (extra_thresholds or [])]
@@ -102,22 +108,31 @@ def price_disposals(db, row: PlayerDisposalProjection, extra_thresholds: list[fl
     # representative single number for historical-calibration lookup.
     nearest_default = min(DEFAULT_DISPOSAL_THRESHOLDS, key=lambda t: abs(t - row.predicted_mean))
 
-    current_lineup = current_lineup_for(db, row.player_id, row.match_id)
+    if context is not None:
+        current_lineup = context.lineups_by_player.get(row.player_id)
+        current_model_version = context.disposal_model_version
+        calibration = context.calibration_by_key.get((PlayerMarket.DISPOSALS.value, nearest_default))
+        player_name = context.players_by_id[row.player_id].display_name
+    else:
+        current_lineup = current_lineup_for(db, row.player_id, row.match_id)
+        current_model_version = current_disposal_model_version(db)
+        calibration = historical_calibration_metrics(db, PlayerMarket.DISPOSALS.value, nearest_default)
+        player_name = row.player.display_name
     staleness = check_staleness(
         projection_model_version=row.model_version, projection_data_cutoff=row.data_cutoff,
-        projection_lineup_status=row.lineup_status_at_generation, current_model_version=current_disposal_model_version(db),
+        projection_lineup_status=row.lineup_status_at_generation, current_model_version=current_model_version,
         current_data_cutoff=None, current_lineup_status=current_lineup.status if current_lineup else None,
     )
 
     return DisposalPrice(
-        match_id=row.match_id, player_id=row.player_id, player_name=row.player.display_name, team_id=row.team_id,
+        match_id=row.match_id, player_id=row.player_id, player_name=player_name, team_id=row.team_id,
         model_name=DISPOSAL_MODEL_NAME, model_version=row.model_version,
         generated_at=row.generated_at, data_cutoff=row.data_cutoff, lineup_status=row.lineup_status_at_generation,
         confidence_tier=row.confidence_tier, games_of_history=row.games_of_history, expected=row.predicted_mean,
         distribution_method=row.distribution_method, distribution_params={"mu": row.predicted_mean, "alpha": row.nb_alpha},
         interval_50=dist.interval(0.5), interval_80=dist.interval(0.8), interval_90=dist.interval(0.9),
         thresholds=thresholds,
-        calibration=historical_calibration_metrics(db, PlayerMarket.DISPOSALS.value, nearest_default),
+        calibration=calibration,
         warnings=list(row.warnings or []), is_stale=staleness.is_stale, stale_reasons=staleness.reasons,
         usage_regime=row.usage_regime, usage_change_score=row.usage_change_score,
         # Disposal's historical usage-change effect (~1.7% MAE) did not meet
@@ -154,7 +169,9 @@ class GoalPrice:
     model_risk_flags: list[ModelRiskFlag] = field(default_factory=list)
 
 
-def price_goals(db, row: PlayerGoalProjection, extra_thresholds: list[float] | None = None) -> GoalPrice:
+def price_goals(
+    db, row: PlayerGoalProjection, extra_thresholds: list[float] | None = None, context: "MatchPricingContext | None" = None,
+) -> GoalPrice:
     dist = goal_distribution_for(row)
     thresholds = [_threshold_price(dist, t) for t in DEFAULT_GOAL_THRESHOLDS]
     thresholds += [_threshold_price(dist, t) for t in (extra_thresholds or [])]
@@ -164,21 +181,30 @@ def price_goals(db, row: PlayerGoalProjection, extra_thresholds: list[float] | N
         else {"mu": row.predicted_mean, "alpha": row.nb_alpha}
     )
 
-    current_lineup = current_lineup_for(db, row.player_id, row.match_id)
+    if context is not None:
+        current_lineup = context.lineups_by_player.get(row.player_id)
+        current_model_version = context.goal_model_version
+        calibration = context.calibration_by_key.get((PlayerMarket.GOALS.value, 1.5))
+        player_name = context.players_by_id[row.player_id].display_name
+    else:
+        current_lineup = current_lineup_for(db, row.player_id, row.match_id)
+        current_model_version = current_goal_model_version(db)
+        calibration = historical_calibration_metrics(db, PlayerMarket.GOALS.value, 1.5)
+        player_name = row.player.display_name
     staleness = check_staleness(
         projection_model_version=row.model_version, projection_data_cutoff=row.data_cutoff,
-        projection_lineup_status=row.lineup_status_at_generation, current_model_version=current_goal_model_version(db),
+        projection_lineup_status=row.lineup_status_at_generation, current_model_version=current_model_version,
         current_data_cutoff=None, current_lineup_status=current_lineup.status if current_lineup else None,
     )
 
     return GoalPrice(
-        match_id=row.match_id, player_id=row.player_id, player_name=row.player.display_name, team_id=row.team_id,
+        match_id=row.match_id, player_id=row.player_id, player_name=player_name, team_id=row.team_id,
         model_name=GOAL_MODEL_NAME, model_version=row.model_version,
         generated_at=row.generated_at, data_cutoff=row.data_cutoff, lineup_status=row.lineup_status_at_generation,
         confidence_tier=row.confidence_tier, games_of_history=row.games_of_history, expected=row.predicted_mean,
         distribution_kind=row.distribution_kind, distribution_params=params, scoring_archetype=row.scoring_archetype,
         thresholds=thresholds,
-        calibration=historical_calibration_metrics(db, PlayerMarket.GOALS.value, 1.5),
+        calibration=calibration,
         warnings=list(row.warnings or []), is_stale=staleness.is_stale, stale_reasons=staleness.reasons,
         usage_regime=row.usage_regime, usage_change_score=row.usage_change_score,
         model_risk_flags=_goal_model_risk_flags(row.usage_regime),

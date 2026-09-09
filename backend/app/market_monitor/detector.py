@@ -445,24 +445,38 @@ def detect_round_anomalies(db: Session, round_pricing: RoundPricing | None = Non
     return alerts
 
 
-def price_single_match(db: Session, match_id: int) -> tuple[TeamMarketPrice | None, list[DisposalPrice], list[GoalPrice]]:
+def price_single_match(
+    db: Session, match_id: int, pricing_context: "MatchPricingContext | None" = None,
+) -> tuple[TeamMarketPrice | None, list[DisposalPrice], list[GoalPrice]]:
     """Prices exactly one match, independent of "current round" — item 6's
     `/matches/{match_id}` endpoint (and item 10's verification, which needs
     to inspect a specific match with real persisted player projections,
     not just whatever the single nearest upcoming round happens to have
-    lineups for yet) both need this, not just the round-wide view."""
+    lineups for yet) both need this, not just the round-wide view.
+
+    `pricing_context`, when supplied, is forwarded into price_disposals/
+    price_goals (see their own context-aware fast path) and its already-
+    loaded disposal_projections/goal_projections lists are reused instead
+    of querying again - the same MatchPricingContext detect_match_anomalies
+    already builds for team/player detection, not a second cache."""
     match = db.get(Match, match_id)
     team = None
     if match is not None:
         try:
-            context = build_model_context(db)
+            model_context = build_model_context(db)
             now = datetime.now(timezone.utc)
             data_cutoff = latest_completed_match_timestamp(db) or now
-            team = price_team_market(match, context, now, data_cutoff)
+            team = price_team_market(match, model_context, now, data_cutoff)
         except ModelsUnavailableError:
             team = None
-    disposals = [price_disposals(db, row) for row in db.scalars(select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id == match_id)).all()]
-    goals = [price_goals(db, row) for row in db.scalars(select(PlayerGoalProjection).where(PlayerGoalProjection.match_id == match_id)).all()]
+    if pricing_context is not None:
+        disposal_rows = pricing_context.disposal_projections
+        goal_rows = pricing_context.goal_projections
+    else:
+        disposal_rows = db.scalars(select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id == match_id)).all()
+        goal_rows = db.scalars(select(PlayerGoalProjection).where(PlayerGoalProjection.match_id == match_id)).all()
+    disposals = [price_disposals(db, row, context=pricing_context) for row in disposal_rows]
+    goals = [price_goals(db, row, context=pricing_context) for row in goal_rows]
     return team, disposals, goals
 
 
@@ -475,11 +489,11 @@ def detect_match_anomalies(db: Session, match_id: int) -> list[Alert]:
     match = db.get(Match, match_id)
     if match is None:
         return []
-    team, disposals, goals = price_single_match(db, match_id)
+    match_ctx = build_match_pricing_context(db, match_id)
+    team, disposals, goals = price_single_match(db, match_id, pricing_context=match_ctx)
     home_name, away_name = (team.home_team, team.away_team) if team is not None else (match.home_team.name, match.away_team.name)
     now = datetime.now(timezone.utc)
     common = _Common(match_id=match_id, home_team=home_name, away_team=away_name, generated_at=now)
-    match_ctx = build_match_pricing_context(db, match_id)
 
     alerts: list[Alert] = []
     if team is not None:
