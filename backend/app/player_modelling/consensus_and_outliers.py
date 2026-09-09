@@ -32,6 +32,7 @@ apart from the rest of the market.
 
 import statistics
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -39,6 +40,9 @@ from sqlalchemy.orm import Session
 from app.edges.overround import implied_probability, remove_overround
 from app.models import Bookmaker, Match, OddsQuote, PlayerPropMarket
 from app.models.bookmaker import ELIGIBILITY_INCLUDED
+
+if TYPE_CHECKING:
+    from app.pricing.match_pricing_context import MatchPricingContext
 
 OUTLIER_THRESHOLD_PCT = 20.0
 
@@ -84,7 +88,54 @@ def _compute_consensus(entries: list[BookmakerProbability], market_type: str) ->
     )
 
 
-def team_consensus(db: Session, opportunity: dict) -> ConsensusResult | None:
+def _opposite_odds_quote(db: Session, *, match_id: int, bookmaker, market_type: str, selection: str, line_value: float | None, context: "MatchPricingContext | None"):
+    """Latest OddsQuote for the opposite side of this exact market, from
+    this exact bookmaker - context.odds_quotes already holds every row for
+    this match, so filtering it in memory is exactly equivalent to the
+    original `.order_by(recorded_at.desc())` query it replaces."""
+    if context is not None:
+        candidates = [
+            q for q in context.odds_quotes
+            if q.bookmaker_id == bookmaker.id and q.market_type == market_type and q.selection == selection and q.line_value == line_value
+        ]
+        return max(candidates, key=lambda q: q.recorded_at, default=None)
+    return db.scalar(
+        select(OddsQuote)
+        .where(
+            OddsQuote.match_id == match_id, OddsQuote.bookmaker_id == bookmaker.id,
+            OddsQuote.market_type == market_type, OddsQuote.selection == selection, OddsQuote.line_value == line_value,
+        )
+        .order_by(OddsQuote.recorded_at.desc())
+    )
+
+
+def _opposite_prop_market(db: Session, *, match_id: int, player_id: int, bookmaker, market_type: str, line_type: str, threshold: float, opposite_selection_set: tuple, context: "MatchPricingContext | None"):
+    if context is not None:
+        candidates = [
+            q for q in context.prop_markets
+            if q.player_id == player_id and q.bookmaker_id == bookmaker.id and q.market_type == market_type
+            and q.line_type == line_type and q.threshold == threshold and q.selection in opposite_selection_set
+        ]
+        return max(candidates, key=lambda q: q.recorded_at, default=None)
+    return db.scalar(
+        select(PlayerPropMarket)
+        .where(
+            PlayerPropMarket.match_id == match_id, PlayerPropMarket.player_id == player_id,
+            PlayerPropMarket.bookmaker_id == bookmaker.id, PlayerPropMarket.market_type == market_type,
+            PlayerPropMarket.line_type == line_type, PlayerPropMarket.threshold == threshold,
+            PlayerPropMarket.selection.in_(opposite_selection_set),
+        )
+        .order_by(PlayerPropMarket.recorded_at.desc())
+    )
+
+
+def _bookmaker_by_name(db: Session, name: str, context: "MatchPricingContext | None"):
+    if context is not None:
+        return context.bookmakers_by_name.get(name)
+    return db.scalar(select(Bookmaker).where(Bookmaker.name == name))
+
+
+def team_consensus(db: Session, opportunity: dict, context: "MatchPricingContext | None" = None) -> ConsensusResult | None:
     market_type = opportunity["market_type"]
     eligible = [b for b in opportunity["bookmakers"] if b.get("eligibility", ELIGIBILITY_INCLUDED) == ELIGIBILITY_INCLUDED]
     if not eligible:
@@ -105,15 +156,11 @@ def team_consensus(db: Session, opportunity: dict) -> ConsensusResult | None:
     for b in eligible:
         opposite_price = None
         if opposite_selection is not None:
-            bookmaker = db.scalar(select(Bookmaker).where(Bookmaker.name == b["bookmaker_name"]))
+            bookmaker = _bookmaker_by_name(db, b["bookmaker_name"], context)
             if bookmaker is not None:
-                opp_quote = db.scalar(
-                    select(OddsQuote)
-                    .where(
-                        OddsQuote.match_id == opportunity["match_id"], OddsQuote.bookmaker_id == bookmaker.id,
-                        OddsQuote.market_type == market_type, OddsQuote.selection == opposite_selection, OddsQuote.line_value == opposite_line_value,
-                    )
-                    .order_by(OddsQuote.recorded_at.desc())
+                opp_quote = _opposite_odds_quote(
+                    db, match_id=opportunity["match_id"], bookmaker=bookmaker, market_type=market_type,
+                    selection=opposite_selection, line_value=opposite_line_value, context=context,
                 )
                 opposite_price = opp_quote.price_decimal if opp_quote is not None else None
         if opposite_price is not None:
@@ -125,7 +172,7 @@ def team_consensus(db: Session, opportunity: dict) -> ConsensusResult | None:
     return _compute_consensus(entries, market_type)
 
 
-def player_consensus(db: Session, opportunity: dict) -> ConsensusResult | None:
+def player_consensus(db: Session, opportunity: dict, context: "MatchPricingContext | None" = None) -> ConsensusResult | None:
     eligible = [b for b in opportunity["bookmakers"] if b.get("eligibility", ELIGIBILITY_INCLUDED) == ELIGIBILITY_INCLUDED]
     if not eligible:
         return None
@@ -133,18 +180,13 @@ def player_consensus(db: Session, opportunity: dict) -> ConsensusResult | None:
     opposite_selection_set = ("under", "no")
     entries = []
     for b in eligible:
-        bookmaker = db.scalar(select(Bookmaker).where(Bookmaker.name == b["bookmaker_name"]))
+        bookmaker = _bookmaker_by_name(db, b["bookmaker_name"], context)
         opposite_price = None
         if bookmaker is not None:
-            opp_quote = db.scalar(
-                select(PlayerPropMarket)
-                .where(
-                    PlayerPropMarket.match_id == opportunity["match_id"], PlayerPropMarket.player_id == opportunity["player_id"],
-                    PlayerPropMarket.bookmaker_id == bookmaker.id, PlayerPropMarket.market_type == opportunity["market_type"],
-                    PlayerPropMarket.line_type == opportunity["line_type"], PlayerPropMarket.threshold == opportunity["threshold"],
-                    PlayerPropMarket.selection.in_(opposite_selection_set),
-                )
-                .order_by(PlayerPropMarket.recorded_at.desc())
+            opp_quote = _opposite_prop_market(
+                db, match_id=opportunity["match_id"], player_id=opportunity["player_id"], bookmaker=bookmaker,
+                market_type=opportunity["market_type"], line_type=opportunity["line_type"], threshold=opportunity["threshold"],
+                opposite_selection_set=opposite_selection_set, context=context,
             )
             opposite_price = opp_quote.price_decimal if opp_quote is not None else None
         if opposite_price is not None:
@@ -156,10 +198,10 @@ def player_consensus(db: Session, opportunity: dict) -> ConsensusResult | None:
     return _compute_consensus(entries, opportunity["market_type"])
 
 
-def consensus_for_opportunity(db: Session, opportunity: dict) -> ConsensusResult | None:
+def consensus_for_opportunity(db: Session, opportunity: dict, context: "MatchPricingContext | None" = None) -> ConsensusResult | None:
     if opportunity["opportunity_type"] == "team":
-        return team_consensus(db, opportunity)
-    return player_consensus(db, opportunity)
+        return team_consensus(db, opportunity, context=context)
+    return player_consensus(db, opportunity, context=context)
 
 
 def consensus_as_dict(c: ConsensusResult) -> dict:

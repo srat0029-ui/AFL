@@ -22,6 +22,7 @@ from app.player_modelling.market import PlayerMarket
 from app.player_modelling.match_context_service import current_context_for_match
 from app.player_modelling.live_report_query import current_lineup_for
 from app.pricing.market_intelligence import MarketIntelligence, player_market_intelligence, team_market_intelligence
+from app.pricing.match_pricing_context import MatchPricingContext, build_match_pricing_context
 from app.pricing.player_pricing import DisposalPrice, GoalPrice, price_disposals, price_goals
 from app.pricing.round_pricing import RoundPricing, price_current_round
 from app.pricing.team_pricing import TeamMarketPrice, latest_completed_match_timestamp, price_team_market
@@ -281,7 +282,13 @@ def _staleness_alerts(
     return alerts
 
 
-def _player_prop_quotes(db: Session, *, match_id: int, player_id: int, market_type: str, line_type: str, threshold: float) -> list:
+def _player_prop_quotes(db: Session, *, match_id: int, player_id: int, market_type: str, line_type: str, threshold: float, context: "MatchPricingContext | None" = None) -> list:
+    if context is not None:
+        return [
+            q for q in context.prop_markets
+            if q.player_id == player_id and q.market_type == market_type and q.line_type == line_type
+            and q.threshold == threshold and q.selection in (None, "over")
+        ]
     return db.scalars(
         select(PlayerPropMarket).where(
             PlayerPropMarket.match_id == match_id, PlayerPropMarket.player_id == player_id, PlayerPropMarket.market_type == market_type,
@@ -290,10 +297,17 @@ def _player_prop_quotes(db: Session, *, match_id: int, player_id: int, market_ty
     ).all()
 
 
-def detect_player_family_anomalies(db: Session, price: DisposalPrice | GoalPrice, common: _Common, market_type: str) -> list[Alert]:
-    lineup = current_lineup_for(db, price.player_id, price.match_id)
-    context_items = [i for i in current_context_for_match(db, price.match_id) if i.player_id == price.player_id]
-    bookmaker_name_by_id = {b.id: b.name for b in db.scalars(select(Bookmaker)).all()}
+def detect_player_family_anomalies(
+    db: Session, price: DisposalPrice | GoalPrice, common: _Common, market_type: str, context: "MatchPricingContext | None" = None,
+) -> list[Alert]:
+    if context is not None:
+        lineup = context.lineups_by_player.get(price.player_id)
+        context_items = [i for i in context.context_items if i.player_id == price.player_id]
+        bookmaker_name_by_id = {b.id: b.name for b in context.bookmakers_by_id.values()}
+    else:
+        lineup = current_lineup_for(db, price.player_id, price.match_id)
+        context_items = [i for i in current_context_for_match(db, price.match_id) if i.player_id == price.player_id]
+        bookmaker_name_by_id = {b.id: b.name for b in db.scalars(select(Bookmaker)).all()}
     model_risk_flags = model_risk_flag_entries(price.model_risk_flags)
 
     thresholds = sorted(price.thresholds, key=lambda t: t.threshold)
@@ -302,7 +316,7 @@ def detect_player_family_anomalies(db: Session, price: DisposalPrice | GoalPrice
     alerts: list[Alert] = []
 
     for t in thresholds:
-        intel = player_market_intelligence(db, price.match_id, price.player_id, market_type, t.line_type, t.threshold, t.probability)
+        intel = player_market_intelligence(db, price.match_id, price.player_id, market_type, t.line_type, t.threshold, t.probability, context=context)
         alerts += _divergence_and_outlier_and_dispersion_alerts(
             common, intel, market_type=market_type, selection="over", threshold=t.threshold, line_value=None, model_fair_odds=t.fair_odds,
             player_id=price.player_id, player_name=price.player_name, model_version=price.model_version,
@@ -320,7 +334,7 @@ def detect_player_family_anomalies(db: Session, price: DisposalPrice | GoalPrice
             threshold=t.threshold, selection="over",
         )
 
-        quotes = _player_prop_quotes(db, match_id=price.match_id, player_id=price.player_id, market_type=market_type, line_type=t.line_type, threshold=t.threshold)
+        quotes = _player_prop_quotes(db, match_id=price.match_id, player_id=price.player_id, market_type=market_type, line_type=t.line_type, threshold=t.threshold, context=context)
         alerts += _movement_alerts(
             common, quotes, bookmaker_name_by_id, market_type=market_type, selection="over", threshold=t.threshold, line_value=None,
             model_probability=t.probability, model_fair_odds=t.fair_odds, player_id=price.player_id, player_name=price.player_name,
@@ -333,30 +347,42 @@ def detect_player_family_anomalies(db: Session, price: DisposalPrice | GoalPrice
     return alerts
 
 
-def detect_team_match_anomalies(db: Session, team: TeamMarketPrice, common: _Common) -> list[Alert]:
+def detect_team_match_anomalies(db: Session, team: TeamMarketPrice, common: _Common, context: "MatchPricingContext | None" = None) -> list[Alert]:
     alerts: list[Alert] = []
-    bookmaker_name_by_id = {b.id: b.name for b in db.scalars(select(Bookmaker)).all()}
+    if context is not None:
+        bookmaker_name_by_id = {b.id: b.name for b in context.bookmakers_by_id.values()}
+    else:
+        bookmaker_name_by_id = {b.id: b.name for b in db.scalars(select(Bookmaker)).all()}
 
-    intel = team_market_intelligence(db, common.match_id, "h2h", team.home_team, None, team.home_win_probability)
+    intel = team_market_intelligence(db, common.match_id, "h2h", team.home_team, None, team.home_win_probability, context=context)
     alerts += _divergence_and_outlier_and_dispersion_alerts(
         common, intel, market_type="h2h", selection=team.home_team, threshold=None, line_value=None, model_fair_odds=team.home_fair_odds,
         model_version=team.model_version,
     )
     latest_quote_at = _latest_quote_at(intel)
-    team_context = [i for i in current_context_for_match(db, common.match_id) if i.player_id is None]
+    if context is not None:
+        team_context = [i for i in context.context_items if i.player_id is None]
+    else:
+        team_context = [i for i in current_context_for_match(db, common.match_id) if i.player_id is None]
     alerts += _staleness_alerts(
         common, market_type="h2h", player_id=None, player_name=None, team_id=None, lineup=None, context_items=team_context,
         latest_quote_at=latest_quote_at, model_probability=team.home_win_probability, model_fair_odds=team.home_fair_odds,
         model_version=team.model_version, model_risk_flags=(), selection=team.home_team,
     )
-    h2h_quotes = db.scalars(select(OddsQuote).where(OddsQuote.match_id == common.match_id, OddsQuote.market_type == "h2h", OddsQuote.selection == team.home_team)).all()
+    if context is not None:
+        h2h_quotes = [q for q in context.odds_quotes if q.market_type == "h2h" and q.selection == team.home_team]
+    else:
+        h2h_quotes = db.scalars(select(OddsQuote).where(OddsQuote.match_id == common.match_id, OddsQuote.market_type == "h2h", OddsQuote.selection == team.home_team)).all()
     alerts += _movement_alerts(
         common, h2h_quotes, bookmaker_name_by_id, market_type="h2h", selection=team.home_team, threshold=None, line_value=None,
         model_probability=team.home_win_probability, model_fair_odds=team.home_fair_odds,
     )
 
     # TEAM_MARKET_INTERNAL_INCONSISTENCY: each bookmaker's own two-sided h2h quote
-    all_h2h = db.scalars(select(OddsQuote).where(OddsQuote.match_id == common.match_id, OddsQuote.market_type == "h2h")).all()
+    if context is not None:
+        all_h2h = [q for q in context.odds_quotes if q.market_type == "h2h"]
+    else:
+        all_h2h = db.scalars(select(OddsQuote).where(OddsQuote.match_id == common.match_id, OddsQuote.market_type == "h2h")).all()
     latest_by_book_selection: dict[tuple[int, str], OddsQuote] = {}
     for q in all_h2h:
         key = (q.bookmaker_id, q.selection)
@@ -383,24 +409,38 @@ def detect_team_match_anomalies(db: Session, team: TeamMarketPrice, common: _Com
 
 
 def detect_round_anomalies(db: Session, round_pricing: RoundPricing | None = None) -> list[Alert]:
+    """Builds exactly one MatchPricingContext per distinct match_id
+    encountered (teams/disposals/goals below all draw from the same round,
+    so the same handful of matches repeat across all three lists) and
+    reuses it across every team/player detection call for that match -
+    same discipline as detect_match_anomalies, just with a small per-call
+    cache since this function fans out over more than one match at once."""
     round_pricing = round_pricing or price_current_round(db, use_cache=False)
     now = datetime.now(timezone.utc)
     match_names: dict[int, tuple[str, str]] = {t.match_id: (t.home_team, t.away_team) for t in round_pricing.teams}
+    contexts: dict[int, MatchPricingContext] = {}
+
+    def _context_for(match_id: int) -> MatchPricingContext:
+        ctx = contexts.get(match_id)
+        if ctx is None:
+            ctx = build_match_pricing_context(db, match_id)
+            contexts[match_id] = ctx
+        return ctx
 
     alerts: list[Alert] = []
     for team in round_pricing.teams:
         common = _Common(match_id=team.match_id, home_team=team.home_team, away_team=team.away_team, generated_at=now)
-        alerts += detect_team_match_anomalies(db, team, common)
+        alerts += detect_team_match_anomalies(db, team, common, context=_context_for(team.match_id))
 
     for price in round_pricing.disposals:
         home, away = match_names.get(price.match_id, ("", ""))
         common = _Common(match_id=price.match_id, home_team=home, away_team=away, generated_at=now)
-        alerts += detect_player_family_anomalies(db, price, common, PlayerMarket.DISPOSALS.value)
+        alerts += detect_player_family_anomalies(db, price, common, PlayerMarket.DISPOSALS.value, context=_context_for(price.match_id))
 
     for price in round_pricing.goals:
         home, away = match_names.get(price.match_id, ("", ""))
         common = _Common(match_id=price.match_id, home_team=home, away_team=away, generated_at=now)
-        alerts += detect_player_family_anomalies(db, price, common, PlayerMarket.GOALS.value)
+        alerts += detect_player_family_anomalies(db, price, common, PlayerMarket.GOALS.value, context=_context_for(price.match_id))
 
     return alerts
 
@@ -427,6 +467,11 @@ def price_single_match(db: Session, match_id: int) -> tuple[TeamMarketPrice | No
 
 
 def detect_match_anomalies(db: Session, match_id: int) -> list[Alert]:
+    """The single entry point both market_monitor_prospective_snapshots
+    (via build_trader_inbox) and market_monitor_alert_snapshots (via
+    freeze_anomaly_alerts) call per match - builds exactly one
+    MatchPricingContext here so both paths get the N+1 fix for free with
+    no changes needed in either caller."""
     match = db.get(Match, match_id)
     if match is None:
         return []
@@ -434,14 +479,15 @@ def detect_match_anomalies(db: Session, match_id: int) -> list[Alert]:
     home_name, away_name = (team.home_team, team.away_team) if team is not None else (match.home_team.name, match.away_team.name)
     now = datetime.now(timezone.utc)
     common = _Common(match_id=match_id, home_team=home_name, away_team=away_name, generated_at=now)
+    match_ctx = build_match_pricing_context(db, match_id)
 
     alerts: list[Alert] = []
     if team is not None:
-        alerts += detect_team_match_anomalies(db, team, common)
+        alerts += detect_team_match_anomalies(db, team, common, context=match_ctx)
     for price in disposals:
-        alerts += detect_player_family_anomalies(db, price, common, PlayerMarket.DISPOSALS.value)
+        alerts += detect_player_family_anomalies(db, price, common, PlayerMarket.DISPOSALS.value, context=match_ctx)
     for price in goals:
-        alerts += detect_player_family_anomalies(db, price, common, PlayerMarket.GOALS.value)
+        alerts += detect_player_family_anomalies(db, price, common, PlayerMarket.GOALS.value, context=match_ctx)
     return alerts
 
 

@@ -132,7 +132,11 @@ jobs:
             tests/test_prop_insights_normalized.py \
             tests/test_multi_builder.py \
             tests/test_sgm_scope_performance.py \
-            tests/test_pricing_snapshot_identity.py
+            tests/test_pricing_snapshot_identity.py \
+            tests/test_pricing_market_monitor_performance.py \
+            tests/test_market_monitor.py \
+            tests/test_market_monitor_prospective_operation.py \
+            tests/test_market_monitor_prospective_validation.py
 
   frontend-test:
     name: Frontend tests

@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 from app.edges.fair_odds import fair_odds_from_probability
 from app.models import Match, MatchStatus, PlayerMatchStat, PricingSnapshot
 from app.pricing.market_intelligence import MarketIntelligence, player_market_intelligence, team_market_intelligence
+from app.pricing.match_pricing_context import MatchPricingContext, build_match_pricing_context
 from app.pricing.player_pricing import DEFAULT_DISPOSAL_THRESHOLDS, DEFAULT_GOAL_THRESHOLDS
 from app.player_modelling.market import PlayerMarket
 from app.player_modelling.prop_settlement import (
@@ -85,6 +86,7 @@ def snapshot_price(
     line_type: str | None, threshold: float | None, line_value: float | None, model_name: str, model_version: str,
     generated_at: datetime, data_cutoff: datetime, lineup_status: str | None, confidence_tier: str,
     model_probability: float, intelligence: MarketIntelligence | None = None, usage_regime_at_prediction: str | None = None,
+    existing_keys: set[tuple] | None = None,
 ) -> PricingSnapshot | None:
     # Explicit per-family identity (see the two helpers above) - a real
     # production incident (LiveCycleRun id=4's forensic review) found the
@@ -100,14 +102,33 @@ def snapshot_price(
     # for player-identity correctness - it holds within one transaction,
     # after commit, across separate transactions, and against a fresh
     # Session, because player_id is now always part of the WHERE clause.
-    identity = (
-        _team_snapshot_identity_clause(match_id, market_type, selection, line_value, model_version)
-        if player_id is None
-        else _player_snapshot_identity_clause(match_id, player_id, market_type, selection, threshold, model_version)
-    )
-    existing = db.scalar(select(PricingSnapshot.id).where(*identity))
-    if existing is not None:
-        return None  # already frozen at this model version - never overwritten, never duplicated
+    #
+    # `existing_keys`, when supplied by a caller that already preloaded
+    # this match's committed identity keys (see MatchPricingContext), lets
+    # this check happen entirely in memory - no per-snapshot SELECT - while
+    # using the EXACT same canonical per-family identity as the DB-backed
+    # path below (same field tuples, mirrored one-for-one; see
+    # build_match_pricing_context). Reserving the key immediately (before
+    # the row is even constructed) means a second call at the identical
+    # identity within the same batch is caught too, without relying on
+    # autoflush - the exact discipline revision 75715f635e7a introduced.
+    if existing_keys is not None:
+        key = (
+            (match_id, market_type, selection, line_value, model_version) if player_id is None
+            else (match_id, player_id, market_type, selection, threshold, model_version)
+        )
+        if key in existing_keys:
+            return None
+        existing_keys.add(key)
+    else:
+        identity = (
+            _team_snapshot_identity_clause(match_id, market_type, selection, line_value, model_version)
+            if player_id is None
+            else _player_snapshot_identity_clause(match_id, player_id, market_type, selection, threshold, model_version)
+        )
+        existing = db.scalar(select(PricingSnapshot.id).where(*identity))
+        if existing is not None:
+            return None  # already frozen at this model version - never overwritten, never duplicated
 
     snap = PricingSnapshot(
         match_id=match_id, player_id=player_id, market_family=market_family, market_type=market_type,
@@ -139,15 +160,25 @@ def snapshot_round_pricing(db: Session, match_ids: list[int]) -> SnapshotReport:
     arbitrary/open-ended line has no natural default to freeze) plus
     player disposals/goals at the standard preset threshold set, for every
     given match. Delegates all actual pricing to team_pricing.py/
-    player_pricing.py - this only orchestrates + freezes their output."""
+    player_pricing.py - this only orchestrates + freezes their output.
+
+    Builds exactly one MatchPricingContext per match (bookmakers, quotes,
+    existing snapshot identity keys) and threads it into every
+    team_market_intelligence/player_market_intelligence/snapshot_price
+    call below - a production forensic review found this loop's per-
+    player-per-threshold intelligence lookups (and their own per-call
+    Bookmaker/consensus/devig queries) growing linearly with match size
+    (283.59s / ~386-741 queries at 20-40 players); this context collapses
+    that back to a small, roughly constant number of queries per match
+    regardless of player count, with zero change to what gets computed or
+    frozen - see the model-vs-market/snapshot equivalence tests."""
     from app.edges.calculator import build_model_context
     from app.pricing.player_pricing import DISPOSAL_MODEL_NAME, GOAL_MODEL_NAME
     from app.pricing.team_pricing import TEAM_MODEL_NAME, TEAM_MODEL_VERSION, latest_completed_match_timestamp, price_team_market
-    from app.models import OddsQuote, PlayerDisposalProjection, PlayerGoalProjection
 
     report = SnapshotReport()
     now = datetime.now(timezone.utc)
-    context = build_model_context(db)
+    model_context = build_model_context(db)
     team_data_cutoff = latest_completed_match_timestamp(db) or now
 
     for match_id in match_ids:
@@ -156,76 +187,74 @@ def snapshot_round_pricing(db: Session, match_ids: list[int]) -> SnapshotReport:
             continue
         report.matches_considered += 1
 
-        distinct_lines = sorted({
-            q.line_value for q in db.scalars(select(OddsQuote).where(OddsQuote.match_id == match_id, OddsQuote.market_type == "line")).all()
-            if q.line_value is not None
-        })
-        distinct_totals = sorted({
-            q.line_value for q in db.scalars(select(OddsQuote).where(OddsQuote.match_id == match_id, OddsQuote.market_type == "total")).all()
-            if q.line_value is not None
-        })
-        price = price_team_market(match, context, now, team_data_cutoff, line_values=distinct_lines, total_lines=distinct_totals)
+        match_ctx = build_match_pricing_context(db, match_id)
 
-        h2h_intel = team_market_intelligence(db, match_id, "h2h", match.home_team.name, None, price.home_win_probability)
+        distinct_lines = sorted({q.line_value for q in match_ctx.odds_quotes if q.market_type == "line" and q.line_value is not None})
+        distinct_totals = sorted({q.line_value for q in match_ctx.odds_quotes if q.market_type == "total" and q.line_value is not None})
+        price = price_team_market(match, model_context, now, team_data_cutoff, line_values=distinct_lines, total_lines=distinct_totals)
+
+        h2h_intel = team_market_intelligence(db, match_id, "h2h", match.home_team.name, None, price.home_win_probability, context=match_ctx)
         if snapshot_price(
             db, match_id=match_id, player_id=None, market_family="team", market_type="h2h", selection=match.home_team.name,
             line_type=None, threshold=None, line_value=None, model_name=TEAM_MODEL_NAME, model_version=TEAM_MODEL_VERSION,
             generated_at=now, data_cutoff=team_data_cutoff, lineup_status=None, confidence_tier=price.confidence_tier,
-            model_probability=price.home_win_probability, intelligence=h2h_intel,
+            model_probability=price.home_win_probability, intelligence=h2h_intel, existing_keys=match_ctx.existing_team_snapshot_keys,
         ) is not None:
             report.team_snapshots_created += 1
 
         for lp in price.lines:
-            intel = team_market_intelligence(db, match_id, "line", lp.home_team, lp.line_value, lp.home_probability)
+            intel = team_market_intelligence(db, match_id, "line", lp.home_team, lp.line_value, lp.home_probability, context=match_ctx)
             if snapshot_price(
                 db, match_id=match_id, player_id=None, market_family="team", market_type="line", selection=lp.home_team,
                 line_type=None, threshold=None, line_value=lp.line_value, model_name=TEAM_MODEL_NAME, model_version=TEAM_MODEL_VERSION,
                 generated_at=now, data_cutoff=team_data_cutoff, lineup_status=None, confidence_tier=price.confidence_tier,
-                model_probability=lp.home_probability, intelligence=intel,
+                model_probability=lp.home_probability, intelligence=intel, existing_keys=match_ctx.existing_team_snapshot_keys,
             ) is not None:
                 report.team_snapshots_created += 1
 
         for tp in price.totals:
-            intel = team_market_intelligence(db, match_id, "total", "over", tp.line_value, tp.over_probability)
+            intel = team_market_intelligence(db, match_id, "total", "over", tp.line_value, tp.over_probability, context=match_ctx)
             if snapshot_price(
                 db, match_id=match_id, player_id=None, market_family="team", market_type="total", selection="over",
                 line_type=None, threshold=None, line_value=tp.line_value, model_name=TEAM_MODEL_NAME, model_version=TEAM_MODEL_VERSION,
                 generated_at=now, data_cutoff=team_data_cutoff, lineup_status=None, confidence_tier=price.confidence_tier,
-                model_probability=tp.over_probability, intelligence=intel,
+                model_probability=tp.over_probability, intelligence=intel, existing_keys=match_ctx.existing_team_snapshot_keys,
             ) is not None:
                 report.team_snapshots_created += 1
 
-        for row in db.scalars(select(PlayerDisposalProjection).where(PlayerDisposalProjection.match_id == match_id)).all():
+        for row in match_ctx.disposal_projections:
             from app.pricing.player_pricing import _threshold_price
             from app.player_modelling.live_report_query import disposal_distribution_for
 
             dist = disposal_distribution_for(row)
             for t in DEFAULT_DISPOSAL_THRESHOLDS:
                 tp = _threshold_price(dist, t)
-                intel = player_market_intelligence(db, match_id, row.player_id, PlayerMarket.DISPOSALS.value, "over_under", t, tp.probability)
+                intel = player_market_intelligence(db, match_id, row.player_id, PlayerMarket.DISPOSALS.value, "over_under", t, tp.probability, context=match_ctx)
                 if snapshot_price(
                     db, match_id=match_id, player_id=row.player_id, market_family="player_disposals",
                     market_type=PlayerMarket.DISPOSALS.value, selection="over", line_type="over_under", threshold=t, line_value=None,
                     model_name=DISPOSAL_MODEL_NAME, model_version=row.model_version, generated_at=row.generated_at,
                     data_cutoff=row.data_cutoff, lineup_status=row.lineup_status_at_generation, confidence_tier=row.confidence_tier,
                     model_probability=tp.probability, intelligence=intel, usage_regime_at_prediction=row.usage_regime,
+                    existing_keys=match_ctx.existing_player_snapshot_keys,
                 ) is not None:
                     report.disposal_snapshots_created += 1
 
-        for row in db.scalars(select(PlayerGoalProjection).where(PlayerGoalProjection.match_id == match_id)).all():
+        for row in match_ctx.goal_projections:
             from app.pricing.player_pricing import _threshold_price
             from app.player_modelling.live_report_query import goal_distribution_for
 
             dist = goal_distribution_for(row)
             for t in DEFAULT_GOAL_THRESHOLDS:
                 tp = _threshold_price(dist, t)
-                intel = player_market_intelligence(db, match_id, row.player_id, PlayerMarket.GOALS.value, "over_under", t, tp.probability)
+                intel = player_market_intelligence(db, match_id, row.player_id, PlayerMarket.GOALS.value, "over_under", t, tp.probability, context=match_ctx)
                 if snapshot_price(
                     db, match_id=match_id, player_id=row.player_id, market_family="player_goals",
                     market_type=PlayerMarket.GOALS.value, selection="over", line_type="over_under", threshold=t, line_value=None,
                     model_name=GOAL_MODEL_NAME, model_version=row.model_version, generated_at=row.generated_at,
                     data_cutoff=row.data_cutoff, lineup_status=row.lineup_status_at_generation, confidence_tier=row.confidence_tier,
                     model_probability=tp.probability, intelligence=intel, usage_regime_at_prediction=row.usage_regime,
+                    existing_keys=match_ctx.existing_player_snapshot_keys,
                 ) is not None:
                     report.goal_snapshots_created += 1
 

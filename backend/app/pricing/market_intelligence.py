@@ -16,6 +16,7 @@ and simple price-movement figures for the pricing engine's own price.
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -23,6 +24,9 @@ from sqlalchemy.orm import Session
 from app.models import Bookmaker, OddsQuote, PlayerPropMarket
 from app.models.bookmaker import ELIGIBILITY_INCLUDED
 from app.player_modelling.consensus_and_outliers import ConsensusResult, OutlierCheck, consensus_for_opportunity, detect_outlier_bookmaker
+
+if TYPE_CHECKING:
+    from app.pricing.match_pricing_context import MatchPricingContext
 
 
 @dataclass(frozen=True)
@@ -56,33 +60,50 @@ def _latest_quotes_per_bookmaker(quotes: list) -> dict[int, object]:
     return latest
 
 
-def team_market_intelligence(db: Session, match_id: int, market_type: str, selection: str, line_value: float | None, model_probability: float) -> MarketIntelligence:
-    quotes = db.scalars(
-        select(OddsQuote).where(
-            OddsQuote.match_id == match_id, OddsQuote.market_type == market_type,
-            OddsQuote.selection == selection, OddsQuote.line_value == line_value,
-        )
-    ).all()
-    return _build(db, quotes, model_probability, opportunity_type="team", match_id=match_id, market_type=market_type, selection=selection, line_value=line_value)
+def team_market_intelligence(
+    db: Session, match_id: int, market_type: str, selection: str, line_value: float | None, model_probability: float,
+    context: "MatchPricingContext | None" = None,
+) -> MarketIntelligence:
+    if context is not None:
+        quotes = [
+            q for q in context.odds_quotes
+            if q.market_type == market_type and q.selection == selection and q.line_value == line_value
+        ]
+    else:
+        quotes = db.scalars(
+            select(OddsQuote).where(
+                OddsQuote.match_id == match_id, OddsQuote.market_type == market_type,
+                OddsQuote.selection == selection, OddsQuote.line_value == line_value,
+            )
+        ).all()
+    return _build(db, quotes, model_probability, opportunity_type="team", match_id=match_id, market_type=market_type, selection=selection, line_value=line_value, context=context)
 
 
 def player_market_intelligence(
-    db: Session, match_id: int, player_id: int, market_type: str, line_type: str, threshold: float, model_probability: float
+    db: Session, match_id: int, player_id: int, market_type: str, line_type: str, threshold: float, model_probability: float,
+    context: "MatchPricingContext | None" = None,
 ) -> MarketIntelligence:
-    quotes = db.scalars(
-        select(PlayerPropMarket).where(
-            PlayerPropMarket.match_id == match_id, PlayerPropMarket.player_id == player_id,
-            PlayerPropMarket.market_type == market_type, PlayerPropMarket.line_type == line_type,
-            PlayerPropMarket.threshold == threshold, PlayerPropMarket.selection.in_((None, "over")),
-        )
-    ).all()
+    if context is not None:
+        quotes = [
+            q for q in context.prop_markets
+            if q.player_id == player_id and q.market_type == market_type and q.line_type == line_type
+            and q.threshold == threshold and q.selection in (None, "over")
+        ]
+    else:
+        quotes = db.scalars(
+            select(PlayerPropMarket).where(
+                PlayerPropMarket.match_id == match_id, PlayerPropMarket.player_id == player_id,
+                PlayerPropMarket.market_type == market_type, PlayerPropMarket.line_type == line_type,
+                PlayerPropMarket.threshold == threshold, PlayerPropMarket.selection.in_((None, "over")),
+            )
+        ).all()
     return _build(
         db, quotes, model_probability, opportunity_type="player", match_id=match_id, market_type=market_type,
-        selection="over", line_value=None, player_id=player_id, line_type=line_type, threshold=threshold,
+        selection="over", line_value=None, player_id=player_id, line_type=line_type, threshold=threshold, context=context,
     )
 
 
-def _build(db: Session, quotes: list, model_probability: float, **opportunity_fields) -> MarketIntelligence:
+def _build(db: Session, quotes: list, model_probability: float, *, context: "MatchPricingContext | None" = None, **opportunity_fields) -> MarketIntelligence:
     latest = _latest_quotes_per_bookmaker(quotes)
     if not latest:
         return MarketIntelligence(
@@ -90,7 +111,10 @@ def _build(db: Session, quotes: list, model_probability: float, **opportunity_fi
             model_probability=model_probability, market_implied_probability=None, difference_pp=None, books=[],
         )
 
-    bookmaker_rows = {b.id: b for b in db.scalars(select(Bookmaker).where(Bookmaker.id.in_(latest.keys()))).all()}
+    if context is not None:
+        bookmaker_rows = {bid: b for bid, b in context.bookmakers_by_id.items() if bid in latest}
+    else:
+        bookmaker_rows = {b.id: b for b in db.scalars(select(Bookmaker).where(Bookmaker.id.in_(latest.keys()))).all()}
     books = [
         BookLine(bookmaker_name=bookmaker_rows[bid].name, price_decimal=q.price_decimal, recorded_at=q.recorded_at, eligibility=bookmaker_rows[bid].eligibility)
         for bid, q in latest.items() if bid in bookmaker_rows
@@ -102,7 +126,7 @@ def _build(db: Session, quotes: list, model_probability: float, **opportunity_fi
         **opportunity_fields,
         "bookmakers": [{"bookmaker_name": b.bookmaker_name, "price_decimal": b.price_decimal, "eligibility": b.eligibility} for b in books],
     }
-    consensus = consensus_for_opportunity(db, opportunity)
+    consensus = consensus_for_opportunity(db, opportunity, context=context)
     outlier = detect_outlier_bookmaker(opportunity["bookmakers"])
 
     market_prob = consensus.consensus_probability if consensus is not None else (1.0 / best.price_decimal if best else None)
