@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 from app.edges.fair_odds import fair_odds_from_probability
 from app.models import Match, MatchStatus, PlayerMatchStat, PricingSnapshot
 from app.pricing.market_intelligence import MarketIntelligence, player_market_intelligence, team_market_intelligence
-from app.pricing.match_pricing_context import MatchPricingContext, build_match_pricing_context
+from app.pricing.match_pricing_context import build_match_pricing_context
 from app.pricing.player_pricing import DEFAULT_DISPOSAL_THRESHOLDS, DEFAULT_GOAL_THRESHOLDS
 from app.player_modelling.market import PlayerMarket
 from app.player_modelling.prop_settlement import (
