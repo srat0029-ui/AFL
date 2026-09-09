@@ -54,28 +54,32 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Run one live cycle from the CI-verified image
-        # Pinned to sha-9aa2c1a (perf(observations): batch observation
-        # creation, on top of fix(live-cycle): harden reporting after
-        # audit failure) - both changes are forensic follow-ups to the
-        # first controlled production Live Cycle attempt (LiveCycleRun
-        # id=3), which stopped mid-cycle when a durable audit write failed
-        # and the CLI's own reporting code then crashed uncaught trying to
-        # report that graceful stop (GitHub saw generic exit code 1
-        # instead of the intended controlled 0/1/2). This image: (1)
-        # cli.py's run-live-cycle reporting now captures every field into
-        # a plain local once and falls back to a minimal,
-        # connection-independent message if reporting itself fails, never
-        # fabricating success; (2) create_observations_for_match now
-        # preloads its match-scoped context once instead of 2-4 per-quote
-        # queries - measured 390s -> well under a second locally at
-        # production-shaped scale (~4,000 quotes: 18.4s/20,002 queries ->
-        # 0.68s/7 queries). Also carries the prop-odds performance
-        # refactor from sha-6c0575d, the SGM zero-team-leg fix from
-        # sha-f89bc54, and the durable run lifecycle from sha-6ae6cb6, all
-        # unchanged. Verified in the exact published image before this pin
-        # (digest
-        # sha256:67dc70bb0a3d364d5df4a8eb2a0396eb5546325660cbe8a45d320f6ac4ac3df1):
-        # imports, psycopg3 URL normalization, curl, a real Squiggle fetch,
+        # Pinned to sha-551c724 (fix(pricing): enforce player and team
+        # snapshot identity) - a real production forensic review
+        # (LiveCycleRun id=4's audit) found PricingSnapshot's existence
+        # check and its database UniqueConstraint both omitted player_id
+        # for player-market rows, and PostgreSQL's NULL-distinct
+        # uniqueness semantics meant the constraint gave no real
+        # protection either; this image replaces the single constraint
+        # with two partial unique indexes (team identity uses native
+        # PostgreSQL `NULLS NOT DISTINCT`, no sentinel value), and the
+        # corresponding production migration (75715f635e7a) has already
+        # been applied and independently verified before this pin. On top
+        # of sha-9aa2c1a's prior fixes (CLI reporting no longer crashes
+        # uncaught while reporting a fail-closed audit result;
+        # create_observations_for_match preloads its match-scoped context
+        # once instead of 2-4 per-quote queries - measured 390s -> well
+        # under a second locally at production-shaped scale), this image
+        # also carries the SGM full-table-scan fix from sha-1646928
+        # (opportunity loading scoped to active matches - query count
+        # flattened from up to 1,841 to a constant 21), the prop-odds
+        # performance refactor from sha-6c0575d, the SGM zero-team-leg fix
+        # from sha-f89bc54, and the durable run lifecycle from
+        # sha-6ae6cb6, all unchanged. Verified in the exact published
+        # image before this pin (digest
+        # sha256:24f7815c6df9af0a45b653ba2ae343650916cef139e5283c4759a43c3c899c45):
+        # imports, psycopg3 URL normalization, curl, a real Squiggle
+        # fetch, migration head, both corrected index definitions, and
         # every one of the above fixes present by source inspection, and
         # both entrypoints (run-live-cycle CLI, app.main:app) - all with
         # zero production access. Do not repoint this at a later commit's
@@ -94,7 +98,7 @@ jobs:
             -e DATABASE_URL \
             -e THE_ODDS_API_KEY \
             -e APP_ENV=production \
-            ghcr.io/srat0029-ui/afl/backend:sha-9aa2c1a \
+            ghcr.io/srat0029-ui/afl/backend:sha-551c724 \
             python -m app.player_modelling.cli run-live-cycle
         # No further steps and no `|| true` anywhere in this job: the
         # container's exit code (0=ok, 1=partial, 2=blocked - see
