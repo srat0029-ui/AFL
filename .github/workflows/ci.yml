@@ -131,7 +131,8 @@ jobs:
             tests/test_best_opportunities.py \
             tests/test_prop_insights_normalized.py \
             tests/test_multi_builder.py \
-            tests/test_sgm_scope_performance.py
+            tests/test_sgm_scope_performance.py \
+            tests/test_pricing_snapshot_identity.py
 
   frontend-test:
     name: Frontend tests

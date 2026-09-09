@@ -40,19 +40,72 @@ from app.player_modelling.prop_settlement import (
 _RESULT_TO_OUTCOME = {RESULT_WON: "won", RESULT_LOST: "lost", RESULT_PUSH: "push"}
 
 
+def _team_snapshot_identity_clause(match_id: int, market_type: str, selection: str, line_value: float | None, model_version: str):
+    """The logical identity of a TEAM PricingSnapshot row (player_id is
+    always NULL here) - mirrors the database's own
+    uq_pricing_snapshot_team_identity partial index exactly, so the two can
+    never drift apart. `threshold` is deliberately NOT part of this key:
+    every team call site (h2h/line/total, see snapshot_round_pricing)
+    hardcodes threshold=None - confirmed exhaustively against every
+    current caller before this was written, not assumed."""
+    return (
+        PricingSnapshot.player_id.is_(None),
+        PricingSnapshot.match_id == match_id,
+        PricingSnapshot.market_type == market_type,
+        PricingSnapshot.selection == selection,
+        PricingSnapshot.line_value == line_value,
+        PricingSnapshot.model_version == model_version,
+    )
+
+
+def _player_snapshot_identity_clause(
+    match_id: int, player_id: int, market_type: str, selection: str, threshold: float | None, model_version: str,
+):
+    """The logical identity of a PLAYER PricingSnapshot row - mirrors the
+    database's own uq_pricing_snapshot_player_identity partial index
+    exactly. `line_value` is deliberately NOT part of this key: every
+    player call site (disposals/goals) hardcodes line_value=None - and
+    that shared NULL is exactly what let the OLD single constraint (and
+    the old existence check) silently fail to protect player identity
+    (PostgreSQL treats every NULL as distinct from every other NULL).
+    `player_id` is REQUIRED here and is the actual fix - two different
+    players at an otherwise-identical key are never the same snapshot."""
+    return (
+        PricingSnapshot.player_id == player_id,
+        PricingSnapshot.match_id == match_id,
+        PricingSnapshot.market_type == market_type,
+        PricingSnapshot.selection == selection,
+        PricingSnapshot.threshold == threshold,
+        PricingSnapshot.model_version == model_version,
+    )
+
+
 def snapshot_price(
     db: Session, *, match_id: int, player_id: int | None, market_family: str, market_type: str, selection: str,
     line_type: str | None, threshold: float | None, line_value: float | None, model_name: str, model_version: str,
     generated_at: datetime, data_cutoff: datetime, lineup_status: str | None, confidence_tier: str,
     model_probability: float, intelligence: MarketIntelligence | None = None, usage_regime_at_prediction: str | None = None,
 ) -> PricingSnapshot | None:
-    existing = db.scalar(
-        select(PricingSnapshot.id).where(
-            PricingSnapshot.match_id == match_id, PricingSnapshot.market_type == market_type,
-            PricingSnapshot.selection == selection, PricingSnapshot.threshold == threshold,
-            PricingSnapshot.line_value == line_value, PricingSnapshot.model_version == model_version,
-        )
+    # Explicit per-family identity (see the two helpers above) - a real
+    # production incident (LiveCycleRun id=4's forensic review) found the
+    # single universal key below used to omit player_id for player rows,
+    # which the database's own NULL-distinct uniqueness semantics couldn't
+    # catch either (player rows always have line_value=NULL). The audit
+    # confirmed no player rows have actually gone missing to date (same-
+    # cycle batches happened to be protected by an unrelated autoflush
+    # accident), but a player priced for the first time in a LATER,
+    # separate transaction after another player already held a committed
+    # row at the same threshold/model_version would have been silently
+    # skipped. This existence check no longer depends on autoflush timing
+    # for player-identity correctness - it holds within one transaction,
+    # after commit, across separate transactions, and against a fresh
+    # Session, because player_id is now always part of the WHERE clause.
+    identity = (
+        _team_snapshot_identity_clause(match_id, market_type, selection, line_value, model_version)
+        if player_id is None
+        else _player_snapshot_identity_clause(match_id, player_id, market_type, selection, threshold, model_version)
     )
+    existing = db.scalar(select(PricingSnapshot.id).where(*identity))
     if existing is not None:
         return None  # already frozen at this model version - never overwritten, never duplicated
 
