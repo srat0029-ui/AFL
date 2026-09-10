@@ -2362,3 +2362,78 @@ class PlacedBetRead(BaseModel):
     multi_group_id: str | None = None
     multi_tier: str | None = None
     multi_indicative_odds: float | None = None
+
+
+class PlayerContextSplitRead(BaseModel):
+    games: int
+    stat_sample_size: int
+    mean: float | None
+    median: float | None
+    milestone_rates: dict[str, float | None]
+    average_time_on_ground_pct: float | None
+    time_on_ground_sample_size: int
+
+
+class PlayerContextEvidenceRowRead(BaseModel):
+    match_id: int
+    season_year: int
+    round_number: int
+    round_name: str | None
+    scheduled_start: UtcDatetime
+    team_id: int
+    team_name: str
+    opponent_team_id: int | None
+    opponent_name: str | None
+    venue_name: str | None
+    teammate_played: bool
+    stat_value: int | None
+    time_on_ground_pct: int | None
+
+
+class PlayerContextConfounderRead(BaseModel):
+    considered: bool
+    method: str | None
+    reason: str | None
+
+
+class PlayerContextAdjustedEffectRead(BaseModel):
+    available: bool
+    value: float | None
+    games_with_baseline_teammate_in: int
+    games_with_baseline_teammate_out: int
+    method: str
+    explanation: str
+
+
+class PlayerContextConfidenceRead(BaseModel):
+    tier: str
+    warnings: list[str]
+
+
+class TagWatchRead(BaseModel):
+    status: str
+    verified_annotation_count: int
+    games_played: int | None
+    tag_rate: float | None
+    explanation: str
+
+
+class PlayerContextAnalysisRead(BaseModel):
+    player_id: int
+    player_name: str
+    teammate_id: int
+    teammate_name: str
+    team_id: int | None
+    team_name: str | None
+    stat: str
+    thresholds: list[int]
+    with_teammate: PlayerContextSplitRead
+    without_teammate: PlayerContextSplitRead
+    raw_difference: float | None
+    adjusted_effect: PlayerContextAdjustedEffectRead
+    confounders: dict[str, PlayerContextConfounderRead]
+    confidence: PlayerContextConfidenceRead
+    evidence: list[PlayerContextEvidenceRowRead]
+    role_analysis_available: bool
+    role_analysis_explanation: str
+    tag_watch: TagWatchRead

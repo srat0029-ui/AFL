@@ -18,6 +18,7 @@ from app.api.routes import (
     model_registry_v1,
     odds,
     placed_bets,
+    player_context,
     player_identity,
     player_models,
     player_projections,
@@ -80,6 +81,7 @@ app.include_router(backtests.router)
 app.include_router(player_models.router)
 app.include_router(goal_models.router)
 app.include_router(player_projections.router)
+app.include_router(player_context.router)
 app.include_router(real_market_tracking.router)
 app.include_router(player_identity.router)
 app.include_router(live_status.router)
