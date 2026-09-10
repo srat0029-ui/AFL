@@ -12,6 +12,7 @@ import ModelRegistryPage from "./pages/ModelRegistryPage";
 import PlacedBetsPage from "./pages/PlacedBetsPage";
 import PlayerInsightsPage from "./pages/PlayerInsightsPage";
 import PlayerProfilePage from "./pages/PlayerProfilePage";
+import PlayerResearchPage from "./pages/PlayerResearchPage";
 import LiveStatusPage from "./pages/LiveStatusPage";
 import PropInsightsPage from "./pages/PropInsightsPage";
 import RealMarketTrackingPage from "./pages/RealMarketTrackingPage";
@@ -47,6 +48,7 @@ const NAV_GROUPS: { label: string; links: { to: string; label: string }[] }[] = 
     links: [
       { to: "/round-context", label: "Matches" },
       { to: "/player-insights", label: "Player Insights" },
+      { to: "/player-research", label: "Player Research" },
       { to: "/prop-insights", label: "Prop Insights" },
       { to: "/weekly-review", label: "Weekly Review" },
       { to: "/team-selection", label: "Team Selection" },
@@ -229,6 +231,7 @@ function App() {
         <Route path="/matches/:matchId" element={<MatchDetailPage />} />
         <Route path="/players/:playerId" element={<PlayerProfilePage />} />
         <Route path="/player-insights" element={<PlayerInsightsPage />} />
+        <Route path="/player-research" element={<PlayerResearchPage />} />
         <Route path="/prop-insights" element={<PropInsightsPage />} />
         <Route path="/multis" element={<MultisPage />} />
         <Route path="/placed-bets" element={<PlacedBetsPage />} />
