@@ -559,3 +559,14 @@
   .research-filter-buttons { width: 100%; }
   .research-filter-buttons button { flex: 1; }
 }
+
+.research-live-controls { display: grid; grid-template-columns: 1fr 1fr auto; gap: 1.25rem; align-items: start; }
+.research-picker { min-width: 0; }
+.research-picker input { width: 100%; padding: .65rem; background: var(--bg-secondary, #111827); color: inherit; border: 1px solid var(--border, #334155); border-radius: .4rem; }
+.research-search-results { list-style: none; padding: 0; max-height: 18rem; overflow: auto; }
+.research-search-results button { width: 100%; text-align: left; padding: .65rem; }
+.research-search-results small { display: block; color: var(--text-muted); }
+.research-interpretation { display: grid; gap: .8rem; }
+.research-interpretation li { margin: .5rem 0; }
+.research-evidence-table caption { text-align: left; padding: .75rem; }
+@media (max-width: 760px) { .research-live-controls { grid-template-columns: 1fr; } }

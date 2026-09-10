@@ -3444,3 +3444,12 @@ export interface TradingMonitorOverview {
 export function fetchTradingMonitorOverview(limit?: number): Promise<TradingMonitorOverview> {
   return request(`/api/v1/trading-monitor/overview${limit ? `?limit=${limit}` : ""}`);
 }
+
+export function fetchPlayerContext(
+  playerId: number,
+  teammateId: number,
+  stat: import("../features/playerContext").ContextStat = "disposals",
+  signal?: AbortSignal,
+): Promise<import("../features/playerContext").PlayerContextResearch> {
+  return request(`/api/afl/players/${playerId}/context/${teammateId}?${new URLSearchParams({ stat })}`, { signal });
+}
