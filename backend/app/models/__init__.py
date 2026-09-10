@@ -82,6 +82,7 @@ from app.models.player_match_stat import PlayerMatchStat
 from app.models.player_model_run import PlayerDisposalPrediction, PlayerModelRun, PlayerModelValidationMetric
 from app.models.player_projection import PlayerDisposalProjection, PlayerGoalProjection
 from app.models.player_prop_market import PlayerPropMarket
+from app.models.player_tag_annotation import PlayerTagAnnotation
 from app.models.pricing_snapshot import PricingSnapshot
 from app.models.poisson_prediction import PoissonMatchPrediction
 from app.models.prop_market_observation import PropMarketObservation
@@ -128,6 +129,7 @@ __all__ = [
     "PlayerDisposalProjection",
     "PlayerGoalProjection",
     "PlayerPropMarket",
+    "PlayerTagAnnotation",
     "PropMarketObservation",
     "PlayerAlias",
     "LiveCycleRun",
