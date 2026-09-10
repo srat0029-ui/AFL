@@ -106,7 +106,7 @@ jobs:
             -e DATABASE_URL \
             -e THE_ODDS_API_KEY \
             -e APP_ENV=production \
-            ghcr.io/srat0029-ui/afl/backend:sha-18412a7 \
+            ghcr.io/srat0029-ui/afl/backend:sha-c069109 \
             python -m app.player_modelling.cli run-live-cycle
         # No further steps and no `|| true` anywhere in this job: the
         # container's exit code (0=ok, 1=partial, 2=blocked - see
