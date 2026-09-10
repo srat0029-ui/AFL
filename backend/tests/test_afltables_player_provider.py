@@ -339,3 +339,70 @@ def test_qf_is_parsed_as_the_same_kind_as_ef():
     by_raw = {l.round_label.raw: l for l in lines}
 
     assert by_raw["QF"].round_label.kind is RoundKind.FINALS_WEEK_1
+
+
+# Regression fixture for the 2026 Wildcard Final format change - real
+# AFL Tables 2026 pages show the round header as "...R24, R25, WF, EF..."
+# (Wildcard BEFORE the traditional Elimination/Qualifying week) - verified
+# against real fetched Carlton/Collingwood 2026 pages during the
+# investigation that added this support. Before RoundKind.WILDCARD_FINAL
+# existed, parse_round_label("WF") returned None, which made _parse_table
+# discard EVERY stat table on the page (all 22 share this one header row),
+# so the whole team-season silently came back with zero rows - the real
+# production bug this fixture regression-tests against.
+SAMPLE_GBG_HTML_WITH_WILDCARD_FINAL = """
+<html><body>
+<table class="sortable" border="2" width="100%"><thead><tr><th colspan="29">Disposals</th></tr>
+<tr><th align="left">Player</th><th width="2%">R24</th><th width="2%">WF</th><th width="2%">EF</th><th>Tot</th></tr></thead>
+<tbody>
+<tr><td><a href="players/A/Amy_Alpha.html">Alpha, Amy</a></td><td align="center">18</td><td align="center">21</td><td align="center">25</td><td align="center">64</td></tr>
+</tbody></table>
+
+<table class="sortable" border="2" width="100%"><thead><tr><th colspan="29">Subs</th></tr>
+<tr><th align="left">Player</th><th width="2%">R24</th><th width="2%">WF</th><th width="2%">EF</th><th>Tot</th></tr></thead>
+<tbody>
+<tr><td><a href="players/A/Amy_Alpha.html">Alpha, Amy</a></td><td align="center">-</td><td align="center">-</td><td align="center">-</td><td align="center">0/0</td></tr>
+</tbody></table>
+</body></html>
+"""
+
+
+def test_wildcard_final_column_no_longer_discards_the_whole_table():
+    """The exact production regression: a WF column in the header must not
+    make _parse_table return None for every table on the page."""
+    provider = AFLTablesPlayerStatsProvider(
+        transport=lambda url: (200, "text/html", SAMPLE_GBG_HTML_WITH_WILDCARD_FINAL), request_delay_seconds=0
+    )
+    lines = provider.get_team_season_player_stats("AFL", 2026, "Carlton")
+    assert len(lines) > 0, "WF in the round header must not discard every stat table"
+
+
+def test_wildcard_final_and_elimination_final_parsed_independently():
+    provider = AFLTablesPlayerStatsProvider(
+        transport=lambda url: (200, "text/html", SAMPLE_GBG_HTML_WITH_WILDCARD_FINAL), request_delay_seconds=0
+    )
+    lines = provider.get_team_season_player_stats("AFL", 2026, "Carlton")
+    by_raw = {l.round_label.raw: l for l in lines}
+
+    assert by_raw["WF"].round_label.kind is RoundKind.WILDCARD_FINAL
+    assert by_raw["EF"].round_label.kind is RoundKind.FINALS_WEEK_1
+    assert by_raw["WF"].round_label.kind is not by_raw["EF"].round_label.kind
+    assert by_raw["WF"].stats["disposals"] == 21
+    assert by_raw["EF"].stats["disposals"] == 25
+    assert by_raw["R24"].round_label.kind is RoundKind.HOME_AND_AWAY
+
+
+def test_wildcard_final_alone_without_elimination_final_still_parses():
+    """A team eliminated IN the Wildcard round (real 2026 Collingwood
+    shape: WF present, EF absent) must still parse cleanly - the fix must
+    not assume WF and EF always co-occur."""
+    html = SAMPLE_GBG_HTML_WITH_WILDCARD_FINAL.replace('<th width="2%">EF</th>', "").replace(
+        '<td align="center">25</td><td align="center">64</td>', '<td align="center">57</td>'
+    ).replace('<td align="center">-</td><td align="center">0/0</td>', '<td align="center">0/0</td>')
+    provider = AFLTablesPlayerStatsProvider(transport=lambda url: (200, "text/html", html), request_delay_seconds=0)
+    lines = provider.get_team_season_player_stats("AFL", 2026, "Collingwood")
+    by_raw = {l.round_label.raw: l for l in lines}
+
+    assert "WF" in by_raw
+    assert "EF" not in by_raw
+    assert by_raw["WF"].round_label.kind is RoundKind.WILDCARD_FINAL

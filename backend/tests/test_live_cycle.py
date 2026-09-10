@@ -244,6 +244,81 @@ def test_player_stat_source_failure_is_recoverable_and_other_steps_still_run(db_
     assert any(s["step"] == "refresh_prop_odds" for s in run.steps)
 
 
+def _add_completed_wildcard_final_match(db, sport_id, season_id, home_id, away_id):
+    """Real 2026 shape: round_number=25, name="Wildcard Finals" - the exact
+    Squiggle roundname verified live during the investigation that added
+    this support (api.squiggle.com.au/?q=games;year=2026)."""
+    round_ = Round(season_id=season_id, round_number=25, name="Wildcard Finals")
+    db.add(round_)
+    db.flush()
+    match = Match(
+        sport_id=sport_id, season_id=season_id, round_id=round_.id, home_team_id=home_id, away_team_id=away_id,
+        scheduled_start=NOW - timedelta(days=1), status=MatchStatus.COMPLETED,
+    )
+    db.add(match)
+    db.commit()
+    return match
+
+
+class FakeWildcardFinalPlayerStatsProvider:
+    """Returns real-shaped Wildcard Final PlayerStatLine rows instead of
+    hitting the network - proves _update_completed_player_stats (the exact
+    Live Cycle step) resolves and persists a WF row end-to-end."""
+
+    def get_team_season_player_stats(self, sport_code, season_year, team_name):
+        from app.providers.afl.round_labels import RoundKind, RoundLabel
+        from app.providers.types import PlayerStatLine
+
+        player_by_team = {
+            "Collingwood": ("Jones, Bob", "players/J/Bob_Jones.html", 30),
+            "Carlton": ("White, Dan", "players/W/Dan_White.html", 28),
+        }
+        if team_name not in player_by_team:
+            return []
+        name, source_id, disposals = player_by_team[team_name]
+        return [PlayerStatLine(
+            sport_code=sport_code, season_year=season_year,
+            round_label=RoundLabel(raw="WF", kind=RoundKind.WILDCARD_FINAL, round_number=None),
+            team_name=team_name, player_name=name, player_source_id=source_id,
+            recorded_at=datetime.now(timezone.utc), stats={"disposals": disposals},
+        )]
+
+
+def test_wildcard_final_stat_row_resolves_and_persists_end_to_end(db_session, monkeypatch):
+    """Part G: the real Live Cycle step, update_completed_player_stats,
+    correctly resolves and persists a 2026 Wildcard Final stat row - the
+    exact production path that was silently getting zero rows (via a
+    RuntimeError swallowed as a per-team-season failure) before
+    RoundKind.WILDCARD_FINAL existed."""
+    scheduled = _seed_scheduled_match(db_session)
+    wildcard_match = _add_completed_wildcard_final_match(
+        db_session, scheduled.sport_id, scheduled.season_id, scheduled.home_team_id, scheduled.away_team_id
+    )
+
+    monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
+    monkeypatch.setattr(live_cycle_module, "AFLTablesPlayerStatsProvider", lambda: FakeWildcardFinalPlayerStatsProvider())
+    monkeypatch.setattr(live_cycle_module, "TheOddsApiProvider", FakeOddsProvider)
+
+    from sqlalchemy import select
+
+    run = run_live_cycle(db_session)
+
+    player_stats_step = next(s for s in run.steps if s["step"] == "update_completed_player_stats")
+    assert player_stats_step["status"] == STEP_SUCCESS
+
+    stats = db_session.scalars(select(PlayerMatchStat)).all()
+    assert len(stats) == 2  # one per team's player
+    for stat in stats:
+        assert stat.match_id == wildcard_match.id
+        assert stat.disposals in (28, 30)
+
+    # Idempotent rerun: a second cycle must not duplicate or otherwise touch these rows.
+    run2 = run_live_cycle(db_session)
+    player_stats_step2 = next(s for s in run2.steps if s["step"] == "update_completed_player_stats")
+    assert player_stats_step2["status"] == STEP_SUCCESS
+    assert len(db_session.scalars(select(PlayerMatchStat)).all()) == 2
+
+
 def test_player_stat_update_skipped_cleanly_when_no_completed_matches_are_missing_stats(db_session, monkeypatch):
     _seed_scheduled_match(db_session)  # still SCHEDULED - nothing to update
     monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())

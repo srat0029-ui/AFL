@@ -17,6 +17,22 @@ def test_parses_r_prefixed_round_as_published_on_the_grid():
     assert label.raw == "R5"
 
 
+def test_parses_wf_as_wildcard_final():
+    """AFL Tables introduced WF (Wildcard Final) from the 2026 season - see
+    app/providers/afl/round_labels.py's module docstring for the real
+    AFL-Tables/Squiggle verification this was built from."""
+    label = parse_round_label("WF")
+    assert label.kind is RoundKind.WILDCARD_FINAL
+    assert label.round_number is None
+    assert label.is_final is True
+
+
+def test_wildcard_final_is_distinct_from_finals_week_1():
+    """Must never collapse WF into EF/QF's kind - Squiggle gives Wildcard
+    Finals its own distinct round name, not a share of "Finals Week 1"."""
+    assert parse_round_label("WF").kind is not parse_round_label("EF").kind
+
+
 def test_parses_ef_as_finals_week_1():
     label = parse_round_label("EF")
     assert label.kind is RoundKind.FINALS_WEEK_1
@@ -47,6 +63,15 @@ def test_unrecognised_label_returns_none_not_a_guess():
 
 
 def test_every_finals_kind_has_a_round_name_mapping():
-    for kind in (RoundKind.FINALS_WEEK_1, RoundKind.SEMI_FINALS, RoundKind.PRELIMINARY_FINAL, RoundKind.GRAND_FINAL):
+    for kind in (RoundKind.WILDCARD_FINAL, RoundKind.FINALS_WEEK_1, RoundKind.SEMI_FINALS, RoundKind.PRELIMINARY_FINAL, RoundKind.GRAND_FINAL):
         assert kind in ROUND_NAME_BY_FINALS_KIND
     assert RoundKind.HOME_AND_AWAY not in ROUND_NAME_BY_FINALS_KIND
+
+
+def test_wildcard_final_round_name_matches_real_squiggle_roundname():
+    """Verified live against api.squiggle.com.au/?q=games;year=2026 (round
+    25): roundname="Wildcard Finals" - the exact string Round.name will
+    hold once fixture ingestion sees it (app/ingestion/fixtures.py takes
+    Squiggle's roundname verbatim), so this mapping must match exactly,
+    not a guessed singular/plural variant."""
+    assert ROUND_NAME_BY_FINALS_KIND[RoundKind.WILDCARD_FINAL] == "Wildcard Finals"

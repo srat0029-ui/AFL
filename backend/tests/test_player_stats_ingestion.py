@@ -343,6 +343,100 @@ def test_finals_ambiguous_match_is_reported_not_guessed(db_session):
     assert "ambiguous" in result.unmatched[0].lower()
 
 
+# --- 2026 Wildcard Final support -------------------------------------------
+# Real fixtures (verified live against api.squiggle.com.au/?q=games;year=2026,
+# round 25, roundname="Wildcard Finals"): Western Bulldogs v Collingwood and
+# Melbourne v Carlton - TWO matches under the SAME finals round name in the
+# same season, exactly like "Finals Week 1" already has 4. Proves the
+# existing per-team resolution (unchanged by this fix) correctly
+# disambiguates between them rather than needing new logic.
+
+
+def _seed_wildcard_final_scenario(db_session):
+    sport = Sport(code="AFL", name="Australian Football League")
+    db_session.add(sport)
+    db_session.flush()
+    season = Season(sport_id=sport.id, year=2026)
+    db_session.add(season)
+    db_session.flush()
+    hna_round = Round(season_id=season.id, round_number=1)
+    wildcard_round = Round(season_id=season.id, round_number=25, name="Wildcard Finals")
+    db_session.add_all([hna_round, wildcard_round])
+    db_session.flush()
+
+    teams = {
+        name: Team(sport_id=sport.id, name=name, short_name=name[:3].upper())
+        for name in ("Western Bulldogs", "Collingwood", "Melbourne", "Carlton")
+    }
+    db_session.add_all(teams.values())
+    db_session.flush()
+
+    match_bulldogs_pies = Match(
+        sport_id=sport.id, season_id=season.id, round_id=wildcard_round.id,
+        home_team_id=teams["Western Bulldogs"].id, away_team_id=teams["Collingwood"].id,
+        scheduled_start=datetime(2026, 8, 28, 19, 40, tzinfo=timezone.utc),
+        status=MatchStatus.COMPLETED, home_score=110, away_score=95,
+    )
+    match_dees_blues = Match(
+        sport_id=sport.id, season_id=season.id, round_id=wildcard_round.id,
+        home_team_id=teams["Melbourne"].id, away_team_id=teams["Carlton"].id,
+        scheduled_start=datetime(2026, 8, 29, 19, 35, tzinfo=timezone.utc),
+        status=MatchStatus.COMPLETED, home_score=88, away_score=101,
+    )
+    db_session.add_all([match_bulldogs_pies, match_dees_blues])
+    db_session.commit()
+    return {
+        "sport": sport, "season": season, "teams": teams,
+        "match_bulldogs_pies": match_bulldogs_pies, "match_dees_blues": match_dees_blues,
+    }
+
+
+def _wf_row(team, player_name, player_source_id, disposals):
+    return PlayerStatLine(
+        sport_code="AFL", season_year=2026,
+        round_label=RoundLabel(raw="WF", kind=RoundKind.WILDCARD_FINAL, round_number=None),
+        team_name=team, player_name=player_name, player_source_id=player_source_id,
+        recorded_at=datetime.now(timezone.utc), stats={"disposals": disposals},
+    )
+
+
+def test_wildcard_final_rows_resolve_to_their_own_match_not_the_other_wildcard_match(db_session):
+    seed = _seed_wildcard_final_scenario(db_session)
+    rows = [
+        _wf_row("Western Bulldogs", "Smith, Alice", "players/S/Alice_Smith.html", 25),
+        _wf_row("Collingwood", "Jones, Bob", "players/J/Bob_Jones.html", 30),
+        _wf_row("Melbourne", "Brown, Carly", "players/B/Carly_Brown.html", 22),
+        _wf_row("Carlton", "White, Dan", "players/W/Dan_White.html", 28),
+    ]
+
+    result = ingest_player_stats(db_session, rows, season_year=2026)
+
+    assert result.stats_created == 4
+    assert result.unmatched == []
+    stats = {s.player.display_name: s for s in db_session.scalars(select(PlayerMatchStat)).all()}
+    assert stats["Alice Smith"].match_id == seed["match_bulldogs_pies"].id
+    assert stats["Bob Jones"].match_id == seed["match_bulldogs_pies"].id
+    assert stats["Carly Brown"].match_id == seed["match_dees_blues"].id
+    assert stats["Dan White"].match_id == seed["match_dees_blues"].id
+    # No cross-match contamination: neither Wildcard match's players leaked into the other's.
+    assert stats["Alice Smith"].match_id != stats["Carly Brown"].match_id
+    assert stats["Bob Jones"].disposals == 30
+    assert stats["Carly Brown"].disposals == 22
+
+
+def test_wildcard_final_ingest_is_idempotent_on_rerun(db_session):
+    _seed_wildcard_final_scenario(db_session)
+    rows = [_wf_row("Collingwood", "Jones, Bob", "players/J/Bob_Jones.html", 30)]
+
+    first = ingest_player_stats(db_session, rows, season_year=2026)
+    second = ingest_player_stats(db_session, rows, season_year=2026)
+
+    assert first.stats_created == 1
+    assert second.stats_created == 0
+    assert second.stats_unchanged == 1
+    assert len(db_session.scalars(select(PlayerMatchStat)).all()) == 1
+
+
 def _seed_bye_scenario(db_session):
     """Carlton plays rounds 1 and 3 in Squiggle (round 2 is a bye), but the
     AFL Tables source reports Carlton's data under labels "1" and "2" (its
