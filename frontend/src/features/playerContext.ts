@@ -61,3 +61,29 @@ export function explainDifference(research: PlayerContextResearch): string {
   const value = research.raw_difference;
   return `${research.player_name} averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${research.stat} with ${research.teammate_name} absent than present${value === 0 ? " (no difference)" : ""}. This is a historical association, not proof that the teammate caused the change or a prediction for the next game.`;
 }
+
+export type EvidenceOrder = "newest" | "oldest" | "highest" | "lowest";
+export interface EvidenceFilters {
+  teammate: "all" | "in" | "out";
+  season: number | null;
+  opponent: string;
+  order: EvidenceOrder;
+}
+export function selectEvidence(rows: ContextEvidenceGame[], filters: EvidenceFilters): ContextEvidenceGame[] {
+  const opponent = filters.opponent.trim().toLocaleLowerCase();
+  return rows.filter(row =>
+    (filters.teammate === "all" || row.teammate_played === (filters.teammate === "in")) &&
+    (filters.season === null || row.season_year === filters.season) &&
+    (!opponent || (row.opponent_name ?? "").toLocaleLowerCase().includes(opponent)),
+  ).sort((a, b) => {
+    if (filters.order === "highest" || filters.order === "lowest") {
+      // Missing statistics remain last; they must not be treated as zero.
+      if (a.stat_value === null && b.stat_value !== null) return 1;
+      if (b.stat_value === null && a.stat_value !== null) return -1;
+      if (a.stat_value !== null && b.stat_value !== null && a.stat_value !== b.stat_value)
+        return filters.order === "highest" ? b.stat_value - a.stat_value : a.stat_value - b.stat_value;
+    }
+    const chronological = a.scheduled_start.localeCompare(b.scheduled_start) || a.match_id - b.match_id;
+    return filters.order === "oldest" ? chronological : -chronological;
+  });
+}

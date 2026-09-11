@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter } from "react-router-dom";
 import { fetchPlayerContext } from "../api/client";
 import PlayerResearchPage, { ContextResults } from "../pages/PlayerResearchPage";
-import { formatValue, formatRate, type PlayerContextResearch } from "./playerContext";
+import { selectEvidence, formatValue, formatRate, type PlayerContextResearch } from "./playerContext";
 const split = { games: 0, stat_sample_size: 0, mean: null, median: null, milestone_rates: { "25+": null }, average_time_on_ground_pct: null, time_on_ground_sample_size: 0 };
 const fixture: PlayerContextResearch = {
   player_id: 101, player_name: "Player One", teammate_id: 202, teammate_name: "Player Two", team_id: null, team_name: null, stat: "disposals", thresholds: [25],
@@ -61,5 +61,34 @@ describe("context presentation", () => {
   it("labels tag evidence as historical", () => {
     const html = render({ ...fixture, tag_watch: { ...fixture.tag_watch, status: "available", tag_rate: .2, verified_annotation_count: 5, games_played: 25 } });
     expect(html).toContain("Historical verified tag annotation rate"); expect(html).toContain("20%"); expect(html).toContain("not a likelihood of being tagged next game");
+  });
+});
+
+describe("evidence exploration", () => {
+  const rows: import("./playerContext").ContextEvidenceGame[] = [
+    { match_id: 1, season_year: 2024, round_number: 1, round_name: null, scheduled_start: "2024-03-01T00:00:00Z", team_id: 1, team_name: "Club", opponent_team_id: 2, opponent_name: "Carlton", venue_name: null, teammate_played: true, stat_value: 0, time_on_ground_pct: null },
+    { match_id: 2, season_year: 2025, round_number: 2, round_name: null, scheduled_start: "2025-03-08T00:00:00Z", team_id: 1, team_name: "Club", opponent_team_id: 2, opponent_name: "Carlton", venue_name: null, teammate_played: false, stat_value: null, time_on_ground_pct: null },
+    { match_id: 3, season_year: 2025, round_number: 1, round_name: null, scheduled_start: "2025-03-01T00:00:00Z", team_id: 1, team_name: "Club", opponent_team_id: 3, opponent_name: "Melbourne", venue_name: null, teammate_played: false, stat_value: 30, time_on_ground_pct: null },
+  ];
+  it("combines season, teammate and case-insensitive opponent filters", () => {
+    expect(selectEvidence(rows, { teammate: "out", season: 2025, opponent: " CARL ", order: "newest" }).map(row => row.match_id)).toEqual([2]);
+    expect(selectEvidence(rows, { teammate: "in", season: 2025, opponent: "", order: "newest" })).toEqual([]);
+  });
+  it("sorts chronologically without mutating source evidence", () => {
+    expect(selectEvidence(rows, { teammate: "all", season: null, opponent: "", order: "newest" }).map(row => row.match_id)).toEqual([2, 3, 1]);
+    expect(selectEvidence(rows, { teammate: "all", season: null, opponent: "", order: "oldest" }).map(row => row.match_id)).toEqual([1, 3, 2]);
+    expect(rows.map(row => row.match_id)).toEqual([1, 2, 3]);
+  });
+  it("places missing stats last for either numeric sort while preserving real zero", () => {
+    expect(selectEvidence(rows, { teammate: "all", season: null, opponent: "", order: "highest" }).map(row => row.match_id)).toEqual([3, 1, 2]);
+    expect(selectEvidence(rows, { teammate: "all", season: null, opponent: "", order: "lowest" }).map(row => row.match_id)).toEqual([1, 3, 2]);
+  });
+  it("limits the initial table to twenty games with navigation and clear filter scope", () => {
+    const evidence = Array.from({ length: 25 }, (_, i) => ({ ...rows[0], match_id: i + 1 }));
+    const html = render({ ...fixture, evidence });
+    expect(html).toContain("Showing 1–20 of 25 matching games");
+    expect(html).toContain("Page 1 of 2");
+    expect(html).toContain("comparison above uses the full API history");
+    expect(html.match(/href="\/matches\//g)).toHaveLength(20);
   });
 });

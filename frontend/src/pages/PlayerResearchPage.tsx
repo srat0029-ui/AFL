@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import PlayerContextEvidence from "../components/PlayerContextEvidence";
 import Disclaimer from "../components/Disclaimer";
 import { ApiError, fetchPlayerContext, fetchPlayers, type PlayerSummary } from "../api/client";
 import { explainDifference, formatDifference, formatRate, formatValue, type ContextSplit, type ContextStat, type PlayerContextResearch } from "../features/playerContext";
@@ -30,7 +30,7 @@ function PlayerPicker({ label, value, onChange, excludeId }: {
         onChange(null); setQuery(next); setState({ loading: next.trim().length >= 2, error: null, players: [], total: 0 });
       }} />
     </label>
-    {value ? <p className="hint">Selected: {value.display_name} · {value.current_team?.name ?? "Team unavailable"}</p> : query.trim().length < 2 ? <p className="hint">Enter at least two characters.</p> : <div aria-live="polite">
+    {value ? <div className="research-selected-player"><p className="hint">Selected: {value.display_name} · {value.current_team?.name ?? "Team unavailable"}</p><button type="button" onClick={() => { onChange(null); setQuery(""); setState({ loading: false, error: null, players: [], total: 0 }); }}>Change {label.toLowerCase()}</button></div> : query.trim().length < 2 ? <p className="hint">Enter at least two characters.</p> : <div aria-live="polite">
       {state.loading && <p role="status">Searching players…</p>}
       {state.error && <div role="alert"><p>{state.error}</p><button type="button" onClick={() => { setState({ ...state, loading: true, error: null }); setRetry(retry + 1); }}>Retry search</button></div>}
       {!state.loading && !state.error && <>
@@ -45,7 +45,7 @@ function PlayerPicker({ label, value, onChange, excludeId }: {
 function SplitCard({ title, split, stat }: { title: string; split: ContextSplit; stat: string }) {
   return <article className="research-split-card">
     <div className="research-split-card__heading"><h3>{title}</h3><span className="chip chip--neutral">{split.games} games</span></div>
-    <strong className="research-split-card__average num">{formatValue(split.mean)}</strong>
+    <strong className={`research-split-card__average num ${split.mean == null ? "research-value-unavailable" : ""}`}>{formatValue(split.mean)}</strong>
     <span className="research-split-card__average-label">average {stat}</span>
     <p className="hint">{split.stat_sample_size} games with recorded {stat}; missing values are excluded.</p>
     <dl className="research-mini-stats">
@@ -53,23 +53,22 @@ function SplitCard({ title, split, stat }: { title: string; split: ContextSplit;
       {Object.entries(split.milestone_rates).map(([threshold, rate]) => <div key={threshold}><dt>{threshold} historical rate</dt><dd>{formatRate(rate)}</dd></div>)}
       <div><dt>Avg time on ground</dt><dd>{split.average_time_on_ground_pct == null ? "Unavailable" : `${formatValue(split.average_time_on_ground_pct)}%`}</dd></div>
     </dl>
+    {split.games > split.stat_sample_size && <p className="research-coverage-note">{split.games - split.stat_sample_size} games are missing {stat}. The averages and rates do not include those games.</p>}
     <p className="hint">Time on ground recorded in {split.time_on_ground_sample_size} games.</p>
   </article>;
 }
 
 export function ContextResults({ research }: { research: PlayerContextResearch }) {
-  const [filter, setFilter] = useState<"all" | "in" | "out">("all");
-  const evidence = research.evidence.filter(game => filter === "all" || game.teammate_played === (filter === "in"));
   const adjusted = research.adjusted_effect;
   const tag = research.tag_watch;
   return <>
-    <header className="research-header"><div className="research-header__copy"><span className="research-eyebrow">Historical player context</span><h2>{research.player_name}</h2><p>{research.team_name ?? "Club unavailable"} · Comparing games with and without {research.teammate_name}</p></div></header>
+    <header className="research-header research-results-header"><div className="research-header__copy"><span className="research-eyebrow">Historical player context</span><h2>{research.player_name}</h2><p>{research.team_name ?? "Club unavailable"} · Comparing games with and without {research.teammate_name}</p></div><span className={`research-confidence-badge ${research.confidence.tier === "insufficient_history" || research.confidence.tier === "lower_confidence" ? "research-confidence-badge--limited" : ""}`}>{research.confidence.tier.replaceAll("_", " ")}</span></header>
     {research.evidence.length === 0 && <div className="card" role="status">No recorded match evidence is available for this comparison.</div>}
     <section aria-labelledby="split-heading">
       <h2 id="split-heading">With and without comparison</h2>
       <p className="hint">The API restricts this history to the player’s most recent recorded club. “Without” means no same-club teammate match record was found, not a verified injury or selection status.</p>
       <div className="research-split-grid"><SplitCard title="With teammate" split={research.with_teammate} stat={research.stat} />
-        <div className="research-split-difference"><span>Without minus with</span><strong className="num">{formatDifference(research.raw_difference)}</strong><small>{research.stat}</small></div>
+        <div className="research-split-difference"><span>Without minus with</span><strong className={`num ${research.raw_difference == null ? "research-value-unavailable" : ""}`}>{formatDifference(research.raw_difference)}</strong><small>{research.stat}</small></div>
         <SplitCard title="Without teammate" split={research.without_teammate} stat={research.stat} /></div>
     </section>
     <section className="card research-interpretation" aria-labelledby="meaning-heading">
@@ -89,9 +88,7 @@ export function ContextResults({ research }: { research: PlayerContextResearch }
       {tag.status === "available" && tag.tag_rate != null && <p>Historical verified tag annotation rate: <strong>{formatRate(tag.tag_rate)}</strong>. This is not a likelihood of being tagged next game.</p>}
       <p className="hint">{tag.verified_annotation_count} verified annotations; {tag.games_played == null ? "game count unavailable" : `${tag.games_played} games played`}. No role adjustment or future tag probability is estimated on this page.</p>
     </section>
-    <section aria-labelledby="evidence-heading"><div className="section-row research-evidence-heading"><h2 id="evidence-heading">Inspect the evidence</h2><div className="research-filter-buttons" aria-label="Filter evidence games">{(["all", "in", "out"] as const).map(value => <button key={value} type="button" aria-pressed={filter === value} className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>{value === "all" ? "All games" : value === "in" ? "With teammate" : "Without teammate"}</button>)}</div></div>
-      {evidence.length === 0 ? <p role="status">No evidence games in this group.</p> : <div className="table-scroll research-evidence-table-wrap"><table className="data-table research-evidence-table"><caption>{evidence.length} recorded games · {research.stat}</caption><thead><tr><th scope="col">Match</th><th scope="col">Opponent</th><th scope="col">Venue</th><th scope="col">Teammate record</th><th scope="col">{research.stat}</th><th scope="col">Time on ground</th></tr></thead><tbody>{evidence.map(game => <tr key={game.match_id}><td><Link to={`/matches/${game.match_id}`}>{game.round_name ?? `Round ${game.round_number}`}, {game.season_year}</Link></td><td>{game.opponent_name ?? "Unavailable"}</td><td>{game.venue_name ?? "Unavailable"}</td><td>{game.teammate_played ? "With" : "Without"}</td><td className="num">{formatValue(game.stat_value, 0)}</td><td>{game.time_on_ground_pct == null ? "Unavailable" : `${game.time_on_ground_pct}%`}</td></tr>)}</tbody></table></div>}
-    </section>
+    <PlayerContextEvidence rows={research.evidence} stat={research.stat} />
   </>;
 }
 
@@ -120,6 +117,7 @@ export default function PlayerResearchPage() {
       <PlayerPicker key={player?.id ?? "none"} label="Teammate" value={teammate} onChange={setTeammate} excludeId={player?.id} />
       <label className="research-select-field">Statistic<select value={stat} onChange={event => setStat(event.target.value as ContextStat)}><option value="disposals">Disposals</option><option value="goals">Goals</option></select></label>
     </section>
+    {player && teammate && <div className="research-comparison-actions"><button type="button" onClick={() => { setPlayer(teammate); setTeammate(player); }}>Swap player and teammate</button><p className="hint">Swapping asks how the other player performs. The result may differ.</p></div>}
     {!key ? <p role="status">Select a player and a different teammate to see their recorded comparison.</p> : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} />}
     <Disclaimer />
   </main>;
