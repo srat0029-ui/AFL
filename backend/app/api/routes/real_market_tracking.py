@@ -13,6 +13,7 @@ from app.database import get_db
 from app.models import PropMarketObservation
 from app.player_modelling.prop_market_movement import compute_market_movement
 from app.player_modelling.real_market_tracking import load_real_market_tracking_report
+from app.prospective_boundary import prospective_tracking_start
 
 router = APIRouter(prefix="/api/afl", tags=["real-market-tracking"])
 
@@ -23,7 +24,7 @@ def get_real_market_tracking(
     market: str | None = Query(default=None, alias="market_type"),
     db: Session = Depends(get_db),
 ) -> RealMarketTrackingReportRead:
-    report = load_real_market_tracking_report(db, match_id=match_id, market_type=market)
+    report = load_real_market_tracking_report(db, match_id=match_id, market_type=market, boundary=prospective_tracking_start())
     return RealMarketTrackingReportRead(
         label=report.label,
         summary=report.summary.__dict__,

@@ -38,6 +38,7 @@ exists today.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -159,8 +160,15 @@ def _correlation_adjustment_bucket(snap: SgmPriceSnapshot) -> str | None:
     return None
 
 
-def load_sgm_prospective_evaluation(db: Session) -> SgmProspectiveEvaluationReport:
-    all_snaps = db.scalars(select(SgmPriceSnapshot)).all()
+def load_sgm_prospective_evaluation(db: Session, *, boundary: datetime | None = None) -> SgmProspectiveEvaluationReport:
+    """`boundary`: the formal PRODUCTION_PROSPECTIVE_TRACKING_START cutoff
+    (see app/prospective_boundary.py) — when given, scopes this report to
+    SgmPriceSnapshot.generated_at >= boundary. None (the default, and always
+    the value in local/dev/test) reports the full history unchanged."""
+    stmt = select(SgmPriceSnapshot)
+    if boundary is not None:
+        stmt = stmt.where(SgmPriceSnapshot.generated_at >= boundary)
+    all_snaps = db.scalars(stmt).all()
     settled = [s for s in all_snaps if s.outcome is not None]
 
     if not settled:

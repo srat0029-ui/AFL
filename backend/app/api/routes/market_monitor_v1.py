@@ -31,6 +31,7 @@ from app.market_monitor.case_persistence import set_manual_status
 from app.market_monitor.detector import active_match_ids, detect_match_anomalies
 from app.market_monitor.effectiveness import compute_alert_type_effectiveness, compute_effectiveness_summary, compute_research_category_summary
 from app.market_monitor.inbox import RankedCase, build_trader_inbox
+from app.prospective_boundary import prospective_tracking_start
 from app.market_monitor.prospective_coverage import compute_prospective_coverage
 from app.market_monitor.types import Alert
 from app.models import Match
@@ -189,9 +190,15 @@ def get_effectiveness(db: Session = Depends(get_db)) -> EffectivenessDashboardRe
     carries sample_label="Early evidence" instead of being presented as stable."""
     from datetime import datetime, timezone
 
+    boundary = prospective_tracking_start()
+
     def _view(capture_mode: str) -> EffectivenessViewRead:
-        summary = compute_effectiveness_summary(db, capture_mode=capture_mode)
-        by_type = compute_alert_type_effectiveness(db, capture_mode=capture_mode)
+        # boundary is only ever actually applied when capture_mode ==
+        # "prospective" - effectiveness.py's own _apply_boundary helper
+        # ignores it for "retrospective" so that deliberately separate,
+        # one-off historical-backfill view keeps its intended behavior.
+        summary = compute_effectiveness_summary(db, capture_mode=capture_mode, boundary=boundary)
+        by_type = compute_alert_type_effectiveness(db, capture_mode=capture_mode, boundary=boundary)
         return EffectivenessViewRead(
             summary=EffectivenessSummaryRead(**summary.__dict__),
             by_alert_type=[AlertTypeEffectivenessRead(**a.__dict__) for a in by_type],
@@ -199,8 +206,8 @@ def get_effectiveness(db: Session = Depends(get_db)) -> EffectivenessDashboardRe
 
     return EffectivenessDashboardRead(
         generated_at=datetime.now(timezone.utc),
-        coverage=ProspectiveCoverageRead(**compute_prospective_coverage(db).__dict__),
+        coverage=ProspectiveCoverageRead(**compute_prospective_coverage(db, boundary=boundary).__dict__),
         prospective=_view("prospective"),
         retrospective=_view("retrospective"),
-        research_category=ResearchCategorySummaryRead(**compute_research_category_summary(db, capture_mode="prospective").__dict__),
+        research_category=ResearchCategorySummaryRead(**compute_research_category_summary(db, capture_mode="prospective", boundary=boundary).__dict__),
     )

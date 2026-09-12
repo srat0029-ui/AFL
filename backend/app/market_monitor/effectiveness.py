@@ -17,6 +17,7 @@ clearly-labelled companion view, never blended into the primary metrics.
 
 import statistics
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -60,6 +61,18 @@ def _pct(n_num: int, n_den: int) -> float | None:
     return (n_num / n_den * 100.0) if n_den else None
 
 
+def _apply_boundary(stmt, capture_mode: str, boundary: datetime | None):
+    """The formal PRODUCTION_PROSPECTIVE_TRACKING_START cutoff (see
+    app/prospective_boundary.py) only ever applies to capture_mode=
+    "prospective" - a "retrospective" report is a deliberately separate,
+    one-off historical-backfill view (see this module's docstring) and
+    must keep its own intended historical behavior unchanged, so a
+    boundary is never applied to it even if one is passed in by mistake."""
+    if capture_mode == "prospective" and boundary is not None:
+        return stmt.where(AnomalyCaseSnapshot.frozen_at >= boundary)
+    return stmt
+
+
 @dataclass(frozen=True)
 class EffectivenessSummary:
     n_frozen_cases: int
@@ -92,8 +105,9 @@ def _sample_label(n: int) -> str:
     return "Early evidence" if n < EARLY_EVIDENCE_MIN_N else ""
 
 
-def compute_effectiveness_summary(db: Session, *, capture_mode: str = "prospective") -> EffectivenessSummary:
-    all_snaps = db.scalars(select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode)).all()
+def compute_effectiveness_summary(db: Session, *, capture_mode: str = "prospective", boundary: datetime | None = None) -> EffectivenessSummary:
+    stmt = _apply_boundary(select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode), capture_mode, boundary)
+    all_snaps = db.scalars(stmt).all()
     resolved = [s for s in all_snaps if s.resolved_at is not None]
     n_resolved = len(resolved)
 
@@ -117,10 +131,12 @@ def compute_effectiveness_summary(db: Session, *, capture_mode: str = "prospecti
     )
 
 
-def compute_alert_type_effectiveness(db: Session, *, capture_mode: str = "prospective") -> list[AlertTypeEffectiveness]:
-    resolved = db.scalars(
-        select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode, AnomalyCaseSnapshot.resolved_at.is_not(None))
-    ).all()
+def compute_alert_type_effectiveness(db: Session, *, capture_mode: str = "prospective", boundary: datetime | None = None) -> list[AlertTypeEffectiveness]:
+    stmt = _apply_boundary(
+        select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode, AnomalyCaseSnapshot.resolved_at.is_not(None)),
+        capture_mode, boundary,
+    )
+    resolved = db.scalars(stmt).all()
     out = []
     for family, codes in ALERT_TYPE_FAMILIES.items():
         cases = [s for s in resolved if any(c in (s.alert_types or []) for c in codes)]
@@ -152,10 +168,12 @@ class ResearchCategorySummary:
     pct_persisted: float | None
 
 
-def compute_research_category_summary(db: Session, *, capture_mode: str = "prospective") -> ResearchCategorySummary:
-    tagged = db.scalars(
-        select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode, AnomalyCaseSnapshot.research_category.is_not(None))
-    ).all()
+def compute_research_category_summary(db: Session, *, capture_mode: str = "prospective", boundary: datetime | None = None) -> ResearchCategorySummary:
+    stmt = _apply_boundary(
+        select(AnomalyCaseSnapshot).where(AnomalyCaseSnapshot.capture_mode == capture_mode, AnomalyCaseSnapshot.research_category.is_not(None)),
+        capture_mode, boundary,
+    )
+    tagged = db.scalars(stmt).all()
     resolved = [s for s in tagged if s.resolved_at is not None]
     n_resolved = len(resolved)
     n_converged = sum(1 for s in resolved if OUTLIER_CONVERGED in (s.outcome_codes or []) or MARKET_MOVED_TOWARD_MODEL in (s.outcome_codes or []))

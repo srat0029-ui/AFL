@@ -15,6 +15,7 @@ genuine same-moment model-vs-market comparison, not a mismatched one.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -115,8 +116,15 @@ def _probability_bucket(snap: PricingSnapshot) -> str | None:
     return None
 
 
-def load_prospective_evaluation(db: Session) -> ProspectiveEvaluationReport:
-    all_snaps = db.scalars(select(PricingSnapshot)).all()
+def load_prospective_evaluation(db: Session, *, boundary: datetime | None = None) -> ProspectiveEvaluationReport:
+    """`boundary`: the formal PRODUCTION_PROSPECTIVE_TRACKING_START cutoff
+    (see app/prospective_boundary.py) — when given, scopes this report to
+    PricingSnapshot.generated_at >= boundary. None (the default, and always
+    the value in local/dev/test) reports the full history unchanged."""
+    stmt = select(PricingSnapshot)
+    if boundary is not None:
+        stmt = stmt.where(PricingSnapshot.generated_at >= boundary)
+    all_snaps = db.scalars(stmt).all()
     settled = [s for s in all_snaps if s.outcome is not None]
 
     if not settled:

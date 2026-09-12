@@ -370,12 +370,25 @@ class CoverageMetrics:
     average_snapshots_per_player_market: float | None  # observations / distinct (player, match, bookmaker, market_type, line_type, threshold)
 
 
-def coverage_metrics(db: Session, observations: list[PropMarketObservation], *, match_id: int | None = None, market_type: str | None = None) -> CoverageMetrics:
+def coverage_metrics(
+    db: Session,
+    observations: list[PropMarketObservation],
+    *,
+    match_id: int | None = None,
+    market_type: str | None = None,
+    boundary: datetime | None = None,
+) -> CoverageMetrics:
     quote_stmt = select(PlayerPropMarket).where(PlayerPropMarket.source != "manual")
     if match_id is not None:
         quote_stmt = quote_stmt.where(PlayerPropMarket.match_id == match_id)
     if market_type is not None:
         quote_stmt = quote_stmt.where(PlayerPropMarket.market_type == market_type)
+    if boundary is not None:
+        # Keeps total_raw_quotes semantically aligned with the
+        # boundary-scoped frozen_observations count it sits beside in the
+        # report - see this module's own docstring on why the two numbers
+        # must never silently drift out of the same evaluation window.
+        quote_stmt = quote_stmt.where(PlayerPropMarket.recorded_at >= boundary)
     total_raw_quotes = len(db.scalars(quote_stmt).all())
 
     player_market_lines = {(o.player_id, o.match_id, o.bookmaker_id, o.market_type, o.line_type, o.threshold) for o in observations}
@@ -469,17 +482,27 @@ class RealMarketTrackingReport:
 
 
 def load_real_market_tracking_report(
-    db: Session, *, match_id: int | None = None, market_type: str | None = None
+    db: Session, *, match_id: int | None = None, market_type: str | None = None, boundary: datetime | None = None
 ) -> RealMarketTrackingReport:
     """The single entry point the API/UI layer should call. Deliberately
     NOT combined with anything from disposal_backtest.py/goal_backtest.py
     (the synthetic 2016-2025 evaluation) — this is real logged data only,
-    labelled as such throughout (Section 9)."""
+    labelled as such throughout (Section 9).
+
+    `boundary`: the formal PRODUCTION_PROSPECTIVE_TRACKING_START cutoff
+    (see app/prospective_boundary.py) — when given, scopes this report to
+    PropMarketObservation.observed_at >= boundary. None (the default, and
+    always the value in local/dev/test) reports the full history unchanged,
+    exactly as before this boundary existed. Rows before the boundary are
+    never touched, deleted, or reclassified — only excluded from this
+    read-time aggregation."""
     stmt = select(PropMarketObservation)
     if match_id is not None:
         stmt = stmt.where(PropMarketObservation.match_id == match_id)
     if market_type is not None:
         stmt = stmt.where(PropMarketObservation.market_type == market_type)
+    if boundary is not None:
+        stmt = stmt.where(PropMarketObservation.observed_at >= boundary)
     observations = db.scalars(stmt).all()
 
     mvm = model_vs_market(observations)
@@ -502,6 +525,6 @@ def load_real_market_tracking_report(
         lineup_buckets=lineup_status_buckets(observations),
         timing_buckets=timing_buckets(db, observations),
         overall_sample_level=sample_size_level(_unique_player_matches_settled_binary(observations)),
-        coverage=coverage_metrics(db, observations, match_id=match_id, market_type=market_type),
+        coverage=coverage_metrics(db, observations, match_id=match_id, market_type=market_type, boundary=boundary),
         market_open_timing=market_open_timing(db, observations),
     )
