@@ -325,6 +325,30 @@ authoritative boundary for genuine prospective evidence.** Nothing is ever
 retroactively imported into a prospective table after that boundary is
 established.
 
+**This boundary has now been formally established as `2026-09-10T08:32:51.944004+00:00`**
+— `live_cycle_runs.id=7.run_at`, the first Live Cycle run to reach
+`overall_status="ok"` after the 2026 Wildcard Final player-stat fix
+(commit `c069109`, pinned image `sha-c069109`). The immediately preceding
+dispatch (`live_cycle_runs.id=6`) was cancelled by the workflow's own
+30-minute timeout partway through; its committed writes are genuine
+production history and are preserved untouched, but its run is
+`id=6.run_at`-dated *before* this boundary and is therefore excluded from
+the formal prospective evaluation window.
+
+Represented as a source-controlled constant, `PRODUCTION_PROSPECTIVE_TRACKING_START`
+in `backend/app/prospective_boundary.py` — deliberately not an environment
+variable (a missing/misconfigured env var could silently disable
+filtering; a literal constant shipped in the same commit as the filtering
+code cannot be). Formal prospective reports (Real Market Tracking,
+`PricingSnapshot`/`SgmPriceSnapshot` prospective evaluation, Market
+Monitor effectiveness) filter their queries by this boundary at read
+time only. **Pre-boundary rows are never deleted, mutated, backdated, or
+reclassified — they remain fully present in the database, simply
+excluded from the formal post-boundary evaluation aggregates.** Current
+operational-state metrics (e.g. how many matches are being monitored
+right now, how many cases are currently open) are deliberately never
+filtered by this boundary — see `market_monitor/prospective_coverage.py`.
+
 ## Live-cycle scheduling (GitHub Actions, not a Render worker)
 
 `.github/workflows/live-cycle.yml` runs `python -m app.player_modelling.cli

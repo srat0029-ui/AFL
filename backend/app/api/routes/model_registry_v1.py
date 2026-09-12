@@ -35,6 +35,7 @@ from app.player_modelling.model_registry import (
 )
 from app.player_modelling.prospective_evaluation import ProspectiveSplit, load_prospective_evaluation
 from app.player_modelling.sgm_prospective_evaluation import SgmProspectiveSplit, load_sgm_prospective_evaluation
+from app.prospective_boundary import prospective_tracking_start
 
 router = APIRouter(prefix="/api/v1/model-registry", tags=["model-registry-v1"])
 
@@ -83,7 +84,7 @@ def _split_read(s: ProspectiveSplit) -> ProspectiveSplitRead:
 
 @router.get("/prospective-evaluation", response_model=ProspectiveEvaluationRead)
 def get_prospective_evaluation(db: Session = Depends(get_db)) -> ProspectiveEvaluationRead:
-    report = load_prospective_evaluation(db)
+    report = load_prospective_evaluation(db, boundary=prospective_tracking_start())
     return ProspectiveEvaluationRead(
         has_settled_data=report.has_settled_data, n_frozen_total=report.n_frozen_total, n_settled=report.n_settled,
         n_unique_player_match_events=report.n_unique_player_match_events,
@@ -111,7 +112,7 @@ def get_sgm_prospective_evaluation(db: Session = Depends(get_db)) -> SgmProspect
     independence (and a genuine bookmaker SGM price, when one exists - see
     sgm_prospective_evaluation.py's module docstring for why that's always
     empty today), not against market consensus."""
-    report = load_sgm_prospective_evaluation(db)
+    report = load_sgm_prospective_evaluation(db, boundary=prospective_tracking_start())
     return SgmProspectiveEvaluationRead(
         has_settled_data=report.has_settled_data, n_frozen_total=report.n_frozen_total, n_settled=report.n_settled,
         n_unique_combos=report.n_unique_combos,
