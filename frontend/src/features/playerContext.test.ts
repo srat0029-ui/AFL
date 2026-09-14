@@ -39,6 +39,16 @@ describe("context presentation", () => {
     expect(html).toContain("Select a player to see which teammates are worth investigating");
     expect(html).not.toContain("Harry Sheezel");
   });
+  it("keeps the existing teammate search and statistic controls intact, and hides the mode switcher until a player is chosen", () => {
+    const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(PlayerResearchPage)));
+    expect(html).toContain("Teammate");
+    expect(html).toContain("Statistic");
+    expect(html).toContain("Disposals");
+    expect(html).toContain("Goals");
+    // The Teammates/Opponents mode toggle only appears once a player is
+    // selected - with no player yet, it must not render at all.
+    expect(html).not.toContain('aria-label="Choose research mode"');
+  });
   it("shows missing history and backend explanations", () => {
     const html = render(fixture);
     for (const text of ["No recorded match evidence", "Unavailable", "insufficient history", "Fewer than 3", "Adjusted difference unavailable", "Not enough baseline-eligible games.", "Role-conditioned analysis is unavailable.", "Not enough verified tagging annotations."]) expect(html).toContain(text);

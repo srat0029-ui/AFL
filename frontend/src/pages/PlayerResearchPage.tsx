@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import PlayerContextEvidence from "../components/PlayerContextEvidence";
 import TeammateDiscoveryPanel from "../components/TeammateDiscoveryPanel";
+import OpponentDiscoveryPanel from "../components/OpponentDiscoveryPanel";
+import OpponentContextEvidence from "../components/OpponentContextEvidence";
 import Disclaimer from "../components/Disclaimer";
-import { ApiError, fetchPlayer, fetchPlayerContext, fetchPlayers, fetchTeammateDiscovery, type PlayerSummary } from "../api/client";
-import { explainDifference, formatDifference, formatRate, formatValue, type ContextSplit, type ContextStat, type PlayerContextResearch, type TeammateCandidate, type TeammateDiscoveryResult } from "../features/playerContext";
+import { ApiError, fetchOpponentContext, fetchOpponentDiscovery, fetchPlayer, fetchPlayerContext, fetchPlayers, fetchTeammateDiscovery, type PlayerSummary } from "../api/client";
+import { explainDifference, explainOpponentDifference, formatDifference, formatRate, formatValue, type ContextSplit, type ContextStat, type OpponentCandidate, type OpponentContextResearch, type OpponentDiscoveryResult, type PlayerContextResearch, type TeammateCandidate, type TeammateDiscoveryResult } from "../features/playerContext";
 import "./PlayerResearchPage.css";
+
+type ResearchMode = "teammates" | "opponents";
 
 function PlayerPicker({ label, value, onChange, excludeId }: {
   label: string; value: PlayerSummary | null; onChange: (player: PlayerSummary | null) => void; excludeId?: number;
@@ -93,7 +97,38 @@ export function ContextResults({ research }: { research: PlayerContextResearch }
   </>;
 }
 
+export function OpponentContextResults({ research }: { research: OpponentContextResearch }) {
+  const adjusted = research.adjusted_effect;
+  return <>
+    <header className="research-header research-results-header"><div className="research-header__copy"><span className="research-eyebrow">Historical opponent context</span><h2>{research.player_name}</h2><p>{research.team_name ?? "Club unavailable"} · Comparing games against {research.opponent_team_name} with games against other opponents</p></div><span className={`research-confidence-badge ${research.confidence.tier === "insufficient_history" || research.confidence.tier === "lower_confidence" ? "research-confidence-badge--limited" : ""}`}>{research.confidence.tier.replaceAll("_", " ")}</span></header>
+    {research.evidence.length === 0 && <div className="card" role="status">No recorded match evidence is available for this comparison.</div>}
+    <section aria-labelledby="opponent-split-heading">
+      <h2 id="opponent-split-heading">Against opponent vs other opponents</h2>
+      <p className="hint">{research.scope_explanation} “Other opponents” means every other recorded opponent this player has faced at that club, not one specific rival.</p>
+      <div className="research-split-grid"><SplitCard title={`Against ${research.opponent_team_name}`} split={research.against_opponent} stat={research.stat} />
+        <div className="research-split-difference"><span>Against minus other opponents</span><strong className={`num ${research.raw_difference == null ? "research-value-unavailable" : ""}`}>{formatDifference(research.raw_difference)}</strong><small>{research.stat}</small></div>
+        <SplitCard title="Against other opponents" split={research.against_other_opponents} stat={research.stat} /></div>
+    </section>
+    <section className="card research-interpretation" aria-labelledby="opponent-meaning-heading">
+      <h2 id="opponent-meaning-heading">What this means</h2><p>{explainOpponentDifference(research)}</p>
+      <h3>Sample-size confidence: {research.confidence.tier.replaceAll("_", " ")}</h3>
+      <p>Based on {research.against_opponent.games} games against {research.opponent_team_name} and {research.against_other_opponents.games} against other opponents. Confidence is the API’s sample-size assessment, not a probability that the effect is real.</p>
+      <ul>{research.confidence.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul>
+      <h3>{adjusted.available && adjusted.value != null ? `Adjusted difference: ${formatDifference(adjusted.value)} ${research.stat}` : "Adjusted difference unavailable"}</h3>
+      <p>{adjusted.explanation}</p>
+      <p className="hint">Baseline-eligible games: {adjusted.games_with_baseline_against_opponent} against this opponent, {adjusted.games_with_baseline_other_opponents} against other opponents.</p>
+      <details><summary>What the adjustment can account for</summary><ul>{Object.entries(research.confounders).map(([name, note]) => <li key={name}><strong>{name.replaceAll("_", " ")}: {note.considered ? "included in the method" : "not controlled for"}.</strong> {note.method ?? note.reason ?? "No explanation available."}</li>)}</ul></details>
+    </section>
+    <section className="card research-interpretation" aria-labelledby="opponent-role-heading">
+      <h2 id="opponent-role-heading">Role evidence</h2>
+      <h3>Role analysis {research.role_analysis_available ? "status" : "unavailable"}</h3><p>{research.role_analysis_explanation}</p>
+    </section>
+    <OpponentContextEvidence rows={research.evidence} stat={research.stat} selectedOpponentName={research.opponent_team_name} />
+  </>;
+}
+
 export default function PlayerResearchPage() {
+  const [mode, setMode] = useState<ResearchMode>("teammates");
   const [player, setPlayer] = useState<PlayerSummary | null>(null);
   const [teammate, setTeammate] = useState<PlayerSummary | null>(null);
   const [stat, setStat] = useState<ContextStat>("disposals");
@@ -145,21 +180,77 @@ export default function PlayerResearchPage() {
     }
   }
 
+  // Opponent context - "against this opponent vs against other opponents".
+  const [opponent, setOpponent] = useState<{ id: number; name: string } | null>(null);
+  const [opponentRetry, setOpponentRetry] = useState(0);
+  const [opponentResultState, setOpponentResultState] = useState<{ key: string; loading: boolean; data: OpponentContextResearch | null; error: string | null }>({ key: "", loading: false, data: null, error: null });
+  const opponentKey = player && opponent ? `${player.id}/${opponent.id}/${stat}/${opponentRetry}` : "";
+  useEffect(() => {
+    if (mode !== "opponents" || !player || !opponent) return;
+    const controller = new AbortController();
+    setOpponentResultState({ key: opponentKey, loading: true, data: null, error: null });
+    fetchOpponentContext(player.id, opponent.id, stat, controller.signal).then(data => {
+      if (!controller.signal.aborted) setOpponentResultState({ key: opponentKey, loading: false, data, error: null });
+    }).catch(error => {
+      if (!controller.signal.aborted) setOpponentResultState({ key: opponentKey, loading: false, data: null, error: error instanceof ApiError && error.status === 404 ? `Opponent context could not be found. ${error.message}` : error instanceof Error ? error.message : "Unable to load opponent context." });
+    });
+    return () => controller.abort();
+  }, [mode, player, opponent, stat, opponentKey]);
+
+  // Opponent discovery - which opponents are worth investigating for the
+  // selected player, before a specific opponent has been chosen.
+  const [opponentDiscoveryRetry, setOpponentDiscoveryRetry] = useState(0);
+  const opponentDiscoveryKey = mode === "opponents" && player ? `${player.id}/${stat}/${opponentDiscoveryRetry}` : "";
+  const [opponentDiscoveryState, setOpponentDiscoveryState] = useState<{ key: string; loading: boolean; data: OpponentDiscoveryResult | null; error: string | null }>({ key: "", loading: false, data: null, error: null });
+  useEffect(() => {
+    if (mode !== "opponents" || !player) { setOpponentDiscoveryState({ key: "", loading: false, data: null, error: null }); return; }
+    const controller = new AbortController();
+    setOpponentDiscoveryState({ key: opponentDiscoveryKey, loading: true, data: null, error: null });
+    fetchOpponentDiscovery(player.id, stat, controller.signal).then(data => {
+      if (!controller.signal.aborted) setOpponentDiscoveryState({ key: opponentDiscoveryKey, loading: false, data, error: null });
+    }).catch(error => {
+      if (!controller.signal.aborted) setOpponentDiscoveryState({ key: opponentDiscoveryKey, loading: false, data: null, error: error instanceof Error ? error.message : "Unable to load opponent suggestions." });
+    });
+    return () => controller.abort();
+  }, [mode, player, stat, opponentDiscoveryKey]);
+
+  function handleSelectOpponentCandidate(candidate: OpponentCandidate) {
+    setOpponent({ id: candidate.opponent_team_id, name: candidate.opponent_team_name });
+  }
+
+  function handleModeChange(next: ResearchMode) {
+    setMode(next);
+  }
+
   return <main className="player-research-page">
-    <header><h1>Player Research</h1><p className="hint">Select a player to discover which teammates are worth investigating, or search for a specific teammate to compare directly.</p></header>
+    <header><h1>Player Research</h1><p className="hint">Select a player to discover which teammates or opponents are worth investigating, or search for a specific teammate to compare directly.</p></header>
     <section className="card research-live-controls" aria-label="Choose comparison">
-      <PlayerPicker label="Player" value={player} onChange={next => { setPlayer(next); setTeammate(null); setResolveError(null); }} />
-      <PlayerPicker key={player?.id ?? "none"} label="Teammate" value={teammate} onChange={setTeammate} excludeId={player?.id} />
+      <PlayerPicker label="Player" value={player} onChange={next => { setPlayer(next); setTeammate(null); setOpponent(null); setResolveError(null); }} />
+      {mode === "teammates" && <PlayerPicker key={player?.id ?? "none"} label="Teammate" value={teammate} onChange={setTeammate} excludeId={player?.id} />}
       <label className="research-select-field">Statistic<select value={stat} onChange={event => setStat(event.target.value as ContextStat)}><option value="disposals">Disposals</option><option value="goals">Goals</option></select></label>
     </section>
-    {player && teammate && <div className="research-comparison-actions"><button type="button" onClick={() => { setPlayer(teammate); setTeammate(player); }}>Swap player and teammate</button><button type="button" onClick={() => setTeammate(null)}>Choose a different teammate</button><p className="hint">Swapping asks how the other player performs. The result may differ.</p></div>}
-    {player && !teammate && <section aria-labelledby="discovery-heading">
-      <div className="section-row research-section-heading"><div><h2 id="discovery-heading">Teammates worth investigating</h2><p className="hint">Ranked by evidence sufficiency and shared-match sample size — never by the size of a statistical difference. Or search for a specific teammate above.</p></div></div>
-      <TeammateDiscoveryPanel playerName={player.display_name} stat={stat} loading={discoveryState.loading || discoveryState.key !== discoveryKey} error={discoveryState.error} discovery={discoveryState.data} onRetry={() => setDiscoveryRetry(r => r + 1)} onSelect={handleSelectCandidate} />
-      {resolvingCandidateId != null && <p role="status">Loading teammate…</p>}
-      {resolveError && <div className="error-banner" role="alert"><p>{resolveError}</p></div>}
-    </section>}
-    {!player ? <p role="status">Select a player to see which teammates are worth investigating.</p> : !teammate ? null : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} />}
+    {player && <div className="research-filter-buttons" role="group" aria-label="Choose research mode">
+      <button type="button" aria-pressed={mode === "teammates"} className={mode === "teammates" ? "is-active" : ""} onClick={() => handleModeChange("teammates")}>Teammates</button>
+      <button type="button" aria-pressed={mode === "opponents"} className={mode === "opponents" ? "is-active" : ""} onClick={() => handleModeChange("opponents")}>Opponents</button>
+    </div>}
+    {mode === "teammates" && <>
+      {player && teammate && <div className="research-comparison-actions"><button type="button" onClick={() => { setPlayer(teammate); setTeammate(player); }}>Swap player and teammate</button><button type="button" onClick={() => setTeammate(null)}>Choose a different teammate</button><p className="hint">Swapping asks how the other player performs. The result may differ.</p></div>}
+      {player && !teammate && <section aria-labelledby="discovery-heading">
+        <div className="section-row research-section-heading"><div><h2 id="discovery-heading">Teammates worth investigating</h2><p className="hint">Ranked by evidence sufficiency and shared-match sample size — never by the size of a statistical difference. Or search for a specific teammate above.</p></div></div>
+        <TeammateDiscoveryPanel playerName={player.display_name} stat={stat} loading={discoveryState.loading || discoveryState.key !== discoveryKey} error={discoveryState.error} discovery={discoveryState.data} onRetry={() => setDiscoveryRetry(r => r + 1)} onSelect={handleSelectCandidate} />
+        {resolvingCandidateId != null && <p role="status">Loading teammate…</p>}
+        {resolveError && <div className="error-banner" role="alert"><p>{resolveError}</p></div>}
+      </section>}
+      {!player ? <p role="status">Select a player to see which teammates are worth investigating.</p> : !teammate ? null : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} />}
+    </>}
+    {mode === "opponents" && <>
+      {player && opponent && <div className="research-comparison-actions"><button type="button" onClick={() => setOpponent(null)}>Choose a different opponent</button></div>}
+      {player && !opponent && <section aria-labelledby="opponent-discovery-heading">
+        <div className="section-row research-section-heading"><div><h2 id="opponent-discovery-heading">Opponents worth investigating</h2><p className="hint">Ranked by evidence sufficiency and sample size — never by the size of a statistical difference.</p></div></div>
+        <OpponentDiscoveryPanel playerName={player.display_name} stat={stat} loading={opponentDiscoveryState.loading || opponentDiscoveryState.key !== opponentDiscoveryKey} error={opponentDiscoveryState.error} discovery={opponentDiscoveryState.data} onRetry={() => setOpponentDiscoveryRetry(r => r + 1)} onSelect={handleSelectOpponentCandidate} />
+      </section>}
+      {!player ? <p role="status">Select a player to see which opponents are worth investigating.</p> : !opponent ? null : opponentResultState.key !== opponentKey || opponentResultState.loading ? <p role="status">Loading opponent context…</p> : opponentResultState.error ? <div className="error-banner" role="alert"><p>{opponentResultState.error}</p><button type="button" onClick={() => setOpponentRetry(r => r + 1)}>Retry comparison</button></div> : opponentResultState.data && <OpponentContextResults key={opponentKey} research={opponentResultState.data} />}
+    </>}
     <Disclaimer />
   </main>;
 }
