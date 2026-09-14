@@ -3318,6 +3318,169 @@ export function fetchProspectiveEvidenceCenter(): Promise<ProspectiveEvidenceCen
   return request("/api/v1/prospective-evidence-center");
 }
 
+// --- Market Movement Explorer (/api/v1/market-movement/*) -------------------
+// A read-only composition/analysis layer over already-persisted bookmaker
+// quote history (OddsQuote/PlayerPropMarket) and model-side value history
+// (ModelValueObservation) — see backend
+// app/player_modelling/market_movement_series.py. Descriptive only: never
+// call a movement an edge, never call the latest observed price an
+// official closing line, never align bookmaker/model timestamps onto a
+// shared axis.
+
+export interface MarketMovementMatchContext {
+  match_id: number;
+  home_team: string;
+  away_team: string;
+  scheduled_start: string;
+  status: string;
+}
+
+export interface MarketMovementMatchWithHistory {
+  match: MarketMovementMatchContext;
+  n_odds_quotes: number;
+  n_player_prop_quotes: number;
+  n_model_observations: number;
+  earliest_observed_at: string | null;
+  latest_observed_at: string | null;
+}
+
+export function fetchMarketMovementMatches(limit = 200): Promise<MarketMovementMatchWithHistory[]> {
+  return request(`/api/v1/market-movement/matches?limit=${limit}`);
+}
+
+export interface TeamMarketOption {
+  market_type: string;
+  selection: string;
+  line_value: number | null;
+  n_quotes: number;
+  bookmakers: string[];
+  first_observed_at: string;
+  latest_observed_at: string;
+  has_model_series: boolean;
+}
+
+export interface PlayerMarketOption {
+  player_id: number;
+  player_name: string;
+  market_type: string;
+  line_type: string;
+  threshold: number;
+  n_quotes: number;
+  bookmakers: string[];
+  first_observed_at: string;
+  latest_observed_at: string;
+  has_model_series: boolean;
+}
+
+export interface MatchMarketOptions {
+  match: MarketMovementMatchContext;
+  team_markets: TeamMarketOption[];
+  player_markets: PlayerMarketOption[];
+}
+
+export function fetchMarketMovementOptions(matchId: number): Promise<MatchMarketOptions> {
+  return request(`/api/v1/market-movement/matches/${matchId}/markets`);
+}
+
+export interface BookmakerQuotePoint {
+  bookmaker_name: string;
+  price_decimal: number;
+  raw_implied_probability: number;
+  recorded_at: string;
+  hours_to_kickoff: number;
+  source: string;
+  is_closing_line: boolean;
+}
+
+export interface ConsensusPoint {
+  as_of: string;
+  hours_to_kickoff: number;
+  consensus_probability: number;
+  n_bookmakers: number;
+  n_devigged: number;
+  spread: number;
+}
+
+export interface ModelObservationPoint {
+  value_type: string;
+  value_kind: string;
+  value: number;
+  model_name: string;
+  model_version: string;
+  recorded_at: string;
+  hours_to_kickoff: number;
+  lineup_status: string | null;
+}
+
+export interface LineupStatusChange {
+  from_status: string | null;
+  to_status: string | null;
+  changed_at: string;
+  hours_to_kickoff: number;
+  value_changed_at_same_observation: boolean;
+  value_before: number;
+  value_after: number;
+}
+
+export interface SeriesEndpoint {
+  probability: number;
+  recorded_at: string;
+  hours_to_kickoff: number;
+  price_decimal: number | null;
+  bookmaker_name: string | null;
+}
+
+export interface LargestMovement {
+  from_probability: number;
+  to_probability: number;
+  absolute_change: number;
+  at: string;
+  hours_to_kickoff: number;
+}
+
+export interface SeriesSummary {
+  label: string;
+  n_observations: number;
+  insufficient_history: boolean;
+  first_observed: SeriesEndpoint | null;
+  latest_observed_pre_kickoff: SeriesEndpoint | null;
+  total_probability_change: number | null;
+  largest_single_movement: LargestMovement | null;
+}
+
+export interface MarketMovementSeries {
+  match: MarketMovementMatchContext;
+  identity_label: string;
+  methodology_notes: string[];
+  bookmaker_quotes: BookmakerQuotePoint[];
+  bookmaker_quotes_post_kickoff: BookmakerQuotePoint[];
+  consensus_series: ConsensusPoint[];
+  model_observations: ModelObservationPoint[];
+  model_observations_post_kickoff: ModelObservationPoint[];
+  model_projected_mean_observations: ModelObservationPoint[];
+  lineup_status_changes: LineupStatusChange[];
+  bookmaker_summary: SeriesSummary;
+  consensus_summary: SeriesSummary | null;
+  model_summary: SeriesSummary | null;
+}
+
+export type MarketMovementIdentity =
+  | { identityType: "team"; matchId: number; marketType: string; selection: string; lineValue?: number | null }
+  | { identityType: "player"; matchId: number; marketType: string; playerId: number; lineType: string; threshold: number };
+
+export function fetchMarketMovementSeries(identity: MarketMovementIdentity): Promise<MarketMovementSeries> {
+  const query = new URLSearchParams({ match_id: String(identity.matchId), identity_type: identity.identityType, market_type: identity.marketType });
+  if (identity.identityType === "team") {
+    query.set("selection", identity.selection);
+    if (identity.lineValue !== undefined && identity.lineValue !== null) query.set("line_value", String(identity.lineValue));
+  } else {
+    query.set("player_id", String(identity.playerId));
+    query.set("line_type", identity.lineType);
+    query.set("threshold", String(identity.threshold));
+  }
+  return request(`/api/v1/market-movement/series?${query.toString()}`);
+}
+
 // --- Trading Monitor (/api/v1/trading-monitor/*) ----------------------------
 // A composition layer over app.market_monitor's own already-scored cases
 // plus new model-movement/SGM/data-health signals — see backend

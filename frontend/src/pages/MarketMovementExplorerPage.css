@@ -1,0 +1,280 @@
+.mme-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.mme-page__header h1 {
+  margin: 0 0 0.5rem;
+  font-size: var(--fs-page-title);
+  color: var(--text-h);
+}
+
+.mme-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.mme-card h3 {
+  margin: 0;
+  font-size: var(--fs-section-title);
+  color: var(--text-h);
+}
+
+.mme-card h4 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--text-h);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mme-card--muted {
+  opacity: 0.75;
+}
+
+.mme-card--diagnostic {
+  border-style: dashed;
+  background: var(--bg-subtle);
+}
+
+.mme-select {
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+  width: 100%;
+  max-width: 640px;
+}
+
+.mme-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  border-radius: var(--radius-xs);
+  padding: 0.15rem 0.4rem;
+}
+
+.mme-tag--warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.mme-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.mme-card__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.75rem;
+}
+
+.mme-card__grid > div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.mme-card__label {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.mme-card__value {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.mme-card__meta {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+}
+
+.mme-pos {
+  color: var(--success-text);
+}
+
+.mme-neg {
+  color: var(--danger-text);
+}
+
+.mme-notes {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.mme-table-scroll {
+  overflow-x: auto;
+}
+
+.mme-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.83rem;
+}
+
+.mme-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: 500;
+  padding: 0.4rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.mme-table td {
+  padding: 0.45rem 0.55rem;
+  border-bottom: 1px solid var(--bg-inset);
+  white-space: nowrap;
+  color: var(--table-text);
+}
+
+.mme-bookmaker-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.5rem;
+}
+
+.mme-bookmaker-filter__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.mme-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.4rem;
+}
+
+.mme-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.mme-legend__swatch {
+  display: inline-block;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 50%;
+}
+
+.mme-legend__swatch--bookmaker {
+  background: var(--text-muted);
+}
+
+.mme-legend__swatch--consensus {
+  background: var(--accent-light);
+}
+
+.mme-legend__swatch--model {
+  background: var(--success-text);
+}
+
+.mme-legend__swatch--lineup {
+  background: var(--warning-text);
+  border-radius: 2px;
+}
+
+/* --- Chart ----------------------------------------------------------- */
+
+.mme-chart {
+  width: 100%;
+  height: auto;
+}
+
+.mme-chart__empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 2rem 0;
+  text-align: center;
+}
+
+.mme-chart__axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.mme-chart__gridline {
+  stroke: var(--border-subtle);
+  stroke-width: 1;
+  stroke-dasharray: 2 3;
+}
+
+.mme-chart__tick-label {
+  fill: var(--text-muted);
+  font-size: 9px;
+}
+
+.mme-chart__bookmaker-point {
+  fill: var(--text-muted);
+  opacity: 0.7;
+}
+
+.mme-chart__consensus-line {
+  fill: none;
+  stroke: var(--accent-light);
+  stroke-width: 1.75;
+}
+
+.mme-chart__consensus-point {
+  fill: var(--accent-light);
+}
+
+.mme-chart__model-line {
+  fill: none;
+  stroke: var(--success-text);
+  stroke-width: 1.75;
+}
+
+.mme-chart__model-point {
+  fill: var(--success-text);
+}
+
+.mme-chart__lineup-line {
+  stroke: var(--warning-text);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  opacity: 0.6;
+}
+
+.mme-chart__lineup-marker {
+  fill: var(--warning-text);
+}
+
+@media (max-width: 640px) {
+  .mme-page {
+    padding: 1rem;
+    gap: 1rem;
+  }
+
+  .mme-card {
+    padding: 0.9rem 1rem;
+  }
+}
