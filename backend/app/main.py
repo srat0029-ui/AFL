@@ -24,6 +24,7 @@ from app.api.routes import (
     player_projections,
     predictions,
     pricing_v1,
+    prospective_evidence_center_v1,
     real_market_tracking,
     refresh,
     trading_monitor_v1,
@@ -95,3 +96,4 @@ app.include_router(pricing_v1.integration_router)
 app.include_router(model_registry_v1.router)
 app.include_router(market_monitor_v1.router)
 app.include_router(trading_monitor_v1.router)
+app.include_router(prospective_evidence_center_v1.router)
