@@ -8,7 +8,7 @@ and app/player_modelling/tag_watch.py.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.schemas import PlayerContextAnalysisRead
+from app.api.schemas import PlayerContextAnalysisRead, TeammateDiscoveryRead
 from app.database import get_db
 from app.player_modelling.player_context_analysis import (
     SUPPORTED_STATS,
@@ -16,6 +16,7 @@ from app.player_modelling.player_context_analysis import (
     player_context_analysis_as_dict,
 )
 from app.player_modelling.tag_watch import tag_watch_as_dict, tag_watch_for_player
+from app.player_modelling.teammate_discovery import build_teammate_discovery, teammate_discovery_as_dict
 
 router = APIRouter(prefix="/api/afl", tags=["player-context"])
 
@@ -53,3 +54,28 @@ def get_player_context_analysis(
     result = player_context_analysis_as_dict(analysis)
     result["tag_watch"] = tag_watch_as_dict(tag_watch_for_player(db, player_id))
     return PlayerContextAnalysisRead(**result)
+
+
+@router.get("/players/{player_id}/context-candidates", response_model=TeammateDiscoveryRead)
+def get_teammate_discovery(
+    player_id: int,
+    stat: str = Query("disposals", description="Which stat to analyse - one of: " + ", ".join(sorted(SUPPORTED_STATS))),
+    thresholds: str | None = Query(None, description="Comma-separated milestone thresholds, e.g. '15,20,25'."),
+    db: Session = Depends(get_db),
+) -> TeammateDiscoveryRead:
+    """Discover which of a player's teammates have enough shared match
+    history to be worth investigating with the with/without comparison
+    above - the entry point for Player Research when the user doesn't
+    already know which teammate to compare against.
+    """
+    if stat not in SUPPORTED_STATS:
+        raise HTTPException(status_code=400, detail=f"Unsupported stat {stat!r} - must be one of {sorted(SUPPORTED_STATS)}.")
+
+    parsed_thresholds = _parse_thresholds(thresholds)
+
+    try:
+        discovery = build_teammate_discovery(db, player_id, stat=stat, thresholds=parsed_thresholds)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return TeammateDiscoveryRead(**teammate_discovery_as_dict(discovery))

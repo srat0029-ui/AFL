@@ -2437,3 +2437,25 @@ class PlayerContextAnalysisRead(BaseModel):
     role_analysis_available: bool
     role_analysis_explanation: str
     tag_watch: TagWatchRead
+
+
+class TeammateCandidateRead(BaseModel):
+    teammate_id: int
+    teammate_name: str
+    with_teammate: PlayerContextSplitRead
+    without_teammate: PlayerContextSplitRead
+    raw_difference: float | None
+    adjusted_effect: PlayerContextAdjustedEffectRead
+    confidence: PlayerContextConfidenceRead
+    sufficient_evidence: bool
+
+
+class TeammateDiscoveryRead(BaseModel):
+    player_id: int
+    player_name: str
+    team_id: int | None
+    team_name: str | None
+    stat: str
+    thresholds: list[int]
+    explanation: str
+    candidates: list[TeammateCandidateRead]

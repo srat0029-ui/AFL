@@ -50,6 +50,27 @@ export interface PlayerContextResearch {
   role_analysis_explanation: string;
   tag_watch: { status: string; verified_annotation_count: number; games_played: number | null; tag_rate: number | null; explanation: string };
 }
+export interface TeammateCandidate {
+  teammate_id: number;
+  teammate_name: string;
+  with_teammate: ContextSplit;
+  without_teammate: ContextSplit;
+  raw_difference: number | null;
+  adjusted_effect: PlayerContextResearch["adjusted_effect"];
+  confidence: { tier: string; warnings: string[] };
+  sufficient_evidence: boolean;
+}
+export interface TeammateDiscoveryResult {
+  player_id: number;
+  player_name: string;
+  team_id: number | null;
+  team_name: string | null;
+  stat: string;
+  thresholds: number[];
+  explanation: string;
+  candidates: TeammateCandidate[];
+}
+
 export const formatValue = (value: number | null | undefined, digits = 1): string =>
   value == null || !Number.isFinite(value) ? "Unavailable" : value.toFixed(digits);
 export const formatRate = (value: number | null | undefined): string =>
@@ -60,6 +81,12 @@ export function explainDifference(research: PlayerContextResearch): string {
   if (research.raw_difference == null) return "A comparison is unavailable because one or both groups have no recorded values for this statistic.";
   const value = research.raw_difference;
   return `${research.player_name} averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${research.stat} with ${research.teammate_name} absent than present${value === 0 ? " (no difference)" : ""}. This is a historical association, not proof that the teammate caused the change or a prediction for the next game.`;
+}
+
+export function explainCandidateDifference(playerName: string, stat: string, candidate: TeammateCandidate): string {
+  if (candidate.raw_difference == null) return "A comparison is unavailable because one or both groups have no recorded values for this statistic.";
+  const value = candidate.raw_difference;
+  return `${playerName} averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${stat} with ${candidate.teammate_name} absent than present${value === 0 ? " (no difference)" : ""}. This is a historical association, not proof of a cause or a prediction for the next game.`;
 }
 
 export type EvidenceOrder = "newest" | "oldest" | "highest" | "lowest";
