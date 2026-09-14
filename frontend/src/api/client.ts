@@ -3291,6 +3291,33 @@ export function fetchEffectiveness(): Promise<EffectivenessDashboard> {
   return request("/api/v1/market-monitor/effectiveness");
 }
 
+// --- Prospective Evidence Center (/api/v1/prospective-evidence-center) ------
+// A single, read-only composition of the four datasets above (pricing
+// engine prospective evaluation, SGM prospective evaluation, real market
+// tracking, Market Monitor effectiveness) — nothing here is computed
+// independently; every field is exactly what those existing endpoints
+// already return, reused so the formal post-boundary evidence can be
+// inspected from one place instead of stitched together by hand.
+
+export interface ProspectiveBoundary {
+  boundary_active: boolean;
+  tracking_start_at: string | null;
+  environment_note: string;
+}
+
+export interface ProspectiveEvidenceCenter {
+  generated_at: string;
+  boundary: ProspectiveBoundary;
+  pricing_evaluation: ProspectiveEvaluation;
+  sgm_evaluation: SgmProspectiveEvaluation;
+  real_market_tracking: RealMarketTrackingReport;
+  market_monitor: EffectivenessDashboard;
+}
+
+export function fetchProspectiveEvidenceCenter(): Promise<ProspectiveEvidenceCenter> {
+  return request("/api/v1/prospective-evidence-center");
+}
+
 // --- Trading Monitor (/api/v1/trading-monitor/*) ----------------------------
 // A composition layer over app.market_monitor's own already-scored cases
 // plus new model-movement/SGM/data-health signals — see backend

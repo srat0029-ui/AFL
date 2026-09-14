@@ -15,6 +15,7 @@ import PlayerProfilePage from "./pages/PlayerProfilePage";
 import PlayerResearchPage from "./pages/PlayerResearchPage";
 import LiveStatusPage from "./pages/LiveStatusPage";
 import PropInsightsPage from "./pages/PropInsightsPage";
+import ProspectiveEvidenceCenterPage from "./pages/ProspectiveEvidenceCenterPage";
 import RealMarketTrackingPage from "./pages/RealMarketTrackingPage";
 import RoundContextDashboardPage from "./pages/RoundContextDashboardPage";
 import StatusPage from "./pages/StatusPage";
@@ -67,6 +68,7 @@ const NAV_GROUPS: { label: string; links: { to: string; label: string }[] }[] = 
       { to: "/trading-monitor", label: "Trading Monitor" },
       { to: "/market-monitor", label: "Market Monitor" },
       { to: "/model-registry", label: "Model Evaluation" },
+      { to: "/prospective-evidence", label: "Prospective Evidence Center" },
       { to: "/b2b-demo", label: "B2B Demo" },
       { to: "/real-market-tracking", label: "Real Market Tracking" },
       { to: "/backtest", label: "Backtesting" },
@@ -236,6 +238,7 @@ function App() {
         <Route path="/multis" element={<MultisPage />} />
         <Route path="/placed-bets" element={<PlacedBetsPage />} />
         <Route path="/model-registry" element={<ModelRegistryPage />} />
+        <Route path="/prospective-evidence" element={<ProspectiveEvidenceCenterPage />} />
         <Route path="/b2b-demo" element={<B2BDemoPage />} />
         <Route path="/trading-monitor" element={<TradingMonitorPage />} />
         <Route path="/market-monitor" element={<MarketMonitorPage />} />
