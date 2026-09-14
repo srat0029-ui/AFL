@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import PlayerContextEvidence from "../components/PlayerContextEvidence";
+import TeammateDiscoveryPanel from "../components/TeammateDiscoveryPanel";
 import Disclaimer from "../components/Disclaimer";
-import { ApiError, fetchPlayerContext, fetchPlayers, type PlayerSummary } from "../api/client";
-import { explainDifference, formatDifference, formatRate, formatValue, type ContextSplit, type ContextStat, type PlayerContextResearch } from "../features/playerContext";
+import { ApiError, fetchPlayer, fetchPlayerContext, fetchPlayers, fetchTeammateDiscovery, type PlayerSummary } from "../api/client";
+import { explainDifference, formatDifference, formatRate, formatValue, type ContextSplit, type ContextStat, type PlayerContextResearch, type TeammateCandidate, type TeammateDiscoveryResult } from "../features/playerContext";
 import "./PlayerResearchPage.css";
 
 function PlayerPicker({ label, value, onChange, excludeId }: {
@@ -110,15 +111,55 @@ export default function PlayerResearchPage() {
     });
     return () => controller.abort();
   }, [player, teammate, stat, key]);
+
+  // Teammate discovery - who is worth investigating for the selected
+  // player, before a specific teammate has been chosen.
+  const [discoveryRetry, setDiscoveryRetry] = useState(0);
+  const discoveryKey = player ? `${player.id}/${stat}/${discoveryRetry}` : "";
+  const [discoveryState, setDiscoveryState] = useState<{ key: string; loading: boolean; data: TeammateDiscoveryResult | null; error: string | null }>({ key: "", loading: false, data: null, error: null });
+  useEffect(() => {
+    if (!player) { setDiscoveryState({ key: "", loading: false, data: null, error: null }); return; }
+    const controller = new AbortController();
+    setDiscoveryState({ key: discoveryKey, loading: true, data: null, error: null });
+    fetchTeammateDiscovery(player.id, stat, controller.signal).then(data => {
+      if (!controller.signal.aborted) setDiscoveryState({ key: discoveryKey, loading: false, data, error: null });
+    }).catch(error => {
+      if (!controller.signal.aborted) setDiscoveryState({ key: discoveryKey, loading: false, data: null, error: error instanceof Error ? error.message : "Unable to load teammate suggestions." });
+    });
+    return () => controller.abort();
+  }, [player, stat, discoveryKey]);
+
+  const [resolvingCandidateId, setResolvingCandidateId] = useState<number | null>(null);
+  const [resolveError, setResolveError] = useState<string | null>(null);
+  async function handleSelectCandidate(candidate: TeammateCandidate) {
+    setResolvingCandidateId(candidate.teammate_id);
+    setResolveError(null);
+    try {
+      const full = await fetchPlayer(candidate.teammate_id);
+      if (full) setTeammate(full);
+      else setResolveError(`${candidate.teammate_name} could not be loaded from the player directory.`);
+    } catch (error) {
+      setResolveError(error instanceof Error ? error.message : "Could not load that teammate.");
+    } finally {
+      setResolvingCandidateId(null);
+    }
+  }
+
   return <main className="player-research-page">
-    <header><h1>Player Research</h1><p className="hint">Explore recorded performance with and without a teammate. Select players from the live player directory.</p></header>
+    <header><h1>Player Research</h1><p className="hint">Select a player to discover which teammates are worth investigating, or search for a specific teammate to compare directly.</p></header>
     <section className="card research-live-controls" aria-label="Choose comparison">
-      <PlayerPicker label="Player" value={player} onChange={next => { setPlayer(next); setTeammate(null); }} />
+      <PlayerPicker label="Player" value={player} onChange={next => { setPlayer(next); setTeammate(null); setResolveError(null); }} />
       <PlayerPicker key={player?.id ?? "none"} label="Teammate" value={teammate} onChange={setTeammate} excludeId={player?.id} />
       <label className="research-select-field">Statistic<select value={stat} onChange={event => setStat(event.target.value as ContextStat)}><option value="disposals">Disposals</option><option value="goals">Goals</option></select></label>
     </section>
-    {player && teammate && <div className="research-comparison-actions"><button type="button" onClick={() => { setPlayer(teammate); setTeammate(player); }}>Swap player and teammate</button><p className="hint">Swapping asks how the other player performs. The result may differ.</p></div>}
-    {!key ? <p role="status">Select a player and a different teammate to see their recorded comparison.</p> : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} />}
+    {player && teammate && <div className="research-comparison-actions"><button type="button" onClick={() => { setPlayer(teammate); setTeammate(player); }}>Swap player and teammate</button><button type="button" onClick={() => setTeammate(null)}>Choose a different teammate</button><p className="hint">Swapping asks how the other player performs. The result may differ.</p></div>}
+    {player && !teammate && <section aria-labelledby="discovery-heading">
+      <div className="section-row research-section-heading"><div><h2 id="discovery-heading">Teammates worth investigating</h2><p className="hint">Ranked by evidence sufficiency and shared-match sample size — never by the size of a statistical difference. Or search for a specific teammate above.</p></div></div>
+      <TeammateDiscoveryPanel playerName={player.display_name} stat={stat} loading={discoveryState.loading || discoveryState.key !== discoveryKey} error={discoveryState.error} discovery={discoveryState.data} onRetry={() => setDiscoveryRetry(r => r + 1)} onSelect={handleSelectCandidate} />
+      {resolvingCandidateId != null && <p role="status">Loading teammate…</p>}
+      {resolveError && <div className="error-banner" role="alert"><p>{resolveError}</p></div>}
+    </section>}
+    {!player ? <p role="status">Select a player to see which teammates are worth investigating.</p> : !teammate ? null : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} />}
     <Disclaimer />
   </main>;
 }

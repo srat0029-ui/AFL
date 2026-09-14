@@ -603,3 +603,19 @@
   .research-evidence-fields { display: grid; grid-template-columns: 1fr; }
   .player-research-page { width: calc(100% - 2rem); }
 }
+
+/* Teammate discovery: candidate list, evidence-first grouping. */
+.discovery-results { display: grid; gap: 1.5rem; }
+.discovery-candidate-list { list-style: none; margin: .75rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+.discovery-candidate { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card-bg); padding: var(--space-4); display: flex; flex-direction: column; gap: .6rem; min-width: 0; }
+.discovery-candidate--limited { border-style: dashed; opacity: .92; }
+.discovery-candidate__heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+.discovery-candidate__heading h3 { margin: 0; color: var(--text-h); font-size: var(--fs-section-title); }
+.discovery-candidate__stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem .75rem; margin: 0; padding-top: .5rem; border-top: 1px solid var(--border-subtle); }
+.discovery-candidate__stats dt { color: var(--text-muted); font-size: var(--fs-micro); }
+.discovery-candidate__stats dd { margin: .1rem 0 0; color: var(--text-h); font-size: var(--fs-meta); font-weight: 650; font-variant-numeric: tabular-nums; }
+.discovery-candidate .hint { margin: 0; }
+.discovery-candidate > button { align-self: flex-start; }
+@media (max-width: 680px) {
+  .discovery-candidate-list { grid-template-columns: 1fr; }
+}
