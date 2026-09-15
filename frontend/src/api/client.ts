@@ -3488,3 +3488,20 @@ export function fetchTeammateDiscovery(
 ): Promise<import("../features/playerContext").TeammateDiscoveryResult> {
   return request(`/api/afl/players/${playerId}/context-candidates?${new URLSearchParams({ stat })}`, { signal });
 }
+
+export function fetchOpponentContext(
+  playerId: number,
+  opponentTeamId: number,
+  stat: import("../features/playerContext").ContextStat = "disposals",
+  signal?: AbortSignal,
+): Promise<import("../features/playerContext").OpponentContextResearch> {
+  return request(`/api/afl/players/${playerId}/opponent-context/${opponentTeamId}?${new URLSearchParams({ stat })}`, { signal });
+}
+
+export function fetchOpponentDiscovery(
+  playerId: number,
+  stat: import("../features/playerContext").ContextStat = "disposals",
+  signal?: AbortSignal,
+): Promise<import("../features/playerContext").OpponentDiscoveryResult> {
+  return request(`/api/afl/players/${playerId}/opponent-context-candidates?${new URLSearchParams({ stat })}`, { signal });
+}
