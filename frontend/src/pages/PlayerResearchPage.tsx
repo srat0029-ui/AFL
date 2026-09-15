@@ -4,6 +4,8 @@ import TeammateDiscoveryPanel from "../components/TeammateDiscoveryPanel";
 import OpponentDiscoveryPanel from "../components/OpponentDiscoveryPanel";
 import OpponentContextEvidence from "../components/OpponentContextEvidence";
 import Disclaimer from "../components/Disclaimer";
+import PageHeader from "../components/ui/PageHeader";
+import EmptyState from "../components/ui/EmptyState";
 import { ApiError, fetchOpponentContext, fetchOpponentDiscovery, fetchPlayer, fetchPlayerContext, fetchPlayers, fetchTeammateDiscovery, type PlayerSummary } from "../api/client";
 import { explainDifference, explainOpponentDifference, formatDifference, formatRate, formatValue, type ContextSplit, type ContextStat, type OpponentCandidate, type OpponentContextResearch, type OpponentDiscoveryResult, type PlayerContextResearch, type TeammateCandidate, type TeammateDiscoveryResult } from "../features/playerContext";
 import "./PlayerResearchPage.css";
@@ -223,7 +225,11 @@ export default function PlayerResearchPage() {
   }
 
   return <main className="player-research-page">
-    <header><h1>Player Research</h1><p className="hint">Select a player to discover which teammates or opponents are worth investigating, or search for a specific teammate to compare directly.</p></header>
+    <PageHeader
+      eyebrow="Players"
+      title="Compare teammates & opponents"
+      description="Pick a player to see whether their numbers genuinely change with a specific teammate on the field, or against a specific opponent — with sample sizes and confidence shown honestly, never a raw effect size alone."
+    />
     <section className="card research-live-controls" aria-label="Choose comparison">
       <PlayerPicker label="Player" value={player} onChange={next => { setPlayer(next); setTeammate(null); setOpponent(null); setResolveError(null); }} />
       {mode === "teammates" && <PlayerPicker key={player?.id ?? "none"} label="Teammate" value={teammate} onChange={setTeammate} excludeId={player?.id} />}
@@ -241,7 +247,7 @@ export default function PlayerResearchPage() {
         {resolvingCandidateId != null && <p role="status">Loading teammate…</p>}
         {resolveError && <div className="error-banner" role="alert"><p>{resolveError}</p></div>}
       </section>}
-      {!player ? <p role="status">Select a player to see which teammates are worth investigating.</p> : !teammate ? null : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} />}
+      {!player ? <EmptyState title="Choose a player to get started" description="Search for a player above to see which teammates are worth investigating, then compare their numbers with and without that teammate on the field." /> : !teammate ? null : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} />}
     </>}
     {mode === "opponents" && <>
       {player && opponent && <div className="research-comparison-actions"><button type="button" onClick={() => setOpponent(null)}>Choose a different opponent</button></div>}
@@ -249,7 +255,7 @@ export default function PlayerResearchPage() {
         <div className="section-row research-section-heading"><div><h2 id="opponent-discovery-heading">Opponents worth investigating</h2><p className="hint">Ranked by evidence sufficiency and sample size — never by the size of a statistical difference.</p></div></div>
         <OpponentDiscoveryPanel playerName={player.display_name} stat={stat} loading={opponentDiscoveryState.loading || opponentDiscoveryState.key !== opponentDiscoveryKey} error={opponentDiscoveryState.error} discovery={opponentDiscoveryState.data} onRetry={() => setOpponentDiscoveryRetry(r => r + 1)} onSelect={handleSelectOpponentCandidate} />
       </section>}
-      {!player ? <p role="status">Select a player to see which opponents are worth investigating.</p> : !opponent ? null : opponentResultState.key !== opponentKey || opponentResultState.loading ? <p role="status">Loading opponent context…</p> : opponentResultState.error ? <div className="error-banner" role="alert"><p>{opponentResultState.error}</p><button type="button" onClick={() => setOpponentRetry(r => r + 1)}>Retry comparison</button></div> : opponentResultState.data && <OpponentContextResults key={opponentKey} research={opponentResultState.data} />}
+      {!player ? <EmptyState title="Choose a player to get started" description="Search for a player above to see which opponents are worth investigating, then compare their numbers against that opponent versus everyone else." /> : !opponent ? null : opponentResultState.key !== opponentKey || opponentResultState.loading ? <p role="status">Loading opponent context…</p> : opponentResultState.error ? <div className="error-banner" role="alert"><p>{opponentResultState.error}</p><button type="button" onClick={() => setOpponentRetry(r => r + 1)}>Retry comparison</button></div> : opponentResultState.data && <OpponentContextResults key={opponentKey} research={opponentResultState.data} />}
     </>}
     <Disclaimer />
   </main>;

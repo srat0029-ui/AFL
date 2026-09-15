@@ -92,7 +92,7 @@
 }
 
 .segment-table__highlight {
-  background: #1a2230;
+  background: var(--accent-tint-bg);
 }
 
 .segment-table__highlight td:first-child {
@@ -108,15 +108,15 @@
 }
 
 .backtest-callout--info {
-  background: #12202f;
-  border: 1px solid var(--info-bg);
-  color: #cdd8e6;
+  background: var(--info-bg);
+  border: 1px solid var(--info-text);
+  color: var(--info-text);
 }
 
 .backtest-callout--warning {
-  background: #241a0f;
-  border: 1px solid #5f3d1e;
-  color: #e6d3c0;
+  background: var(--warning-bg);
+  border: 1px solid var(--warning-text);
+  color: var(--warning-text);
   margin-bottom: 1rem;
 }
 
@@ -128,13 +128,13 @@
 }
 
 .calibration-chart__diagonal {
-  stroke: #3a4152;
+  stroke: var(--chart-grid);
   stroke-width: 1.5;
   stroke-dasharray: 4 4;
 }
 
 .calibration-chart__axis {
-  stroke: #4a5266;
+  stroke: var(--chart-axis-text);
   stroke-width: 1;
 }
 
@@ -253,7 +253,7 @@
   top: 0;
   bottom: 0;
   width: 1px;
-  background: #3a4152;
+  background: var(--border);
 }
 
 .coef-bar-fill {
@@ -268,7 +268,7 @@
 }
 
 .coef-bar-fill--negative {
-  background: #ef4444;
+  background: var(--danger-text);
 }
 
 .coef-bar-value {

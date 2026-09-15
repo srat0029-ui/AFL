@@ -1,14 +1,20 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import "./PlayerProfilePage.css";
 import PlayerStatsTable from "../components/PlayerStatsTable";
 import { DisposalProjectionTable, GoalProjectionTable } from "../components/ProjectionTable";
+import PageHeader from "../components/ui/PageHeader";
+import FilterChips from "../components/ui/FilterChips";
+import { StatTile, StatTileRow } from "../components/ui/StatTile";
+import EmptyState from "../components/ui/EmptyState";
+import Skeleton from "../components/ui/Skeleton";
 import {
   fetchOpportunityTiers,
   fetchPlayerForm,
   fetchPlayerProjection,
   type BestOpportunity,
   type PlayerForm,
+  type PlayerGameStat,
   type PlayerProjection,
 } from "../api/client";
 
@@ -19,28 +25,80 @@ const CONFIDENCE_LABELS: Record<string, string> = {
   insufficient_history: "Insufficient history",
 };
 
-function num(value: number | undefined, digits = 1): string {
-  return value === undefined ? "—" : value.toFixed(digits);
+type StatKey = "disposals" | "goals";
+type RangeKey = "5" | "10" | "20";
+
+const STAT_OPTIONS: { value: StatKey; label: string }[] = [
+  { value: "disposals", label: "Disposals" },
+  { value: "goals", label: "Goals" },
+];
+
+const RANGE_OPTIONS: { value: RangeKey; label: string }[] = [
+  { value: "5", label: "L5" },
+  { value: "10", label: "L10" },
+  { value: "20", label: "L20" },
+];
+
+const MILESTONES: Record<StatKey, number[]> = {
+  disposals: [20, 25, 30],
+  goals: [1, 2, 3],
+};
+
+function num(value: number | undefined | null, digits = 1): string {
+  return value === undefined || value === null ? "—" : value.toFixed(digits);
 }
 
 function confidenceClass(tier: string): string {
   return tier.replace("_confidence", "").replace("insufficient_history", "insufficient_data");
 }
 
-function FormChart({ games }: { games: PlayerForm["recent_games"] }) {
-  // oldest-to-newest left-to-right, matching how a "recent form" run chart reads
+function average(games: PlayerGameStat[], stat: StatKey): number | null {
+  const values = games.map((g) => g[stat]).filter((v): v is number => v !== null && v !== undefined);
+  if (values.length === 0) return null;
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function hitRate(games: PlayerGameStat[], stat: StatKey, threshold: number): number | null {
+  const values = games.map((g) => g[stat]).filter((v): v is number => v !== null && v !== undefined);
+  if (values.length === 0) return null;
+  return values.filter((v) => v >= threshold).length / values.length;
+}
+
+/** A readable bar chart of a player's real recent-game values for the
+ * selected stat — oldest to newest, left to right, with the sample's own
+ * average drawn as a reference line. No smoothing, no invented games. */
+function FormChart({ games, stat }: { games: PlayerGameStat[]; stat: StatKey }) {
   const chronological = [...games].reverse();
-  const maxDisposals = Math.max(1, ...chronological.map((g) => g.disposals ?? 0));
+  const values = chronological.map((g) => g[stat] ?? 0);
+  const max = Math.max(1, ...values);
+  const avg = average(games, stat);
+
+  if (chronological.length === 0) {
+    return <EmptyState title="No recent games" description="This player has no logged games in this range yet." />;
+  }
 
   return (
     <div className="form-chart">
-      {chronological.map((g) => (
-        <div className="form-chart__bar-wrap" key={`${g.player_id}-${g.match_id}`} title={`R${g.round_number} vs ${g.opponent_team?.short_name ?? "?"}: ${g.disposals ?? "—"} disposals`}>
-          <div className="form-chart__bar" style={{ height: `${((g.disposals ?? 0) / maxDisposals) * 100}%` }} />
-          <span className="form-chart__label">R{g.round_number}</span>
+      {avg !== null && (
+        <div className="form-chart__avg-line" style={{ bottom: `${(avg / max) * 100}%` }}>
+          <span className="form-chart__avg-label">avg {num(avg)}</span>
         </div>
-      ))}
-      {chronological.length === 0 && <p className="empty-state">No recent games.</p>}
+      )}
+      <div className="form-chart__bars">
+        {chronological.map((g) => {
+          const value = g[stat];
+          return (
+            <div
+              className="form-chart__bar-wrap"
+              key={`${g.player_id}-${g.match_id}`}
+              title={`R${g.round_number} vs ${g.opponent_team?.short_name ?? "?"}: ${value ?? "—"} ${stat}`}
+            >
+              <div className="form-chart__bar" style={{ height: `${((value ?? 0) / max) * 100}%` }} />
+              <span className="form-chart__label">R{g.round_number}</span>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -50,7 +108,7 @@ function FormChart({ games }: { games: PlayerForm["recent_games"] }) {
 // just filtered down to this one player rather than a new data source.
 function MarketsTable({ markets }: { markets: BestOpportunity[] }) {
   if (markets.length === 0) {
-    return <p className="empty-state">No active bookmaker markets for this player right now.</p>;
+    return <EmptyState title="No active bookmaker markets" description="There's no live bookmaker price for this player right now." />;
   }
   return (
     <div className="table-scroll">
@@ -100,26 +158,42 @@ function PlayerProfilePage() {
   const [markets, setMarkets] = useState<BestOpportunity[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [stat, setStat] = useState<StatKey>("disposals");
+  const [range, setRange] = useState<RangeKey>("10");
 
-  useEffect(() => {
+  function load() {
     if (!Number.isFinite(id)) return;
     setLoading(true);
-    Promise.all([fetchPlayerForm(id, 10), fetchPlayerProjection(id)])
+    setError(null);
+    Promise.all([fetchPlayerForm(id, Number(range)), fetchPlayerProjection(id)])
       .then(([formData, projectionData]) => {
         setForm(formData);
         setProjection(projectionData);
       })
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load player"))
       .finally(() => setLoading(false));
+  }
+
+  useEffect(load, [id, range]);
+
+  useEffect(() => {
+    if (!Number.isFinite(id)) return;
     fetchOpportunityTiers({ marketScope: "player" })
       .then((tiers) => setMarkets(tiers.all_available.filter((o) => o.player_id === id)))
       .catch(() => setMarkets([])); // markets are supplementary — a failure here shouldn't block the rest of the profile
   }, [id]);
 
-  if (loading) {
+  const milestoneStats = useMemo(() => {
+    if (!form) return [];
+    return MILESTONES[stat].map((t) => ({ threshold: t, rate: hitRate(form.recent_games, stat, t) }));
+  }, [form, stat]);
+
+  if (loading && !form) {
     return (
       <main className="player-profile-page">
-        <p className="loading-state">Loading…</p>
+        <Skeleton width="35%" height="1.8rem" />
+        <div style={{ height: 14 }} />
+        <Skeleton width="100%" height="8rem" />
       </main>
     );
   }
@@ -128,8 +202,8 @@ function PlayerProfilePage() {
     return (
       <main className="player-profile-page">
         <div className="error-banner">{error ?? "Player not found."}</div>
-        <Link to="/" className="back-link">
-          &larr; Back to dashboard
+        <Link to="/players" className="back-link">
+          &larr; Back to players
         </Link>
       </main>
     );
@@ -142,35 +216,71 @@ function PlayerProfilePage() {
   const hasContextFlags =
     !!projection &&
     (projection.current_context.length > 0 || projection.tog_volatile || projection.substitute_risk || projection.returning_from_injury || !!projection.role_note);
+  const recentAverage = average(recentGames, stat);
 
   return (
     <main className="player-profile-page">
-      <Link to="/" className="back-link">
-        &larr; Back to dashboard
+      <Link to="/players" className="back-link">
+        &larr; Back to players
       </Link>
 
-      <header className="player-header">
-        <h1 className="player-header__title">
-          {player.display_name}
-          <span className="player-header__team">{player.current_team ? ` · ${player.current_team.name}` : ""}</span>
-          {player.is_active === false && <span className="chip chip--neutral player-header__inactive">Inactive</span>}
-        </h1>
-        {headlineProjection && (
-          <p className="player-header__projection">
-            Projection <span className="num">{num(headlineProjection.expected)}</span> disposals
-          </p>
-        )}
-        {headlineGoals && (
-          <p className="player-header__projection">
-            Projection <span className="num">{num(headlineGoals.expected, 2)}</span> goals
-          </p>
-        )}
-        {!headlineProjection && !headlineGoals && <p className="hint">No upcoming projection available for this player.</p>}
-      </header>
+      <PageHeader
+        eyebrow={player.current_team?.name}
+        title={player.display_name}
+        description={
+          player.is_active === false ? (
+            <span className="chip chip--neutral">Inactive</span>
+          ) : (
+            "Recent form, upcoming projection, and how this player's numbers change with context."
+          )
+        }
+      />
+
+      {(headlineProjection || headlineGoals) && (
+        <StatTileRow>
+          {headlineProjection && (
+            <StatTile
+              label="Next match — projected disposals"
+              value={num(headlineProjection.expected)}
+              meta={`50% range ${headlineProjection.interval_50[0].toFixed(0)}–${headlineProjection.interval_50[1].toFixed(0)}`}
+            />
+          )}
+          {headlineGoals && (
+            <StatTile label="Next match — projected goals" value={num(headlineGoals.expected, 2)} meta={headlineGoals.confidence_tier.replace(/_/g, " ")} />
+          )}
+        </StatTileRow>
+      )}
+      {!headlineProjection && !headlineGoals && (
+        <EmptyState title="No upcoming projection" description="This player has no scheduled match with a generated projection right now." />
+      )}
+
+      <section className="card">
+        <div className="section-row">
+          <h2 className="section-title">Recent form</h2>
+        </div>
+        <div className="player-profile-page__controls">
+          <FilterChips label="Stat" options={STAT_OPTIONS} value={stat} onChange={setStat} />
+          <FilterChips label="Range" options={RANGE_OPTIONS.map((o) => ({ ...o, disabled: loading }))} value={range} onChange={setRange} />
+        </div>
+
+        <StatTileRow>
+          <StatTile label={`Average, last ${recentGames.length}`} value={num(recentAverage)} />
+          {milestoneStats.map((m) => (
+            <StatTile key={m.threshold} label={`${m.threshold}+ hit rate`} value={m.rate === null ? "—" : `${(m.rate * 100).toFixed(0)}%`} meta={`${recentGames.length} games`} />
+          ))}
+        </StatTileRow>
+
+        <FormChart games={recentGames} stat={stat} />
+
+        <details className="disclosure player-profile-page__evidence-toggle">
+          <summary>View match-by-match evidence</summary>
+          <PlayerStatsTable games={recentGames} showPlayerColumn={false} />
+        </details>
+      </section>
 
       {projection && (projection.disposals || projection.goals) && (
         <section className="card">
-          <h2 className="section-title">Upcoming projection</h2>
+          <h2 className="section-title">Upcoming projection detail</h2>
           {projection.disposals && (
             <>
               <h3 className="player-profile-page__subheading">Disposals</h3>
@@ -192,13 +302,20 @@ function PlayerProfilePage() {
       </section>
 
       <section className="card">
-        <h2 className="section-title">Recent form — disposals, last {recentGames.length} games</h2>
-        <FormChart games={recentGames} />
-        <PlayerStatsTable games={recentGames} showPlayerColumn={false} />
+        <div className="section-row">
+          <h2 className="section-title">Compare with teammate or opponent</h2>
+          <Link to="/player-research" className="section-row__link">
+            Open Player Research →
+          </Link>
+        </div>
+        <p className="hint">
+          See how {player.display_name}'s numbers actually change with a specific teammate on the field, or against a
+          specific opponent — with sample sizes and confidence shown honestly.
+        </p>
       </section>
 
       {(hasContextFlags || latestSeason || seasonAverages.length > 1) && (
-        <details className="player-profile-page__more">
+        <details className="disclosure player-profile-page__more">
           <summary>More detail — selection context, season averages, history</summary>
           <div className="player-profile-page__more-body">
             {hasContextFlags && projection && (

@@ -1,0 +1,21 @@
+.matches-page {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 1.75rem 1.25rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.matches-page__day-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.matches-page__day-label {
+  font-size: var(--fs-section-title);
+  font-weight: 600;
+  color: var(--text-h);
+  margin: 0;
+}

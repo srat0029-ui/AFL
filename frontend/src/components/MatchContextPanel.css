@@ -83,7 +83,7 @@
 }
 
 .context-panel__item--fresh {
-  border-left-color: #3fb950;
+  border-left-color: var(--success-text);
 }
 
 .context-panel__item--aging {
@@ -101,7 +101,7 @@
 }
 
 .context-panel__player {
-  color: #8fb8ff;
+  color: var(--accent-light);
 }
 
 .context-panel__summary {
@@ -209,7 +209,7 @@
 
 .context-panel__form button[type="submit"] {
   align-self: flex-start;
-  background: #2563eb;
+  background: var(--accent);
   border: none;
   border-radius: 6px;
   color: #fff;
