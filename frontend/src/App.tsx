@@ -8,6 +8,7 @@ import DashboardPage from "./pages/DashboardPage";
 import MatchDetailPage from "./pages/MatchDetailPage";
 import MultisPage from "./pages/MultisPage";
 import MarketMonitorPage from "./pages/MarketMonitorPage";
+import MarketMovementExplorerPage from "./pages/MarketMovementExplorerPage";
 import ModelRegistryPage from "./pages/ModelRegistryPage";
 import PlacedBetsPage from "./pages/PlacedBetsPage";
 import PlayerInsightsPage from "./pages/PlayerInsightsPage";
@@ -67,6 +68,7 @@ const NAV_GROUPS: { label: string; links: { to: string; label: string }[] }[] = 
     links: [
       { to: "/trading-monitor", label: "Trading Monitor" },
       { to: "/market-monitor", label: "Market Monitor" },
+      { to: "/market-movement", label: "Market Movement Explorer" },
       { to: "/model-registry", label: "Model Evaluation" },
       { to: "/prospective-evidence", label: "Prospective Evidence Center" },
       { to: "/b2b-demo", label: "B2B Demo" },
@@ -242,6 +244,7 @@ function App() {
         <Route path="/b2b-demo" element={<B2BDemoPage />} />
         <Route path="/trading-monitor" element={<TradingMonitorPage />} />
         <Route path="/market-monitor" element={<MarketMonitorPage />} />
+        <Route path="/market-movement" element={<MarketMovementExplorerPage />} />
         <Route path="/real-market-tracking" element={<RealMarketTrackingPage />} />
         <Route path="/live-status" element={<LiveStatusPage />} />
         <Route path="/backtest" element={<BacktestPage />} />
