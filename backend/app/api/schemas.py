@@ -2459,3 +2459,73 @@ class TeammateDiscoveryRead(BaseModel):
     thresholds: list[int]
     explanation: str
     candidates: list[TeammateCandidateRead]
+
+
+class OpponentAdjustedEffectRead(BaseModel):
+    available: bool
+    value: float | None
+    games_with_baseline_against_opponent: int
+    games_with_baseline_other_opponents: int
+    method: str
+    explanation: str
+
+
+class OpponentEvidenceRowRead(BaseModel):
+    match_id: int
+    season_year: int
+    round_number: int
+    round_name: str | None
+    scheduled_start: UtcDatetime
+    team_id: int
+    team_name: str
+    opponent_team_id: int
+    opponent_name: str
+    venue_name: str | None
+    is_home: bool | None
+    is_selected_opponent: bool
+    stat_value: int | None
+    time_on_ground_pct: int | None
+
+
+class OpponentContextAnalysisRead(BaseModel):
+    player_id: int
+    player_name: str
+    opponent_team_id: int
+    opponent_team_name: str
+    team_id: int | None
+    team_name: str | None
+    stat: str
+    thresholds: list[int]
+    against_opponent: PlayerContextSplitRead
+    against_other_opponents: PlayerContextSplitRead
+    raw_difference: float | None
+    adjusted_effect: OpponentAdjustedEffectRead
+    confounders: dict[str, PlayerContextConfounderRead]
+    confidence: PlayerContextConfidenceRead
+    evidence: list[OpponentEvidenceRowRead]
+    role_analysis_available: bool
+    role_analysis_explanation: str
+    scope_explanation: str
+
+
+class OpponentCandidateRead(BaseModel):
+    opponent_team_id: int
+    opponent_team_name: str
+    against_opponent: PlayerContextSplitRead
+    against_other_opponents: PlayerContextSplitRead
+    raw_difference: float | None
+    adjusted_effect: OpponentAdjustedEffectRead
+    confidence: PlayerContextConfidenceRead
+    sufficient_evidence: bool
+
+
+class OpponentDiscoveryRead(BaseModel):
+    player_id: int
+    player_name: str
+    team_id: int | None
+    team_name: str | None
+    stat: str
+    thresholds: list[int]
+    explanation: str
+    scope_explanation: str
+    candidates: list[OpponentCandidateRead]

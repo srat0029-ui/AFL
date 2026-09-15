@@ -114,3 +114,111 @@ export function selectEvidence(rows: ContextEvidenceGame[], filters: EvidenceFil
     return filters.order === "oldest" ? chronological : -chronological;
   });
 }
+
+// --- Opponent context (Player Research "Opponents" mode) ---
+// Reuses ContextSplit's shape (identical fields) for against_opponent /
+// against_other_opponents - only the comparison semantics differ from
+// the teammate with/without-split above, not the underlying stat shape.
+
+export interface OpponentAdjustedEffect {
+  available: boolean;
+  value: number | null;
+  games_with_baseline_against_opponent: number;
+  games_with_baseline_other_opponents: number;
+  method: string;
+  explanation: string;
+}
+export interface OpponentEvidenceGame {
+  match_id: number;
+  season_year: number;
+  round_number: number;
+  round_name: string | null;
+  scheduled_start: string;
+  team_id: number;
+  team_name: string;
+  opponent_team_id: number;
+  opponent_name: string;
+  venue_name: string | null;
+  is_home: boolean | null;
+  is_selected_opponent: boolean;
+  stat_value: number | null;
+  time_on_ground_pct: number | null;
+}
+export interface OpponentContextResearch {
+  player_id: number;
+  player_name: string;
+  opponent_team_id: number;
+  opponent_team_name: string;
+  team_id: number | null;
+  team_name: string | null;
+  stat: string;
+  thresholds: number[];
+  against_opponent: ContextSplit;
+  against_other_opponents: ContextSplit;
+  raw_difference: number | null;
+  adjusted_effect: OpponentAdjustedEffect;
+  confounders: Record<string, { considered: boolean; method: string | null; reason: string | null }>;
+  confidence: { tier: string; warnings: string[] };
+  evidence: OpponentEvidenceGame[];
+  role_analysis_available: boolean;
+  role_analysis_explanation: string;
+  scope_explanation: string;
+}
+export interface OpponentCandidate {
+  opponent_team_id: number;
+  opponent_team_name: string;
+  against_opponent: ContextSplit;
+  against_other_opponents: ContextSplit;
+  raw_difference: number | null;
+  adjusted_effect: OpponentAdjustedEffect;
+  confidence: { tier: string; warnings: string[] };
+  sufficient_evidence: boolean;
+}
+export interface OpponentDiscoveryResult {
+  player_id: number;
+  player_name: string;
+  team_id: number | null;
+  team_name: string | null;
+  stat: string;
+  thresholds: number[];
+  explanation: string;
+  scope_explanation: string;
+  candidates: OpponentCandidate[];
+}
+
+export function explainOpponentDifference(research: OpponentContextResearch): string {
+  if (research.raw_difference == null) return "A comparison is unavailable because one or both groups have no recorded values for this statistic.";
+  const value = research.raw_difference;
+  return `${research.player_name} historically averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${research.stat} against ${research.opponent_team_name} compared with other opponents${value === 0 ? " (no difference)" : ""}. This is a historical association recorded in past games, not a prediction for the next match or a matchup advantage.`;
+}
+
+export function explainOpponentCandidateDifference(playerName: string, stat: string, candidate: OpponentCandidate): string {
+  if (candidate.raw_difference == null) return "A comparison is unavailable because one or both groups have no recorded values for this statistic.";
+  const value = candidate.raw_difference;
+  return `${playerName} historically averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${stat} against ${candidate.opponent_team_name} compared with other opponents${value === 0 ? " (no difference)" : ""}. This is a historical association, not a prediction for the next match.`;
+}
+
+export type OpponentEvidenceOrder = EvidenceOrder;
+export interface OpponentEvidenceFilters {
+  selection: "all" | "against" | "other";
+  season: number | null;
+  opponent: string;
+  order: OpponentEvidenceOrder;
+}
+export function selectOpponentEvidence(rows: OpponentEvidenceGame[], filters: OpponentEvidenceFilters): OpponentEvidenceGame[] {
+  const opponent = filters.opponent.trim().toLocaleLowerCase();
+  return rows.filter(row =>
+    (filters.selection === "all" || row.is_selected_opponent === (filters.selection === "against")) &&
+    (filters.season === null || row.season_year === filters.season) &&
+    (!opponent || row.opponent_name.toLocaleLowerCase().includes(opponent)),
+  ).sort((a, b) => {
+    if (filters.order === "highest" || filters.order === "lowest") {
+      if (a.stat_value === null && b.stat_value !== null) return 1;
+      if (b.stat_value === null && a.stat_value !== null) return -1;
+      if (a.stat_value !== null && b.stat_value !== null && a.stat_value !== b.stat_value)
+        return filters.order === "highest" ? b.stat_value - a.stat_value : a.stat_value - b.stat_value;
+    }
+    const chronological = a.scheduled_start.localeCompare(b.scheduled_start) || a.match_id - b.match_id;
+    return filters.order === "oldest" ? chronological : -chronological;
+  });
+}

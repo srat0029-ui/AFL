@@ -8,8 +8,18 @@ and app/player_modelling/tag_watch.py.
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from app.api.schemas import PlayerContextAnalysisRead, TeammateDiscoveryRead
+from app.api.schemas import (
+    OpponentContextAnalysisRead,
+    OpponentDiscoveryRead,
+    PlayerContextAnalysisRead,
+    TeammateDiscoveryRead,
+)
 from app.database import get_db
+from app.player_modelling.opponent_context_analysis import (
+    build_opponent_context_analysis,
+    opponent_context_analysis_as_dict,
+)
+from app.player_modelling.opponent_discovery import build_opponent_discovery, opponent_discovery_as_dict
 from app.player_modelling.player_context_analysis import (
     SUPPORTED_STATS,
     build_player_context_analysis,
@@ -79,3 +89,50 @@ def get_teammate_discovery(
         raise HTTPException(status_code=404, detail=str(exc))
 
     return TeammateDiscoveryRead(**teammate_discovery_as_dict(discovery))
+
+
+@router.get("/players/{player_id}/opponent-context/{opponent_team_id}", response_model=OpponentContextAnalysisRead)
+def get_opponent_context_analysis(
+    player_id: int,
+    opponent_team_id: int,
+    stat: str = Query("disposals", description="Which stat to analyse - one of: " + ", ".join(sorted(SUPPORTED_STATS))),
+    thresholds: str | None = Query(None, description="Comma-separated milestone thresholds, e.g. '15,20,25'."),
+    db: Session = Depends(get_db),
+) -> OpponentContextAnalysisRead:
+    if stat not in SUPPORTED_STATS:
+        raise HTTPException(status_code=400, detail=f"Unsupported stat {stat!r} - must be one of {sorted(SUPPORTED_STATS)}.")
+
+    parsed_thresholds = _parse_thresholds(thresholds)
+
+    try:
+        analysis = build_opponent_context_analysis(db, player_id, opponent_team_id, stat=stat, thresholds=parsed_thresholds)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return OpponentContextAnalysisRead(**opponent_context_analysis_as_dict(analysis))
+
+
+@router.get("/players/{player_id}/opponent-context-candidates", response_model=OpponentDiscoveryRead)
+def get_opponent_discovery(
+    player_id: int,
+    stat: str = Query("disposals", description="Which stat to analyse - one of: " + ", ".join(sorted(SUPPORTED_STATS))),
+    thresholds: str | None = Query(None, description="Comma-separated milestone thresholds, e.g. '15,20,25'."),
+    db: Session = Depends(get_db),
+) -> OpponentDiscoveryRead:
+    """Discover which opponent teams a player has actually faced with
+    enough recorded history to be worth investigating with the detailed
+    opponent-context comparison above - the entry point for Player
+    Research's Opponents mode when the user doesn't already know which
+    opponent to compare against.
+    """
+    if stat not in SUPPORTED_STATS:
+        raise HTTPException(status_code=400, detail=f"Unsupported stat {stat!r} - must be one of {sorted(SUPPORTED_STATS)}.")
+
+    parsed_thresholds = _parse_thresholds(thresholds)
+
+    try:
+        discovery = build_opponent_discovery(db, player_id, stat=stat, thresholds=parsed_thresholds)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
+    return OpponentDiscoveryRead(**opponent_discovery_as_dict(discovery))
