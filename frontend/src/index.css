@@ -1,60 +1,67 @@
 :root {
   /* --- Design tokens --------------------------------------------------
-     Product UX Overhaul: light, clean, sports-focused canvas replacing
-     the previous near-black terminal theme. Every token NAME below is
-     unchanged from the old theme (every page's existing CSS references
-     these by name) — only values changed, so the whole app re-themes
-     from this file without per-page rewrites. */
+     Visual Identity Pass: a refined dark, premium sports-data theme
+     (graphite/charcoal neutrals, deep teal primary accent, muted gold
+     secondary accent) replacing the previous bright white theme. Every
+     token NAME below is unchanged (every page's CSS references these by
+     name) — only values changed, so the whole app re-themes from this
+     file without per-page rewrites. */
 
-  --text: #333a45;
-  --text-h: #12151b;
-  --text-muted: #667085;
-  --text-dim: #8a93a3;
-  --text-faint: #b6bcc6;
+  --text-h: #f3f5f7;
+  --text: #b8c1cc;
+  --text-muted: #7f8b99;
+  --text-dim: #5b6672;
+  --text-faint: #414c57;
 
-  --bg: #f5f6f8;
-  --bg-nav: #ffffff;
-  --bg-subtle: #eef0f3;
-  --card-bg: #ffffff;
-  --bg-inset: #f1f3f6;
+  --bg: #0e1116;
+  --bg-nav: #151a21;
+  --bg-subtle: #12161c;
+  --card-bg: #151a21;
+  --bg-inset: #1b222b;
 
-  --border: #e1e4ea;
-  --border-subtle: #edeff2;
+  --border: #2a3440;
+  --border-subtle: #1f2830;
 
-  /* One restrained accent (a confident match-day blue) used for every
-     interactive/data-emphasis element — buttons, links, active states,
-     chart's primary series. */
-  --accent: #2454d6;
-  --accent-light: #1a3fad;
-  --accent-tint-bg: #e9eefc;
+  /* Primary accent (deep teal) — interactive elements, active states,
+     the primary data series in every chart. Secondary accent (muted
+     gold) is reserved for featured/premium emphasis — see --accent-gold
+     below — and is deliberately never used at equal weight to teal. */
+  --accent: #22c7a8;
+  --accent-hover: #1db395;
+  --accent-light: #4ddcc0;
+  --accent-tint-bg: rgba(34, 199, 168, 0.12);
 
-  --danger-bg: #fdeeed;
-  --danger-border: #f3c6c2;
-  --danger-border-subtle: #f6dcda;
-  --danger-text: #b3261e;
-  --danger-text-strong: #8c1d17;
-  --danger-badge-bg: #fbe3e1;
+  --accent-gold: #e0b04b;
+  --accent-gold-light: #edc879;
+  --accent-gold-tint-bg: rgba(224, 176, 75, 0.12);
 
-  --success-bg: #e9f6ee;
-  --success-text: #1a7a42;
-  --success-tint-bg: #e4f4ea;
-  --success-tint-text: #197a3f;
+  --danger-bg: #2a171b;
+  --danger-border: #4a2229;
+  --danger-border-subtle: #33191d;
+  --danger-text: #f06a7e;
+  --danger-text-strong: #e8496a;
+  --danger-badge-bg: #2a171b;
 
-  --warning-bg: #fdf1de;
-  --warning-text: #92500a;
+  --success-bg: #142621;
+  --success-text: #48d17a;
+  --success-tint-bg: #182a22;
+  --success-tint-text: #5fdc8c;
 
-  --caution-bg: #fdead9;
-  --caution-text: #94420f;
+  --warning-bg: #2a2314;
+  --warning-text: #e0b04b;
 
-  --info-bg: #e5f4f7;
-  --info-text: #146b7d;
+  --caution-bg: #2a1f14;
+  --caution-text: #e0954b;
 
-  --risk-bg: #fdf6d9;
-  --risk-text: #8a6b05;
+  --info-bg: #142330;
+  --info-text: #65b8ff;
 
-  --context-warning-text: #b4530f;
+  --risk-bg: #2a2510;
+  --risk-text: #e0c24b;
 
-  --table-text: #333a45;
+  --context-warning-text: #e0954b;
+
+  --table-text: #b8c1cc;
 
   --space-1: 0.25rem;
   --space-2: 0.5rem;
@@ -69,19 +76,19 @@
 
   /* Shadows: restrained, used sparingly (elevated cards / open menus /
      modal-like surfaces only — never as a default card treatment). */
-  --shadow-sm: 0 1px 2px rgba(20, 24, 32, 0.06);
-  --shadow-md: 0 4px 16px rgba(20, 24, 32, 0.08);
-  --shadow-lg: 0 12px 32px rgba(20, 24, 32, 0.12);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.32);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 40px rgba(0, 0, 0, 0.55);
 
-  --focus-ring: 0 0 0 3px rgba(36, 84, 214, 0.28);
+  --focus-ring: 0 0 0 3px rgba(34, 199, 168, 0.32);
 
   /* Chart chrome, shared by every chart in the app. */
-  --chart-grid: #e7e9ee;
-  --chart-axis-text: #8a93a3;
+  --chart-grid: #232c36;
+  --chart-axis-text: #7f8b99;
 
-  /* Type scale (Section 13 of the original redesign brief, extended) -
-     every page title/section title/body/metadata size should trace back
-     to one of these, not an arbitrary rem value chosen per-component. */
+  /* Type scale — every page title/section title/body/metadata size
+     should trace back to one of these, not an arbitrary rem value
+     chosen per-component. */
   --fs-display: 2rem; /* ~32px - hero numbers, home headline */
   --fs-page-title: 1.625rem; /* ~26px */
   --fs-section-title: 1.0625rem; /* ~17px */
@@ -92,7 +99,7 @@
   --fs-micro: 0.75rem; /* 12px */
 
   font: 16px/145% system-ui, "Segoe UI", Roboto, sans-serif;
-  color-scheme: light;
+  color-scheme: dark;
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;

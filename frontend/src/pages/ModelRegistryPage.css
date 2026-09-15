@@ -90,8 +90,8 @@
   font-weight: 600;
   padding: 0.1rem 0.4rem;
   border-radius: var(--radius-xs);
-  background: rgba(255, 193, 7, 0.15);
-  color: #ffc107;
+  background: var(--accent-gold-tint-bg);
+  color: var(--accent-gold-light);
   margin-left: 0.4rem;
 }
 

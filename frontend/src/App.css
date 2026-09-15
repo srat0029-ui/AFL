@@ -212,13 +212,26 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.6rem;
-  height: 1.6rem;
+  width: 1.9rem;
+  height: 1.9rem;
   border-radius: var(--radius-sm);
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.8rem;
-  font-weight: 700;
+  background: var(--bg-inset);
+  border: 1px solid var(--border);
+  color: var(--accent);
+}
+
+.app-nav__brand-mark svg {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.app-nav__brand-word {
+  color: var(--text-h);
+}
+
+.app-nav__brand-word span {
+  color: var(--text-muted);
+  font-weight: 500;
 }
 
 .app-nav {
@@ -258,19 +271,19 @@
 }
 
 .app-nav__link--pinned {
-  color: #fff;
+  color: #0e1116;
   font-weight: 600;
   background: var(--accent);
 }
 
 .app-nav__link--pinned:hover {
-  background: var(--accent-light);
-  color: #fff;
+  background: var(--accent-hover);
+  color: #0e1116;
 }
 
 .app-nav__link--pinned.app-nav__link--active {
-  background: var(--accent-light);
-  color: #fff;
+  background: var(--accent-hover);
+  color: #0e1116;
 }
 
 .app-nav__group {
@@ -549,13 +562,13 @@
 .btn--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: #0e1116;
 }
 
 .btn--primary:hover {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
-  color: #fff;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #0e1116;
 }
 
 /* Model-vs-market difference sign — shared across every table that shows an
@@ -793,7 +806,7 @@
 .filter-chip--active {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: #0e1116;
 }
 
 .filter-chip:disabled {

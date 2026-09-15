@@ -92,13 +92,13 @@
 .match-card__action--primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: #0e1116;
 }
 
 .match-card__action--primary:hover {
-  background: var(--accent-light);
-  border-color: var(--accent-light);
-  color: #fff;
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: #0e1116;
 }
 
 .match-card-grid {

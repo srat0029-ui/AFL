@@ -190,15 +190,15 @@
 }
 
 .mme-legend__swatch--consensus {
-  background: var(--accent-light);
+  background: var(--accent);
 }
 
 .mme-legend__swatch--model {
-  background: var(--success-text);
+  background: var(--accent-gold);
 }
 
 .mme-legend__swatch--lineup {
-  background: var(--warning-text);
+  background: var(--info-text);
   border-radius: 2px;
 }
 
@@ -239,33 +239,33 @@
 
 .mme-chart__consensus-line {
   fill: none;
-  stroke: var(--accent-light);
+  stroke: var(--accent);
   stroke-width: 1.75;
 }
 
 .mme-chart__consensus-point {
-  fill: var(--accent-light);
+  fill: var(--accent);
 }
 
 .mme-chart__model-line {
   fill: none;
-  stroke: var(--success-text);
+  stroke: var(--accent-gold);
   stroke-width: 1.75;
 }
 
 .mme-chart__model-point {
-  fill: var(--success-text);
+  fill: var(--accent-gold);
 }
 
 .mme-chart__lineup-line {
-  stroke: var(--warning-text);
+  stroke: var(--info-text);
   stroke-width: 1;
   stroke-dasharray: 3 3;
   opacity: 0.6;
 }
 
 .mme-chart__lineup-marker {
-  fill: var(--warning-text);
+  fill: var(--info-text);
 }
 
 @media (max-width: 640px) {
