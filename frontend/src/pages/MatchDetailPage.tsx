@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import "./MatchDetailPage.css";
 import "../pages/DashboardPage.css";
@@ -12,6 +12,8 @@ import OddsPanel from "../components/OddsPanel";
 import PlayerPropPanel from "../components/PlayerPropPanel";
 import PlayerStatsTable, { type Column } from "../components/PlayerStatsTable";
 import { DisposalProjectionTable, GoalProjectionTable } from "../components/ProjectionTable";
+import Tabs from "../components/ui/Tabs";
+import Skeleton from "../components/ui/Skeleton";
 import { MarketMovementTable, QuoteHistoryDrawer } from "./RealMarketTrackingPage";
 import {
   fetchDiversifiedOpportunities,
@@ -83,7 +85,9 @@ function MatchOpportunitiesSection({ opportunities, loading }: { opportunities: 
 
 function MatchMovementSection({ movements }: { movements: MarketMovement[] }) {
   const [selected, setSelected] = useState<MarketMovement | null>(null);
-  if (movements.length === 0) return null;
+  if (movements.length === 0) {
+    return <p className="empty-state">No bookmaker price movement recorded for this match yet.</p>;
+  }
   return (
     <>
       <MarketMovementTable movements={movements} onSelect={setSelected} title="Market movement for this match" />
@@ -105,6 +109,21 @@ const MATCH_PLAYER_COLUMNS: Column[] = [
 
 const formatKickoff = formatFullDateTime;
 
+type MatchTab = "overview" | "market" | "players" | "multis" | "movement" | "stats";
+
+function tabsForStatus(isScheduled: boolean): { value: MatchTab; label: string }[] {
+  const base: { value: MatchTab; label: string }[] = [{ value: "overview", label: "Overview" }];
+  if (isScheduled) {
+    base.push(
+      { value: "market", label: "Market" },
+      { value: "players", label: "Player Markets" },
+      { value: "multis", label: "Multis" }
+    );
+  }
+  base.push({ value: "movement", label: "Movement" }, { value: "stats", label: "Player Stats" });
+  return base;
+}
+
 function MatchDetailPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const id = Number(matchId);
@@ -119,6 +138,7 @@ function MatchDetailPage() {
   const [movements, setMovements] = useState<MarketMovement[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState<MatchTab>("overview");
 
   function loadProjections() {
     if (!Number.isFinite(id)) return;
@@ -128,6 +148,12 @@ function MatchDetailPage() {
   useEffect(() => {
     if (!Number.isFinite(id)) return;
     setLoading(true);
+    // A hash link from a match card (#players / #markets) should land the
+    // user directly on that tab rather than the default Overview.
+    if (window.location.hash === "#players") setTab("players");
+    else if (window.location.hash === "#markets") setTab("market");
+    else setTab("overview");
+
     Promise.all([fetchMatch(id), fetchPredictions(id), fetchMatchPlayers(id), fetchMatchProjections(id)])
       .then(([matchData, predictionsData, playersData, projectionsData]) => {
         setMatch(matchData);
@@ -139,7 +165,7 @@ function MatchDetailPage() {
       .finally(() => setLoading(false));
 
     // Diversified so a single hot player's alternate lines can't dominate
-    // this match's list — same guarantee as the Dashboard/Prop Insights view.
+    // this match's list — same guarantee as the Home/Prop Insights view.
     fetchDiversifiedOpportunities({ view: "overall", marketScope: "player", limit: null })
       .then((r) => setOpportunities(r.opportunities.filter((o) => o.match_id === id)))
       .catch(() => setOpportunities([]))
@@ -150,10 +176,15 @@ function MatchDetailPage() {
       .catch(() => setMovements([]));
   }, [id]);
 
+  const isScheduled = match?.status === "scheduled";
+  const tabs = useMemo(() => tabsForStatus(isScheduled), [isScheduled]);
+
   if (loading) {
     return (
       <main className="match-detail-page">
-        <p className="loading-state">Loading…</p>
+        <Skeleton width="40%" height="1.5rem" />
+        <div style={{ height: 12 }} />
+        <Skeleton width="100%" height="6rem" />
       </main>
     );
   }
@@ -162,8 +193,8 @@ function MatchDetailPage() {
     return (
       <main className="match-detail-page">
         <div className="error-banner">{error ?? "Match not found."}</div>
-        <Link to="/" className="back-link">
-          &larr; Back to dashboard
+        <Link to="/matches" className="back-link">
+          &larr; Back to matches
         </Link>
       </main>
     );
@@ -171,8 +202,8 @@ function MatchDetailPage() {
 
   return (
     <main className="match-detail-page">
-      <Link to="/" className="back-link">
-        &larr; Back to dashboard
+      <Link to="/matches" className="back-link">
+        &larr; Back to matches
       </Link>
 
       <header className="match-header">
@@ -196,74 +227,81 @@ function MatchDetailPage() {
         )}
       </header>
 
-      {match.status === "scheduled" && (
-        <details className="system-status">
-          <summary>
-            <span className="section-title">Data freshness</span>
-          </summary>
-          <div className="system-status__body">
-            <DataFreshnessPanel />
-          </div>
-        </details>
+      <Tabs tabs={tabs} value={tab} onChange={setTab} />
+
+      {tab === "overview" && (
+        <>
+          {match.status === "scheduled" && (
+            <details className="system-status">
+              <summary>
+                <span className="section-title">Data freshness</span>
+              </summary>
+              <div className="system-status__body">
+                <DataFreshnessPanel />
+              </div>
+            </details>
+          )}
+
+          {predictions ? (
+            <section className="model-panel">
+              <h2 className="section-title">Model vs market</h2>
+
+              <div className="model-panel__grid">
+                <div className="model-stat">
+                  <span className="model-stat__label">Elo win probability</span>
+                  <span className="model-stat__value">
+                    {(predictions.elo_home_win_probability * 100).toFixed(1)}% / {(100 - predictions.elo_home_win_probability * 100).toFixed(1)}%
+                  </span>
+                  <span className="model-stat__hint">{match.home_team.short_name} / {match.away_team.short_name}</span>
+                </div>
+
+                <div className="model-stat">
+                  <span className="model-stat__label">Poisson win / draw / away</span>
+                  <span className="model-stat__value">
+                    {(predictions.poisson_home_win_probability * 100).toFixed(1)}% /{" "}
+                    {(predictions.poisson_draw_probability * 100).toFixed(1)}% /{" "}
+                    {(predictions.poisson_away_win_probability * 100).toFixed(1)}%
+                  </span>
+                </div>
+
+                <div className="model-stat">
+                  <span className="model-stat__label">Expected scoreline</span>
+                  <span className="model-stat__value">
+                    {predictions.poisson_home_expected_score.toFixed(0)} — {predictions.poisson_away_expected_score.toFixed(0)}
+                  </span>
+                  <span className="model-stat__hint">
+                    Total {predictions.poisson_expected_total_points.toFixed(0)}, margin{" "}
+                    {predictions.poisson_expected_margin >= 0 ? "+" : ""}
+                    {predictions.poisson_expected_margin.toFixed(0)} ({match.home_team.short_name})
+                  </span>
+                </div>
+              </div>
+
+              <p className="model-panel__note">
+                Elo is the primary match-winner model; Poisson independently models each team's expected score and is
+                used for line/total markets. Where they disagree significantly, confidence in any edge found is
+                reduced — see the Market tab.
+              </p>
+            </section>
+          ) : (
+            <section className="model-panel">
+              <p className="hint">
+                No model predictions available yet — run <code>elo_cli</code> and <code>poisson_cli</code> (see the
+                README).
+              </p>
+            </section>
+          )}
+        </>
       )}
 
-      {predictions ? (
-        <section className="model-panel">
-          <h2 className="section-title">Model vs market</h2>
-
-          <div className="model-panel__grid">
-            <div className="model-stat">
-              <span className="model-stat__label">Elo win probability</span>
-              <span className="model-stat__value">
-                {(predictions.elo_home_win_probability * 100).toFixed(1)}% / {(100 - predictions.elo_home_win_probability * 100).toFixed(1)}%
-              </span>
-              <span className="model-stat__hint">{match.home_team.short_name} / {match.away_team.short_name}</span>
-            </div>
-
-            <div className="model-stat">
-              <span className="model-stat__label">Poisson win / draw / away</span>
-              <span className="model-stat__value">
-                {(predictions.poisson_home_win_probability * 100).toFixed(1)}% /{" "}
-                {(predictions.poisson_draw_probability * 100).toFixed(1)}% /{" "}
-                {(predictions.poisson_away_win_probability * 100).toFixed(1)}%
-              </span>
-            </div>
-
-            <div className="model-stat">
-              <span className="model-stat__label">Expected scoreline</span>
-              <span className="model-stat__value">
-                {predictions.poisson_home_expected_score.toFixed(0)} — {predictions.poisson_away_expected_score.toFixed(0)}
-              </span>
-              <span className="model-stat__hint">
-                Total {predictions.poisson_expected_total_points.toFixed(0)}, margin{" "}
-                {predictions.poisson_expected_margin >= 0 ? "+" : ""}
-                {predictions.poisson_expected_margin.toFixed(0)} ({match.home_team.short_name})
-              </span>
-            </div>
-          </div>
-
-          <p className="model-panel__note">
-            Elo is the primary match-winner model; Poisson independently models each team's expected score and is
-            used for line/total markets below. Where they disagree significantly, confidence in any edge found is
-            reduced — see the odds table below.
-          </p>
-        </section>
-      ) : (
-        <section className="model-panel">
-          <p className="hint">
-            No model predictions available yet — run <code>elo_cli</code> and <code>poisson_cli</code> (see the
-            README).
-          </p>
-        </section>
+      {tab === "market" && isScheduled && (
+        <>
+          <OddsPanel matchId={match.id} homeTeamName={match.home_team.name} awayTeamName={match.away_team.name} />
+          <MatchOpportunitiesSection opportunities={opportunities} loading={opportunitiesLoading} />
+        </>
       )}
 
-      <OddsPanel matchId={match.id} homeTeamName={match.home_team.name} awayTeamName={match.away_team.name} />
-
-      {match.status === "scheduled" && <MatchOpportunitiesSection opportunities={opportunities} loading={opportunitiesLoading} />}
-
-      {match.status === "scheduled" && <MultiBuilderView matchId={match.id} />}
-
-      {match.status === "scheduled" && (
+      {tab === "players" && isScheduled && (
         <>
           <ExpectedLineupPanel
             matchId={match.id}
@@ -318,15 +356,32 @@ function MatchDetailPage() {
         </>
       )}
 
-      <MatchMovementSection movements={movements} />
+      {tab === "multis" && isScheduled && <MultiBuilderView matchId={match.id} />}
 
-      {players && (players.home_team_players.length > 0 || players.away_team_players.length > 0) && (
+      {tab === "movement" && (
+        <section className="backtest-panel">
+          <h2 className="section-title">Market movement</h2>
+          <p className="hint">
+            How bookmaker prices for this match have moved over time. For a full interactive timeline with model
+            probability overlaid, use the <Link to="/market-movement">Market Movement Explorer</Link>.
+          </p>
+          <MatchMovementSection movements={movements} />
+        </section>
+      )}
+
+      {tab === "stats" && (
         <section className="backtest-panel">
           <h2 className="section-title">Player statistics</h2>
-          <h3 className="match-detail-subheading">{match.home_team.name}</h3>
-          <PlayerStatsTable games={players.home_team_players} showPlayerColumn columns={MATCH_PLAYER_COLUMNS} />
-          <h3 className="match-detail-subheading">{match.away_team.name}</h3>
-          <PlayerStatsTable games={players.away_team_players} showPlayerColumn columns={MATCH_PLAYER_COLUMNS} />
+          {players && (players.home_team_players.length > 0 || players.away_team_players.length > 0) ? (
+            <>
+              <h3 className="match-detail-subheading">{match.home_team.name}</h3>
+              <PlayerStatsTable games={players.home_team_players} showPlayerColumn columns={MATCH_PLAYER_COLUMNS} />
+              <h3 className="match-detail-subheading">{match.away_team.name}</h3>
+              <PlayerStatsTable games={players.away_team_players} showPlayerColumn columns={MATCH_PLAYER_COLUMNS} />
+            </>
+          ) : (
+            <p className="empty-state">No player statistics recorded for this match yet.</p>
+          )}
         </section>
       )}
 

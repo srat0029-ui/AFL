@@ -158,20 +158,20 @@
 }
 
 .lineup-panel__announcement--teams_not_announced {
-  border-color: #3a3020;
-  background: #1f1a10;
+  border-color: var(--warning-text);
+  background: var(--warning-bg);
   color: var(--warning-text);
 }
 
 .lineup-panel__announcement--squad_announced {
-  border-color: var(--info-bg);
-  background: #14202f;
+  border-color: var(--info-text);
+  background: var(--info-bg);
   color: var(--info-text);
 }
 
 .lineup-panel__announcement--final_team_confirmed {
-  border-color: var(--success-bg);
-  background: #10201a;
+  border-color: var(--success-text);
+  background: var(--success-bg);
   color: var(--success-text);
 }
 
@@ -184,7 +184,7 @@
   font-size: 0.62rem;
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
-  background: #3a2f1c;
+  background: var(--caution-bg);
   color: var(--caution-text);
   cursor: help;
 }

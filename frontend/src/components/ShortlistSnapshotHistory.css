@@ -13,7 +13,7 @@
 .snapshot-history__freeze-btn {
   align-self: flex-start;
   background: var(--success-tint-bg);
-  border: 1px solid #2f6b4f;
+  border: 1px solid var(--success-text);
   color: var(--success-text);
   border-radius: 8px;
   padding: 0.5rem 1rem;

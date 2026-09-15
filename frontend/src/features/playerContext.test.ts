@@ -36,7 +36,7 @@ describe("real player context API", () => {
 describe("context presentation", () => {
   it("starts without invented player IDs", () => {
     const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(PlayerResearchPage)));
-    expect(html).toContain("Select a player to see which teammates are worth investigating");
+    expect(html).toContain("Choose a player to get started");
     expect(html).not.toContain("Harry Sheezel");
   });
   it("keeps the existing teammate search and statistic controls intact, and hides the mode switcher until a player is chosen", () => {

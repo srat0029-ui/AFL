@@ -32,13 +32,13 @@
 }
 
 .pec-boundary--active {
-  border-color: #2f6b4f;
+  border-color: var(--success-text);
   background: var(--success-tint-bg);
 }
 
 .pec-boundary--inactive {
-  border-color: #6b4e1c;
-  background: #241d0f;
+  border-color: var(--warning-text);
+  background: var(--warning-bg);
   color: var(--warning-text);
 }
 

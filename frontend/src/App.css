@@ -7,11 +7,11 @@
   line-height: 1.5;
 }
 
-/* --- Shared typography (Section 13) ------------------------------------- */
+/* --- Shared typography -------------------------------------------------- */
 
 .page-title {
   font-size: var(--fs-page-title);
-  font-weight: 600;
+  font-weight: 700;
   color: var(--text-h);
   margin: 0 0 0.25rem;
   letter-spacing: -0.01em;
@@ -21,6 +21,8 @@
   color: var(--text-muted);
   font-size: var(--fs-body);
   margin: 0 0 var(--space-5);
+  max-width: 62ch;
+  line-height: 1.5;
 }
 
 .section-title {
@@ -43,6 +45,7 @@
   color: var(--accent-light);
   text-decoration: none;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .section-row__link:hover {
@@ -53,19 +56,17 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Chips (Section 8, 16): one consistent small rectangular status
-   indicator, replacing the mix of full pills / 4px chips / oversized
-   badges scattered through earlier pages. Never a full pill (999px). ---- */
+/* --- Chips: one consistent small rectangular status indicator. --------- */
 
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 0.3em;
   font-size: var(--fs-micro);
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.4;
   border-radius: var(--radius-xs);
-  padding: 0.06rem 0.4rem;
+  padding: 0.1rem 0.45rem;
   white-space: nowrap;
 }
 
@@ -94,7 +95,7 @@
   color: var(--danger-text);
 }
 
-/* --- Shared data table (Section 12) -------------------------------------- */
+/* --- Shared data table --------------------------------------------------- */
 
 .data-table {
   width: 100%;
@@ -104,7 +105,7 @@
 
 .data-table th,
 .data-table td {
-  padding: 0.4rem 0.6rem;
+  padding: 0.5rem 0.65rem;
   text-align: left;
   border-bottom: 1px solid var(--border-subtle);
   white-space: nowrap;
@@ -112,10 +113,10 @@
 
 .data-table th {
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: 600;
   font-size: var(--fs-micro);
   text-transform: uppercase;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
 }
 
 .data-table tbody tr:hover {
@@ -139,7 +140,7 @@
   overflow-x: auto;
 }
 
-/* --- Compact horizontal stat strip (Dashboard round status, readiness) -- */
+/* --- Compact horizontal stat strip -------------------------------------- */
 
 .stat-strip {
   display: flex;
@@ -148,13 +149,13 @@
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 0.7rem 1rem;
+  padding: 0.8rem 1.1rem;
 }
 
 .stat-strip__item {
   display: flex;
   flex-direction: column;
-  gap: 0.1rem;
+  gap: 0.15rem;
   min-width: 6rem;
 }
 
@@ -164,47 +165,77 @@
 }
 
 .stat-strip__value {
-  font-size: 0.95rem;
-  font-weight: 600;
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--text-h);
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Navigation (Section 4): compact grouped menu instead of one flat row
-   of 15 equal-weight links. Multis is pinned outside every group since
-   it's the primary during-finals destination; everything else lives under
-   a small set of <details> dropdowns so no single item competes with it
-   for attention. Native <details>/<summary> gives click-to-open on every
-   device (including touch) with no extra JS state to manage. ------------ */
+/* --- App shell + navigation --------------------------------------------- */
+
+.app-shell {
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--bg-nav);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-header__inner {
+  max-width: 1280px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 0.65rem 1.25rem;
+}
+
+.app-nav__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.app-nav__brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
 
 .app-nav {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.6rem 1.25rem;
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-nav);
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
-}
-
-.app-nav__brand {
-  font-weight: 700;
-  font-size: 0.85rem;
-  letter-spacing: 0.02em;
-  color: var(--text-h);
-  margin-right: 0.75rem;
-  white-space: nowrap;
+  gap: 0.2rem;
+  flex: 1;
 }
 
 .app-nav__link,
 .app-nav__group > summary {
   color: var(--text-muted);
   text-decoration: none;
-  font-size: 0.82rem;
-  padding: 0.4rem 0.55rem;
-  border-radius: var(--radius-xs);
+  font-size: 0.86rem;
+  font-weight: 500;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
   white-space: nowrap;
   cursor: pointer;
   list-style: none;
@@ -222,20 +253,24 @@
 }
 
 .app-nav__link--active {
-  color: var(--text-h);
-  background: var(--bg-inset);
+  color: var(--accent-light);
+  background: var(--accent-tint-bg);
 }
 
 .app-nav__link--pinned {
-  color: var(--text-h);
+  color: #fff;
   font-weight: 600;
-  border: 1px solid var(--border);
+  background: var(--accent);
+}
+
+.app-nav__link--pinned:hover {
+  background: var(--accent-light);
+  color: #fff;
 }
 
 .app-nav__link--pinned.app-nav__link--active {
-  border-color: var(--accent);
-  background: #16233a;
-  color: var(--accent-light);
+  background: var(--accent-light);
+  color: #fff;
 }
 
 .app-nav__group {
@@ -245,7 +280,7 @@
 .app-nav__group > summary {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.3rem;
 }
 
 .app-nav__group > summary::after {
@@ -255,54 +290,134 @@
   border-left: 3px solid transparent;
   border-right: 3px solid transparent;
   border-top: 4px solid currentColor;
-  opacity: 0.6;
-  margin-top: 1px;
+  opacity: 0.55;
+  margin-top: 2px;
 }
 
 .app-nav__group[open] > summary,
 .app-nav__group--active > summary {
-  color: var(--text-h);
-  background: var(--bg-inset);
+  color: var(--accent-light);
+  background: var(--accent-tint-bg);
 }
 
 .app-nav__group-menu {
-  /* Portalled to <body> and positioned via inline top/left (see App.tsx) -
-     fixed, not absolute, since it's no longer inside .app-nav's own
-     positioning/clipping context. */
+  /* Portalled to <body> and positioned via inline top/left (see App.tsx). */
   position: fixed;
   display: flex;
   flex-direction: column;
-  min-width: 11rem;
+  min-width: 13rem;
   background: var(--card-bg);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 0.3rem;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
-  z-index: 20;
+  border-radius: var(--radius-md);
+  padding: 0.35rem;
+  box-shadow: var(--shadow-md);
+  z-index: 40;
 }
 
 .app-nav__group-menu .app-nav__link {
-  padding: 0.4rem 0.6rem;
+  padding: 0.5rem 0.65rem;
+}
+
+.app-nav__group-menu-label {
+  font-size: var(--fs-micro);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.4rem 0.65rem 0.15rem;
 }
 
 .app-nav__spacer {
   flex: 1;
 }
 
-@media (max-width: 640px) {
+.app-nav__status-link {
+  color: var(--text-faint);
+  font-size: 0.78rem;
+  text-decoration: none;
+  white-space: nowrap;
+  padding: 0.4rem 0.5rem;
+}
+
+.app-nav__status-link:hover {
+  color: var(--text-muted);
+}
+
+.app-nav__mobile-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--card-bg);
+  color: var(--text-h);
+  cursor: pointer;
+  margin-left: auto;
+}
+
+.app-nav__mobile-panel {
+  display: none;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding: 0.5rem 1.25rem 0.9rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-nav);
+}
+
+.app-nav__mobile-panel .app-nav__link {
+  display: block;
+  padding: 0.6rem 0.4rem;
+  font-size: 0.92rem;
+}
+
+.app-nav__mobile-panel-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.app-nav__mobile-group-label {
+  font-size: var(--fs-micro);
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0.7rem 0.4rem 0.15rem;
+}
+
+@media (max-width: 860px) {
   .app-nav {
-    gap: 0.15rem;
-    padding: 0.5rem 0.75rem;
+    display: none;
+  }
+
+  .app-nav__mobile-toggle {
+    display: flex;
+  }
+
+  .app-nav__mobile-panel--open {
+    display: flex;
+  }
+
+  .app-header__inner {
+    padding: 0.6rem 1rem;
   }
 }
 
-/* Shared primitives reused across pages: cards, tabs, error/empty/loading states, buttons. */
+.app-main {
+  flex: 1;
+  width: 100%;
+}
+
+/* --- Shared primitives: cards, tabs, error/empty/loading states, buttons. */
 
 .card {
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-4) var(--space-5);
+}
+
+.card--elevated {
+  box-shadow: var(--shadow-sm);
 }
 
 .tab-bar {
@@ -316,30 +431,35 @@
 .tab-bar__tab {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 0.45rem 0.9rem;
   color: var(--text-muted);
   font: inherit;
   font-size: 0.85rem;
+  font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
 }
 
 .tab-bar__tab:hover {
   color: var(--text-h);
-  background: var(--card-bg);
+  background: var(--bg-inset);
 }
 
 .tab-bar__tab--active {
-  background: var(--success-tint-bg);
-  border-color: #2f6b4f;
-  color: var(--success-text);
+  background: var(--accent-tint-bg);
+  border-color: var(--accent-tint-bg);
+  color: var(--accent-light);
 }
 
 .error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   background: var(--danger-bg);
   border: 1px solid var(--danger-border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 0.75rem 1rem;
   color: var(--danger-text);
   font-size: 0.9rem;
@@ -353,6 +473,7 @@
   border: 1px dashed var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-subtle);
+  line-height: 1.5;
 }
 
 .loading-state {
@@ -365,53 +486,81 @@
 @keyframes loading-pulse {
   0%,
   100% {
-    opacity: 0.55;
+    opacity: 0.5;
   }
   50% {
     opacity: 1;
   }
 }
 
-.loading-state::after {
-  content: "";
-  display: inline-block;
-  width: 0.4em;
-  text-align: left;
-}
-
 .loading-state {
   animation: loading-pulse 1.4s ease-in-out infinite;
 }
 
+/* Skeleton block — a polished loading placeholder that doesn't jump the
+   layout once real content arrives (give it the same box size the real
+   content will occupy). */
+.skeleton {
+  display: block;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(100deg, var(--bg-inset) 30%, var(--border-subtle) 45%, var(--bg-inset) 60%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -20% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton,
+  .loading-state {
+    animation: none;
+  }
+}
+
 .btn {
-  background: transparent;
+  background: var(--card-bg);
   border: 1px solid var(--border);
-  color: var(--accent-light);
-  border-radius: 6px;
-  padding: 0.35rem 0.75rem;
+  color: var(--text-h);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.85rem;
   font: inherit;
-  font-size: 0.8rem;
+  font-size: 0.82rem;
+  font-weight: 500;
   cursor: pointer;
 }
 
 .btn:hover {
   border-color: var(--accent);
-  color: var(--text-h);
+  color: var(--accent-light);
 }
 
 .btn:disabled {
-  opacity: 0.6;
+  opacity: 0.55;
   cursor: default;
 }
 
-/* Edge/confidence tier badges — shared across Dashboard, Match Centre
-   (OddsPanel), Prop Insights, and Weekly Review so the same tier always
-   reads as the same colour everywhere. */
+.btn--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.btn--primary:hover {
+  background: var(--accent-light);
+  border-color: var(--accent-light);
+  color: #fff;
+}
 
 /* Model-vs-market difference sign — shared across every table that shows an
-   edge (Dashboard, Match Centre, Prop Insights, Weekly Review, Placed Bets,
-   Opportunity views). Kept its original class name so the many existing
-   call sites didn't need touching. */
+   edge. Kept its original class name so the many existing call sites didn't
+   need touching. */
 .prop-insights-table__diff-pos {
   color: var(--success-text);
 }
@@ -424,8 +573,9 @@
 .confidence-badge {
   display: inline-block;
   font-size: 0.72rem;
-  border-radius: 4px;
-  padding: 0.1rem 0.45rem;
+  font-weight: 600;
+  border-radius: var(--radius-xs);
+  padding: 0.12rem 0.5rem;
   white-space: nowrap;
 }
 
@@ -470,11 +620,6 @@
 }
 
 @media (max-width: 640px) {
-  .app-nav {
-    gap: 1rem;
-    padding: 0.75rem 1rem;
-  }
-
   .card {
     padding: var(--space-3) var(--space-4);
   }
@@ -499,7 +644,7 @@
 }
 
 .status-card {
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 1.5rem;
   border: 1px solid var(--border);
   background: var(--card-bg);
@@ -512,7 +657,7 @@
 
 .status-card--success {
   border-color: var(--success-bg);
-  background: #101c14;
+  background: var(--success-bg);
 }
 
 .status-card__headline {
@@ -540,6 +685,7 @@
 .hint {
   color: var(--text-muted);
   font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .player-stats-table__sortable {
@@ -554,4 +700,143 @@
 .player-stats-table__sub-flag {
   color: var(--text-muted);
   font-size: 0.8rem;
+}
+
+/* --- New reusable primitives: PageHeader, StatTile, FilterChips, Section - */
+
+.pg-header {
+  margin-bottom: var(--space-5);
+}
+
+.pg-header__eyebrow {
+  display: block;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--accent-light);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.3rem;
+}
+
+.pg-header__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+
+.pg-header__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.stat-tile-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-4);
+}
+
+.stat-tile {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.stat-tile__label {
+  font-size: var(--fs-micro);
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.stat-tile__value {
+  font-size: var(--fs-stat);
+  font-weight: 700;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-tile__meta {
+  font-size: var(--fs-micro);
+  color: var(--text-dim);
+}
+
+.filter-chip-row {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.filter-chip {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.4rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.filter-chip:hover {
+  border-color: var(--accent);
+  color: var(--text-h);
+}
+
+.filter-chip--active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.filter-chip:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.info-callout {
+  display: flex;
+  gap: 0.6rem;
+  align-items: flex-start;
+  background: var(--info-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 0.75rem 1rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.info-callout__icon {
+  flex: none;
+  color: var(--info-text);
+  font-weight: 700;
+}
+
+details.disclosure > summary {
+  cursor: pointer;
+  color: var(--accent-light);
+  font-size: 0.85rem;
+  font-weight: 500;
+  list-style: none;
+}
+
+details.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+details.disclosure > summary::before {
+  content: "▸ ";
+  font-size: 0.7em;
+}
+
+details.disclosure[open] > summary::before {
+  content: "▾ ";
 }

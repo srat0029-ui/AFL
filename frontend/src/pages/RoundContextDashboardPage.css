@@ -71,7 +71,7 @@
 }
 
 .round-context-table a {
-  color: #8fb8ff;
+  color: var(--accent-light);
   text-decoration: none;
 }
 

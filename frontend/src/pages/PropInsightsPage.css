@@ -43,7 +43,7 @@
   font-size: 0.62rem;
   padding: 0.05rem 0.3rem;
   border-radius: var(--radius-xs);
-  background: #3a2f1c;
+  background: var(--caution-bg);
   color: var(--caution-text);
   cursor: help;
 }
@@ -213,6 +213,6 @@
 }
 
 .prop-insights-table__type-badge--team {
-  background: #2a1e3a;
-  color: #c4b5fd;
+  background: #f1e9fb;
+  color: #6d3fa8;
 }

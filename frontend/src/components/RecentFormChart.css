@@ -9,7 +9,7 @@
 }
 
 .recent-form-chart__bar--hit {
-  fill: #22c55e;
+  fill: var(--success-text);
 }
 
 .recent-form-chart__bar--miss {
