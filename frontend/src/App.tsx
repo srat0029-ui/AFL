@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type SyntheticEvent } fro
 import { createPortal } from "react-dom";
 import { NavLink, Route, Routes, useLocation } from "react-router-dom";
 import "./App.css";
+import Logo from "./components/ui/Logo";
 import B2BDemoPage from "./pages/B2BDemoPage";
 import BacktestPage from "./pages/BacktestPage";
 import HomePage from "./pages/HomePage";
@@ -196,8 +197,12 @@ function App() {
       <header className="app-header">
         <div className="app-header__inner">
           <NavLink to="/" className="app-nav__brand">
-            <span className="app-nav__brand-mark">AFL</span>
-            Research &amp; Markets
+            <span className="app-nav__brand-mark">
+              <Logo />
+            </span>
+            <span className="app-nav__brand-word">
+              AFL <span>Research &amp; Markets</span>
+            </span>
           </NavLink>
           <nav className="app-nav" ref={navRef}>
             {PRIMARY_LINKS.filter((l) => l.to !== "/placed-bets").map((l) => (

@@ -43,8 +43,8 @@
   font-size: 0.65rem;
   padding: 0.08rem 0.35rem;
   border-radius: var(--radius-xs);
-  background: #f1e9fb;
-  color: #6d3fa8;
+  background: #251c33;
+  color: #c6a6f0;
 }
 
 .bookmaker-settings__row select {
