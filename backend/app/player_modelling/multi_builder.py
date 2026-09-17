@@ -450,6 +450,31 @@ def _options_for_tier(
     )[:_MAX_BOOKMAKERS_SEARCHED]
 
     if not ranked_bookmakers:
+        # Distinguish the two genuinely different reasons a tier can come up
+        # empty, since they call for different user actions: not enough legs
+        # clear the probability/quality gates at all, vs. enough legs exist
+        # but "confirmed players only" filtered out one (typically still-
+        # unconfirmed) team's players, leaving too few CONFIRMED legs even
+        # though the match's overall readiness can already read READY (that
+        # only requires ONE confirmed player anywhere in the match, not both
+        # teams — see compute_match_readiness). Recomputed only on this
+        # already-rare empty-result path, so the common case pays nothing.
+        if confirmed_only:
+            unfiltered_pools = {
+                name: _candidate_pool(legs, tier_key, mode, confirmed_only=False) for name, legs in legs_by_bookmaker.items()
+            }
+            would_be_ready_unfiltered = any(len(pool) >= min_legs for pool in unfiltered_pools.values())
+            if would_be_ready_unfiltered:
+                return TierResult(
+                    options=[],
+                    unavailable_reason=(
+                        f"Enough legs exist for a {TIER_LABELS[tier_key].lower()} multi, but not enough of them belong to "
+                        "CONFIRMED players — this usually means one team's lineup isn't confirmed yet, even though the "
+                        "other team's is. Confirm the remaining team, or turn off \"Confirmed players only\" to see it "
+                        "as provisional."
+                    ),
+                    bookmaker_comparison=[],
+                )
         min_prob = MIN_LEG_PROBABILITY.get(tier_key) if mode == MODE_HIGH_PROBABILITY else MIN_LEG_PROBABILITY_VALUE
         reason = (
             f"No {TIER_LABELS[tier_key]} multi currently meets the required individual-leg probabilities "
