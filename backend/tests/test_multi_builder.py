@@ -518,6 +518,25 @@ def test_multi_builder_route_exposes_mode_and_probability_fields(client, db_sess
     assert bad.status_code == 422
 
 
+def test_round_summary_route_exposes_unavailable_reason_per_tier(client, db_session):
+    """API-level check for the same bug fix: the round-overview endpoint
+    (behind the Multis hub page's match list, which itself defaults to
+    confirmed_only=False) must still surface WHY a tier has no option when
+    the caller explicitly asks for confirmed_only=True, not just a bare
+    empty best_options_by_tier entry."""
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Confirmed Player", prices=[("SportsBet", 1.60)], confirmed=True)
+    _add_player_leg(db_session, match, away, player_name="Unconfirmed Player", prices=[("SportsBet", 1.60)], confirmed=False)
+
+    response = client.get("/api/afl/multi-builder/round-summary", params={"confirmed_only": True})
+    assert response.status_code == 200
+    row = next(r for r in response.json()["matches"] if r["match_id"] == match.id)
+    assert row["best_options_by_tier"][TIER_CONSERVATIVE] is None
+    reason = row["unavailable_reason_by_tier"][TIER_CONSERVATIVE]
+    assert reason is not None
+    assert "CONFIRMED players" in reason
+
+
 def test_high_probability_sees_every_alternate_line_not_just_one_safest_alt(db_session):
     """This stage's core fix: _match_legs (Value mode's pool) collapses a
     player's alternate lines down to one value-ranked representative plus
@@ -769,6 +788,31 @@ def test_empty_tier_carries_an_unavailable_reason_not_just_silence(db_session):
     assert conservative.options == []
     assert conservative.unavailable_reason is not None
     assert "Conservative" in conservative.unavailable_reason
+
+
+def test_empty_tier_reason_distinguishes_confirmed_only_filtering_from_a_true_shortfall(db_session):
+    """Bug fix: two legs exist (one per team) and are genuinely enough for
+    Conservative/Balanced (min_legs=2) once confirmed_only is turned off -
+    but with the Multi Builder's own default confirmed_only=True, only ONE
+    team's player is confirmed, so the OTHER team's leg is filtered out and
+    the tier still comes up empty. Before this fix that read exactly like a
+    genuine "nothing clears the probability gates" shortfall (the SAME
+    wording as when the legs never existed at all) - the two situations
+    call for different user actions and must not share one sentence."""
+    match, home, away = _seed_match(db_session)
+    _add_player_leg(db_session, match, home, player_name="Confirmed Player", prices=[("SportsBet", 1.60)], confirmed=True)
+    _add_player_leg(db_session, match, away, player_name="Unconfirmed Player", prices=[("SportsBet", 1.60)], confirmed=False)
+
+    unfiltered = build_match_multis(db_session, match.id, confirmed_only=False)
+    assert unfiltered.tiers[TIER_CONSERVATIVE].options != [] or unfiltered.tiers[TIER_BALANCED].options != []
+
+    filtered = build_match_multis(db_session, match.id, confirmed_only=True)
+    for tier_key in (TIER_CONSERVATIVE, TIER_BALANCED):  # both need only 2 legs
+        tier = filtered.tiers[tier_key]
+        assert tier.options == []
+        assert tier.unavailable_reason is not None
+        assert "CONFIRMED players" in tier.unavailable_reason
+        assert "meets the required individual-leg probabilities" not in tier.unavailable_reason
 
 
 # --- Item 9: bookmaker comparison for multis -----------------------------------

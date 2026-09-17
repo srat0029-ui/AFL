@@ -600,12 +600,16 @@ def get_round_multi_summary(confirmed_only: bool = Query(default=True), db: Sess
         best_options_by_tier = {
             t: option_as_dict(result.tiers[t].options[0]) if result.tiers[t].options else None for t in MULTI_TIER_ORDER
         }
+        unavailable_reason_by_tier = {
+            t: result.tiers[t].unavailable_reason if not result.tiers[t].options else None for t in MULTI_TIER_ORDER
+        }
         readiness = compute_match_readiness(db, m.match_id, raw_opportunities=raw_opportunities)
         rows.append(RoundMultiSummaryRowRead(
             match_id=m.match_id, home_team_name=match.home_team.name, away_team_name=match.away_team.name,
             scheduled_start=match.scheduled_start, n_eligible_legs=result.n_eligible_legs,
             n_bookmakers_available=len(result.bookmakers_available), tiers_available=tiers_available,
             readiness=MatchReadinessRead(**readiness.__dict__), best_options_by_tier=best_options_by_tier,
+            unavailable_reason_by_tier=unavailable_reason_by_tier,
         ))
     return RoundMultiSummaryRead(matches=rows)
 

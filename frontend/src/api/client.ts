@@ -1843,6 +1843,7 @@ export interface RoundMultiSummaryRow {
   tiers_available: MultiTierKey[];
   readiness: MatchReadiness;
   best_options_by_tier: Partial<Record<MultiTierKey, MultiOption | null>>;
+  unavailable_reason_by_tier: Partial<Record<MultiTierKey, string | null>>;
 }
 
 export interface RoundMultiSummary {

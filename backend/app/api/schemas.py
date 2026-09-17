@@ -1704,6 +1704,12 @@ class RoundMultiSummaryRowRead(BaseModel):
     # own page just to see what's available - the single best High
     # Probability option per tier, right here.
     best_options_by_tier: dict[str, MultiOptionRead | None] = {}
+    # Bug fix: a tier with no option previously rendered as a bare "Not
+    # available" with no way to tell "not enough confirmed legs yet" apart
+    # from "nothing here clears the probability gates" - both are common,
+    # and only the first is resolved by simply waiting for a lineup. Mirrors
+    # each tier's own unavailable_reason from the per-match Multi Builder.
+    unavailable_reason_by_tier: dict[str, str | None] = {}
 
 
 class RoundMultiSummaryRead(BaseModel):
