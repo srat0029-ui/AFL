@@ -80,6 +80,13 @@
   color: var(--text-dim);
 }
 
+.multis-page__tier-summary-reason {
+  margin-top: 0.15rem;
+  color: var(--text-dim);
+  font-size: 0.68rem;
+  line-height: 1.35;
+}
+
 .multis-page__missing {
   margin: 0.1rem 0 0;
   color: var(--text-muted);

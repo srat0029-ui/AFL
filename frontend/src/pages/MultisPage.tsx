@@ -19,6 +19,7 @@ function TierSummaryGrid({ row }: { row: RoundMultiSummaryRow }) {
     <div className="multis-page__tier-summary-grid">
       {TIER_ORDER.map((t) => {
         const opt = row.best_options_by_tier[t];
+        const reason = row.unavailable_reason_by_tier[t];
         return (
           <div key={t} className="multis-page__tier-summary-cell">
             <span className="multis-page__tier-summary-label">{TIER_LABELS[t]}</span>
@@ -27,7 +28,10 @@ function TierSummaryGrid({ row }: { row: RoundMultiSummaryRow }) {
                 ${opt.indicative_combined_odds.toFixed(2)} · {opt.n_legs} legs · {opt.bookmaker}
               </span>
             ) : (
-              <span className="multis-page__tier-summary-value multis-page__tier-summary-value--empty">Not available</span>
+              <>
+                <span className="multis-page__tier-summary-value multis-page__tier-summary-value--empty">Not available</span>
+                {reason && <span className="multis-page__tier-summary-reason">{reason}</span>}
+              </>
             )}
           </div>
         );
