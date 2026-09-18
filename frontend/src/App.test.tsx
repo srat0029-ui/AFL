@@ -83,7 +83,10 @@ describe("App navigation", () => {
 
   it("still renders an advanced page directly by URL (advanced-page access preserved)", () => {
     const html = renderAt("/model-registry");
-    expect(html).toContain("Model Registry");
+    // Page heading now matches its nav label ("Model Evaluation") rather
+    // than the old internal "Model Registry" name (see the assertion above
+    // that the old jargon-heavy name is gone from nav) - final UX pass.
+    expect(html).toContain("Model Evaluation");
   });
 
   it("renders the match detail hub's loading state without crashing for an unknown match", () => {
