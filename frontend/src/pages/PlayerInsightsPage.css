@@ -7,14 +7,6 @@
   gap: 1.5rem;
 }
 
-.player-insights-page__header h1 {
-  margin: 0 0 0.25rem;
-  font-size: var(--fs-page-title);
-  font-weight: 600;
-  color: var(--text-h);
-  letter-spacing: -0.01em;
-}
-
 .player-insights-page__filters {
   display: flex;
   gap: 1rem;

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchRoundMultiSummary, type MultiTierKey, type RoundMultiSummaryRow } from "../api/client";
 import MultiBuilderView, { ReadinessBadge } from "../components/MultiBuilderView";
 import Disclaimer from "../components/Disclaimer";
+import PageHeader from "../components/ui/PageHeader";
 import { formatCompactDateTime } from "../lib/datetime";
 import "./MultisPage.css";
 
@@ -79,10 +80,10 @@ function MultisPage() {
 
   return (
     <main className="multis-page">
-      <header className="multis-page__header">
-        <h1 className="page-title">Finals / Multis</h1>
-        <p className="page-subtitle">Model-informed multi-leg combinations, built from live projections and current bookmaker markets. Never guaranteed, safe, or a lock.</p>
-      </header>
+      <PageHeader
+        title="Multis"
+        description="Model-informed multi-leg combinations, built from live projections and current bookmaker markets — pick a match to see its buildable tiers. Never guaranteed, safe, or a lock."
+      />
 
       {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="error-banner">{error}</div>}

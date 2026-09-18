@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import "./RealMarketTrackingPage.css";
 import Disclaimer from "../components/Disclaimer";
+import PageHeader from "../components/ui/PageHeader";
 import { formatPreciseDateTime, formatShortDate } from "../lib/datetime";
 import {
   fetchMarketMovement,
@@ -261,17 +262,11 @@ function RealMarketTrackingPage() {
 
   return (
     <main className="rmt-page">
-      <header className="rmt-page__header">
-        <h1>Real Market Tracking</h1>
-        <p className="hint">
-          <strong>Real logged market observations</strong> — every real bookmaker price we've fetched, frozen against
-          what the model believed at that exact moment, tracked toward eventual settlement against real player
-          results. This is NOT the synthetic 2016-2025 historical backtest (see the Backtesting page for that) — this
-          dataset starts empty and grows one real match at a time. Nothing here is a staking recommendation. This is
-          an <strong>evaluation-only</strong> dataset — it is never used to retune the model, confidence tiers, or
-          ranking weights; doing so would turn an honest holdout into a second training set.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Insights"
+        title="Real Market Tracking"
+        description="Real bookmaker prices we've fetched, frozen against what the model believed at that exact moment, tracked toward eventual settlement against real results. Not the synthetic 2016-2025 historical backtest (see Backtesting) — this dataset starts empty and grows one real match at a time. Evaluation-only: it is never used to retune the model, confidence tiers, or ranking weights, and nothing here is a staking recommendation."
+      />
 
       {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="error-banner">{error}</div>}
@@ -402,16 +397,19 @@ function RealMarketTrackingPage() {
             </div>
           </div>
 
-          <BucketTable title="Edge buckets (model-market difference)" buckets={report.edge_buckets} />
-          <BucketTable title="Confidence buckets" buckets={report.confidence_buckets} />
-          <BucketTable title="Lineup-status buckets" buckets={report.lineup_buckets} />
-          <BucketTable title="Timing buckets (hours before kickoff)" buckets={report.timing_buckets} />
+          <details className="disclosure rmt-detail">
+            <summary>Breakdown by edge, confidence, lineup, and timing (technical detail)</summary>
+            <BucketTable title="Edge buckets (model-market difference)" buckets={report.edge_buckets} />
+            <BucketTable title="Confidence buckets" buckets={report.confidence_buckets} />
+            <BucketTable title="Lineup-status buckets" buckets={report.lineup_buckets} />
+            <BucketTable title="Timing buckets (hours before kickoff)" buckets={report.timing_buckets} />
 
-          {report.market_open_timing.length > 0 && <MarketOpenTimingTable timing={report.market_open_timing} />}
+            {report.market_open_timing.length > 0 && <MarketOpenTimingTable timing={report.market_open_timing} />}
 
-          {movements && movements.length > 0 && (
-            <MarketMovementTable movements={movements} onSelect={setSelectedMovement} />
-          )}
+            {movements && movements.length > 0 && (
+              <MarketMovementTable movements={movements} onSelect={setSelectedMovement} />
+            )}
+          </details>
         </>
       )}
 

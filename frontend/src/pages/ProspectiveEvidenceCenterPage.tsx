@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import Disclaimer from "../components/Disclaimer";
+import PageHeader from "../components/ui/PageHeader";
 import { formatPreciseDateTime } from "../lib/datetime";
 import {
   fetchProspectiveEvidenceCenter,
@@ -318,15 +319,11 @@ function ProspectiveEvidenceCenterPage() {
 
   return (
     <main className="pec-page">
-      <header className="pec-page__header">
-        <h1>Prospective Evidence Center</h1>
-        <p className="hint">
-          The single place to inspect every <strong>formal, post-boundary</strong> prospective result the system has
-          produced — predictions and prices frozen before kickoff, then settled against real outcomes, never
-          overwritten. This page composes the existing pricing engine, Same Game Multi, real market tracking, and
-          Market Monitor datasets; it computes nothing new.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Advanced"
+        title="Live Model Results"
+        description="Every formal, post-boundary prospective result the system has produced — predictions and prices frozen before kickoff, then settled against real outcomes, never overwritten or retuned. Composes the pricing engine, Same Game Multi, real market tracking, and Market Monitor datasets; it computes nothing new of its own."
+      />
 
       {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="error-banner">{error}</div>}
@@ -437,16 +434,6 @@ function ProspectiveEvidenceCenterPage() {
               useful? Purely descriptive — nothing here retunes a threshold, weight, or probability.
             </p>
 
-            <h3>Coverage (operational health)</h3>
-            <div className="pec-grid">
-              <div><span className="pec-grid__label">Upcoming matches monitored</span><span className="pec-grid__value">{data.market_monitor.coverage.n_upcoming_matches_monitored}</span></div>
-              <div><span className="pec-grid__label">High/Critical cases currently frozen</span><span className="pec-grid__value">{data.market_monitor.coverage.n_frozen_cases}</span></div>
-              <div><span className="pec-grid__label">Cases with 2+ follow-ups</span><span className="pec-grid__value">{data.market_monitor.coverage.n_cases_with_2plus_followups}</span></div>
-              <div><span className="pec-grid__label">Cases with 3+ follow-ups</span><span className="pec-grid__value">{data.market_monitor.coverage.n_cases_with_3plus_followups}</span></div>
-              <div><span className="pec-grid__label">Earliest hours-before-kickoff captured</span><span className="pec-grid__value">{data.market_monitor.coverage.earliest_hours_before_kickoff_captured === null ? "—" : `${data.market_monitor.coverage.earliest_hours_before_kickoff_captured.toFixed(1)}h`}</span></div>
-              <div><span className="pec-grid__label">Latest pre-kickoff capture</span><span className="pec-grid__value">{data.market_monitor.coverage.latest_pre_kickoff_capture_hours === null ? "—" : `${data.market_monitor.coverage.latest_pre_kickoff_capture_hours.toFixed(1)}h`}</span></div>
-            </div>
-
             <h3>
               Genuine prospective effectiveness{" "}
               {data.market_monitor.prospective.summary.sample_label && (
@@ -465,19 +452,32 @@ function ProspectiveEvidenceCenterPage() {
               <Link to="/market-monitor">View full Market Monitor Effectiveness dashboard →</Link>
             </p>
 
-            <div className="pec-historical">
-              <h3>Historical backfill (not formal prospective evidence)</h3>
-              <p className="hint">
-                Cases backfilled by a one-off historical script against already-completed matches. Useful for
-                exercising the pipeline, but explicitly excluded from any judgement about real alert quality — kept
-                here strictly separate from the genuine prospective evidence above.
-              </p>
-              {data.market_monitor.retrospective.summary.n_resolved === 0 ? (
-                <p className="empty-state">No retrospective backfill cases have resolved yet.</p>
-              ) : (
-                <EffectivenessSummaryGrid view={data.market_monitor.retrospective} />
-              )}
-            </div>
+            <details className="disclosure">
+              <summary>Coverage detail &amp; historical backfill (not formal prospective evidence)</summary>
+              <h3>Coverage (operational health)</h3>
+              <div className="pec-grid">
+                <div><span className="pec-grid__label">Upcoming matches monitored</span><span className="pec-grid__value">{data.market_monitor.coverage.n_upcoming_matches_monitored}</span></div>
+                <div><span className="pec-grid__label">High/Critical cases currently frozen</span><span className="pec-grid__value">{data.market_monitor.coverage.n_frozen_cases}</span></div>
+                <div><span className="pec-grid__label">Cases with 2+ follow-ups</span><span className="pec-grid__value">{data.market_monitor.coverage.n_cases_with_2plus_followups}</span></div>
+                <div><span className="pec-grid__label">Cases with 3+ follow-ups</span><span className="pec-grid__value">{data.market_monitor.coverage.n_cases_with_3plus_followups}</span></div>
+                <div><span className="pec-grid__label">Earliest hours-before-kickoff captured</span><span className="pec-grid__value">{data.market_monitor.coverage.earliest_hours_before_kickoff_captured === null ? "—" : `${data.market_monitor.coverage.earliest_hours_before_kickoff_captured.toFixed(1)}h`}</span></div>
+                <div><span className="pec-grid__label">Latest pre-kickoff capture</span><span className="pec-grid__value">{data.market_monitor.coverage.latest_pre_kickoff_capture_hours === null ? "—" : `${data.market_monitor.coverage.latest_pre_kickoff_capture_hours.toFixed(1)}h`}</span></div>
+              </div>
+
+              <div className="pec-historical">
+                <h3>Historical backfill (not formal prospective evidence)</h3>
+                <p className="hint">
+                  Cases backfilled by a one-off historical script against already-completed matches. Useful for
+                  exercising the pipeline, but explicitly excluded from any judgement about real alert quality — kept
+                  here strictly separate from the genuine prospective evidence above.
+                </p>
+                {data.market_monitor.retrospective.summary.n_resolved === 0 ? (
+                  <p className="empty-state">No retrospective backfill cases have resolved yet.</p>
+                ) : (
+                  <EffectivenessSummaryGrid view={data.market_monitor.retrospective} />
+                )}
+              </div>
+            </details>
           </section>
 
           <div className="pec-card pec-footnote">

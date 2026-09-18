@@ -10,6 +10,7 @@ import {
   type EffectivenessView,
   type TraderInbox,
 } from "../api/client";
+import PageHeader from "../components/ui/PageHeader";
 import "./MarketMonitorPage.css";
 
 type TabKey = "priority" | "context" | "outliers" | "divergence" | "curve" | "all" | "effectiveness";
@@ -419,12 +420,11 @@ function MarketMonitorPage() {
 
   return (
     <main className="market-monitor-page">
-      <h1 className="page-title">Trader Inbox — Market Monitor</h1>
-      <p className="subtitle">
-        A neutral, read-only comparison of this engine's own pricing against real bookmaker markets — deduplicated
-        into cases and ranked by a transparent, rule-based priority score (every component visible below). Not a
-        "find me a bet" surface, and nothing here adjusts a probability or confidence value.
-      </p>
+      <PageHeader
+        eyebrow="Advanced"
+        title="Market Monitor (QA)"
+        description="A neutral, read-only comparison of this engine's own pricing against real bookmaker markets — deduplicated into cases and ranked by a transparent, rule-based priority score (every component visible on expand). A trader inbox for investigation, not a &quot;find me a bet&quot; surface — nothing here adjusts a probability or confidence value."
+      />
 
       {inbox && (
         <p className="hint">

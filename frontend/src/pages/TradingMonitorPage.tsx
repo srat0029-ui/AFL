@@ -8,6 +8,7 @@ import {
   type TradingMonitorOverview,
 } from "../api/client";
 import { formatCompactDateTime } from "../lib/datetime";
+import PageHeader from "../components/ui/PageHeader";
 import "./TradingMonitorPage.css";
 
 const TIER_CHIP: Record<string, string> = {
@@ -196,13 +197,18 @@ function TradingMonitorPage() {
 
   return (
     <main className="trading-monitor-page">
-      <h1 className="page-title">Trading Monitor</h1>
-      <p className="subtitle">
-        Operational view of what changed, what looks unusual, and what's stale or incomplete — for a pricing/trading
-        analyst to investigate, not a betting-tip surface. Cases and dispersion below are computed and scored by{" "}
-        <Link to="/market-monitor">Market Monitor</Link>'s own detection engine, reused here unchanged; model movement
-        and SGM sections are new this phase.
-      </p>
+      <PageHeader
+        eyebrow="Advanced"
+        title="Trading Monitor"
+        description={
+          <>
+            Operational view of what changed, what looks unusual, and what's stale or incomplete — for a pricing/trading
+            analyst to investigate, not a betting-tip surface. Cases and dispersion below are computed and scored by{" "}
+            <Link to="/market-monitor">Market Monitor</Link>'s own detection engine, reused here unchanged; model
+            movement and SGM sections are new this phase.
+          </>
+        }
+      />
 
       {error && <p className="trading-monitor-page__error">{error}</p>}
       {loading && <p className="loading-state">Loading…</p>}

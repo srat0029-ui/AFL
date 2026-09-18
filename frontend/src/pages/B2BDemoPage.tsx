@@ -9,6 +9,7 @@ import {
   type MarketIntelligence,
   type MatchPricing,
 } from "../api/client";
+import PageHeader from "../components/ui/PageHeader";
 import "./B2BDemoPage.css";
 
 function fmtPct(n: number): string {
@@ -139,12 +140,11 @@ function B2BDemoPage() {
 
   return (
     <main className="b2b-demo-page">
-      <h1>B2B Pricing Demo</h1>
-      <p className="subtitle">
-        One upcoming match, priced end-to-end by the engine — team markets, player disposal/goal prices at multiple
-        thresholds, model provenance, calibration, lineup/data freshness, and a live market comparison where a
-        bookmaker quote exists. Read-only; nothing on this page trains or changes a model.
-      </p>
+      <PageHeader
+        eyebrow="Advanced"
+        title="B2B Pricing Demo"
+        description="One upcoming match, priced end-to-end by the engine — team markets, player disposal/goal prices at multiple thresholds, model provenance, calibration, lineup/data freshness, and a live market comparison where a bookmaker quote exists. Read-only; nothing on this page trains or changes a model."
+      />
 
       {error && <p className="b2b-demo-page__error">{error}</p>}
       {!pricing && !error && <p>Loading…</p>}

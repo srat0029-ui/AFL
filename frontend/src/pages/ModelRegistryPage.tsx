@@ -10,6 +10,8 @@ import {
   type SgmProspectiveEvaluation,
   type SgmProspectiveSplit,
 } from "../api/client";
+import PageHeader from "../components/ui/PageHeader";
+import { StatTile, StatTileRow } from "../components/ui/StatTile";
 import "./ModelRegistryPage.css";
 
 const STATUS_LABELS: Record<ModelRunStatus, string> = {
@@ -242,9 +244,12 @@ function ProspectiveEvaluationPanel({ evaluation }: { evaluation: ProspectiveEva
               Exploratory — not enough prospective evidence yet to claim the model beats the market.
             </p>
           )}
-          <ProspectiveSplitTable title="By market family" splits={evaluation.by_market_family} />
-          <ProspectiveSplitTable title="By model probability bucket" splits={evaluation.by_probability_bucket} />
-          <ProspectiveSplitTable title="By model version" splits={evaluation.by_model_version} />
+          <details className="disclosure">
+            <summary>Breakdown by market family, probability bucket, and model version</summary>
+            <ProspectiveSplitTable title="By market family" splits={evaluation.by_market_family} />
+            <ProspectiveSplitTable title="By model probability bucket" splits={evaluation.by_probability_bucket} />
+            <ProspectiveSplitTable title="By model version" splits={evaluation.by_model_version} />
+          </details>
         </>
       )}
     </section>
@@ -336,11 +341,47 @@ function SgmProspectiveEvaluationPanel({ evaluation }: { evaluation: SgmProspect
               Exploratory — not enough settled combos yet to claim the joint model beats naive independence.
             </p>
           )}
-          <SgmProspectiveSplitTable title="By number of legs" splits={evaluation.by_n_legs} />
-          <SgmProspectiveSplitTable title="By leg/market combination" splits={evaluation.by_leg_combination} />
-          <SgmProspectiveSplitTable title="By correlation-adjustment magnitude" splits={evaluation.by_correlation_adjustment_magnitude} />
-          <SgmProspectiveSplitTable title="By snapshot horizon (not deduped — tracks the model's own belief across the pre-match window)" splits={evaluation.by_snapshot_horizon} />
+          <details className="disclosure">
+            <summary>Breakdown by legs, leg combination, correlation adjustment, and snapshot horizon</summary>
+            <SgmProspectiveSplitTable title="By number of legs" splits={evaluation.by_n_legs} />
+            <SgmProspectiveSplitTable title="By leg/market combination" splits={evaluation.by_leg_combination} />
+            <SgmProspectiveSplitTable title="By correlation-adjustment magnitude" splits={evaluation.by_correlation_adjustment_magnitude} />
+            <SgmProspectiveSplitTable title="By snapshot horizon (not deduped — tracks the model's own belief across the pre-match window)" splits={evaluation.by_snapshot_horizon} />
+          </details>
         </>
+      )}
+    </section>
+  );
+}
+
+function championOf(rows: ModelRegistry["disposal_models"]) {
+  return rows.find((m) => m.status === "champion") ?? null;
+}
+
+// Plain-English headline: which model is active in each market and why,
+// before any raw run table — reads only fields already in the registry.
+function CurrentModelsSummary({ registry }: { registry: ModelRegistry }) {
+  const disposal = championOf(registry.disposal_models);
+  const goal = championOf(registry.goal_models);
+  const team = championOf(registry.team_models);
+  const latestPromotion = registry.promotion_events[registry.promotion_events.length - 1];
+  return (
+    <section className="card model-registry-summary" aria-label="Current active models">
+      <h2>Current model</h2>
+      <p className="hint">
+        The model currently used to price each market family — promoted because it beat the previous champion on
+        held-out data through the promotion gates below, not by manual choice.
+      </p>
+      <StatTileRow>
+        <StatTile label="Disposal market champion" value={disposal?.model_name ?? "None active"} meta={disposal ? `since ${new Date(disposal.run_at).toLocaleDateString()}` : undefined} />
+        <StatTile label="Goal market champion" value={goal?.model_name ?? "None active"} meta={goal ? `since ${new Date(goal.run_at).toLocaleDateString()}` : undefined} />
+        <StatTile label="Team market champion" value={team?.model_name ?? "None active"} meta={team ? `since ${new Date(team.run_at).toLocaleDateString()}` : undefined} />
+      </StatTileRow>
+      {latestPromotion && (
+        <p className="hint model-registry-summary__latest">
+          Most recent promotion: <strong>{latestPromotion.market}</strong> — {latestPromotion.previous_champion_model_name ?? "(none)"} →{" "}
+          <strong>{latestPromotion.new_champion_model_name}</strong>. {latestPromotion.evidence_summary}
+        </p>
       )}
     </section>
   );
@@ -360,33 +401,38 @@ function ModelRegistryPage() {
 
   return (
     <main className="model-registry-page">
-      <h1>Model Registry</h1>
-      <p className="subtitle">
-        Read-only view of every production/challenger model, the promotion audit trail, and live prospective evaluation.
-        No model, ranking, or multi-builder logic is changed by anything on this page.
-      </p>
+      <PageHeader
+        eyebrow="Advanced"
+        title="Model Evaluation"
+        description="Which model prices each market today, why it earned that position, how it performed on held-out historical data, and what live prospective evidence has accumulated since. Read-only — nothing here changes a model, ranking, or Multi Builder result."
+      />
 
       {error && <p className="model-registry-page__error">{error}</p>}
       {!registry && !error && <p>Loading…</p>}
 
       {registry && (
         <>
-          <section className="model-registry-section">
-            <h2>{registry.dataset_label}</h2>
+          <CurrentModelsSummary registry={registry} />
 
-            <DisposalHeadToHeadCard h2h={registry.disposal_head_to_head} />
+          <details className="disclosure model-registry-detail">
+            <summary>Full model run history &amp; promotion audit trail (technical detail)</summary>
+            <section className="model-registry-section">
+              <h2>{registry.dataset_label}</h2>
 
-            <h3>Disposal models</h3>
-            <ModelRunTable rows={registry.disposal_models} />
+              <DisposalHeadToHeadCard h2h={registry.disposal_head_to_head} />
 
-            <h3>Goal models</h3>
-            <ModelRunTable rows={registry.goal_models} />
+              <h3>Disposal models</h3>
+              <ModelRunTable rows={registry.disposal_models} />
 
-            <h3>Team models</h3>
-            <ModelRunTable rows={registry.team_models} />
+              <h3>Goal models</h3>
+              <ModelRunTable rows={registry.goal_models} />
 
-            <PromotionAuditTrail events={registry.promotion_events} />
-          </section>
+              <h3>Team models</h3>
+              <ModelRunTable rows={registry.team_models} />
+
+              <PromotionAuditTrail events={registry.promotion_events} />
+            </section>
+          </details>
 
           {prospective && <ProspectiveEvaluationPanel evaluation={prospective} />}
           {sgmProspective && <SgmProspectiveEvaluationPanel evaluation={sgmProspective} />}

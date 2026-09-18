@@ -604,6 +604,21 @@
   .player-research-page { width: calc(100% - 2rem); }
 }
 
+/* Visual history: chronological bar chart between the headline split and
+   the written explanation (Player Research final UX pass). */
+.research-history-chart { display: grid; gap: .6rem; }
+.research-history-chart__scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-subtle); padding: .75rem .5rem 0; }
+.research-history-chart__svg { display: block; }
+.research-history-chart__axis { stroke: var(--border); stroke-width: 1; }
+.research-history-chart__bar--with { fill: var(--success-text); }
+.research-history-chart__bar--without { fill: var(--text-dim); }
+.research-history-chart__legend { display: flex; flex-wrap: wrap; align-items: center; gap: 1rem; }
+.research-history-chart__legend-item { display: inline-flex; align-items: center; gap: .4rem; font-size: var(--fs-micro); color: var(--text-muted); }
+.research-history-chart__swatch { display: inline-block; width: .7rem; height: .7rem; border-radius: 3px; }
+.research-history-chart__swatch--with { background: var(--success-text); }
+.research-history-chart__swatch--without { background: var(--text-dim); }
+.research-history-chart__empty { padding: .75rem 0; }
+
 /* Teammate discovery: candidate list, evidence-first grouping. */
 .discovery-results { display: grid; gap: 1.5rem; }
 .discovery-candidate-list { list-style: none; margin: .75rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }

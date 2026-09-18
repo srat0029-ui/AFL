@@ -7,6 +7,7 @@ import DiversifiedOpportunitiesView from "../components/DiversifiedOpportunities
 import FinalShortlistView from "../components/FinalShortlistView";
 import ModelMarketDisagreementsView from "../components/ModelMarketDisagreementsView";
 import OpportunityDrawer from "../components/OpportunityDrawer";
+import PageHeader from "../components/ui/PageHeader";
 import {
   fetchBestOpportunities,
   fetchNormalizedPropInsights,
@@ -74,6 +75,16 @@ const TABS: { key: Tab; label: string }[] = [
   { key: "manual_log", label: "Quote Log" },
   { key: "disagreements", label: "Model vs Market" },
   { key: "bookmaker_settings", label: "Bookmaker Settings" },
+];
+
+// Grouping the same 12 tabs into labelled clusters — purely a navigation
+// aid, no tab removed or renamed — so a new visitor sees "what kind of
+// view is this" before the flat list of every individual destination.
+const TAB_GROUPS: { label: string; keys: Tab[] }[] = [
+  { label: "Recommended", keys: ["best_available", "final_shortlist"] },
+  { label: "Rankings", keys: ["best_overall", "best_disposals", "best_goals", "all_markets"] },
+  { label: "By market", keys: ["disposals", "goals", "by_match"] },
+  { label: "Tools", keys: ["manual_log", "disagreements", "bookmaker_settings"] },
 ];
 
 const DIVERSIFIED_TABS: Partial<Record<Tab, "overall" | "disposals" | "goals">> = {
@@ -184,24 +195,38 @@ function PropInsightsPage() {
 
   return (
     <main className="prop-insights-page">
-      <header className="prop-insights-page__header">
-        <h1>Prop Insights</h1>
-        <p className="hint">
-          Compares every available bookmaker price — manually entered and automatically fetched — against the
-          model's own probabilities, and highlights the best price currently on offer. Model probability, fair
-          odds, and expected value are model estimates only — not guaranteed outcomes.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Insights"
+        title="Prop Insights"
+        description="Compares every available bookmaker price for player and team props — manually entered and automatically fetched — against the model's own probabilities, and highlights the best price currently on offer. Model probability, fair odds, and expected value are model estimates only, not guaranteed outcomes, and the model-vs-market difference shown throughout is a description of disagreement, never a bet recommendation."
+      />
+      <div className="info-callout prop-insights-page__legend">
+        <span className="info-callout__icon">ⓘ</span>
+        <span>
+          Every row shows: the player/market, the model's probability, the best bookmaker price currently available, the
+          market's own consensus probability, the gap between model and market, how fresh that price is, and a
+          confidence tier reflecting how much history backs the model's number.
+        </span>
+      </div>
 
-      <nav className="tab-bar">
-        {TABS.map((t) => (
-          <button
-            key={t.key}
-            className={`tab-bar__tab${tab === t.key ? " tab-bar__tab--active" : ""}`}
-            onClick={() => setTab(t.key)}
-          >
-            {t.label}
-          </button>
+      <nav className="tab-bar prop-insights-page__tabs" aria-label="Prop Insights views">
+        {TAB_GROUPS.map((group, i) => (
+          <div key={group.label} className="prop-insights-page__tab-group">
+            {i > 0 && <span className="prop-insights-page__tab-divider" aria-hidden="true" />}
+            <span className="prop-insights-page__tab-group-label">{group.label}</span>
+            {group.keys.map((key) => {
+              const t = TABS.find((x) => x.key === key)!;
+              return (
+                <button
+                  key={t.key}
+                  className={`tab-bar__tab${tab === t.key ? " tab-bar__tab--active" : ""}`}
+                  onClick={() => setTab(t.key)}
+                >
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         ))}
       </nav>
 

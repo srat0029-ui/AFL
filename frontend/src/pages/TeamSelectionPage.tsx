@@ -12,6 +12,7 @@ import {
   type SelectionStatus,
 } from "../api/client";
 import { formatCompactDateTime } from "../lib/datetime";
+import PageHeader from "../components/ui/PageHeader";
 import "./TeamSelectionPage.css";
 
 // A roster candidate suggested from last-played history but never entered
@@ -228,14 +229,11 @@ function TeamSelectionPage() {
 
   return (
     <main className="team-selection-page">
-      <header className="team-selection-page__header">
-        <h1>Team Selection</h1>
-        <p className="hint">
-          Tick who's actually playing for each team this round. No automated AFL team-selection feed exists, so this
-          is a fast manual checklist — ticking a player marks them confirmed, which unlocks Best Opportunities,
-          Final Shortlist, and Multi Builder's confirmed-player views for that match.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Advanced"
+        title="Lineup Entry"
+        description="Tick who's actually playing for each team this round. No automated AFL team-selection feed exists, so this is a fast manual checklist — ticking a player marks them confirmed, which unlocks Best Opportunities, Final Shortlist, and Multi Builder's confirmed-player views for that match."
+      />
 
       {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="error-banner">{error}</div>}

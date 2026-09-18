@@ -7,12 +7,6 @@
   gap: 1.5rem;
 }
 
-.prop-insights-page__header h1 {
-  margin: 0 0 0.5rem;
-  font-size: var(--fs-page-title);
-  color: var(--text-h);
-}
-
 .prop-insights-page__filters {
   display: flex;
   gap: 1rem;
@@ -36,6 +30,39 @@
   flex-direction: row !important;
   align-items: center;
   gap: 0.5rem !important;
+}
+
+.prop-insights-page__legend {
+  align-items: center;
+}
+
+.prop-insights-page__tabs {
+  align-items: center;
+  row-gap: 0.6rem;
+}
+
+.prop-insights-page__tab-group {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.prop-insights-page__tab-group-label {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-right: 0.15rem;
+  white-space: nowrap;
+}
+
+.prop-insights-page__tab-divider {
+  width: 1px;
+  height: 1.4rem;
+  margin: 0 0.5rem;
+  background: var(--border);
 }
 
 .prop-insights-table__unconfirmed-flag {

@@ -7,12 +7,6 @@
   gap: 1.25rem;
 }
 
-.live-status-page__header h1 {
-  margin: 0 0 0.5rem;
-  font-size: var(--fs-page-title);
-  color: var(--text-h);
-}
-
 .live-status-attention {
   display: flex;
   flex-direction: column;

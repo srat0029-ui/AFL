@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import PlayerContextEvidence from "../components/PlayerContextEvidence";
+import PlayerHistoryChart from "../components/PlayerHistoryChart";
 import TeammateDiscoveryPanel from "../components/TeammateDiscoveryPanel";
 import OpponentDiscoveryPanel from "../components/OpponentDiscoveryPanel";
 import OpponentContextEvidence from "../components/OpponentContextEvidence";
@@ -78,6 +79,16 @@ export function ContextResults({ research }: { research: PlayerContextResearch }
         <div className="research-split-difference"><span>Without minus with</span><strong className={`num ${research.raw_difference == null ? "research-value-unavailable" : ""}`}>{formatDifference(research.raw_difference)}</strong><small>{research.stat}</small></div>
         <SplitCard title="Without teammate" split={research.without_teammate} stat={research.stat} /></div>
     </section>
+    <section aria-labelledby="history-heading">
+      <h2 id="history-heading">Visual history</h2>
+      <p className="hint">Every recorded game, oldest to newest, coloured by whether {research.teammate_name} played that game too.</p>
+      <PlayerHistoryChart
+        points={research.evidence.map((g) => ({ match_id: g.match_id, scheduled_start: g.scheduled_start, stat_value: g.stat_value, highlighted: g.teammate_played }))}
+        stat={research.stat}
+        highlightedLabel="With teammate"
+        otherLabel="Without teammate"
+      />
+    </section>
     <section className="card research-interpretation" aria-labelledby="meaning-heading">
       <h2 id="meaning-heading">What this means</h2><p>{explainDifference(research)}</p>
       <h3>Sample-size confidence: {research.confidence.tier.replaceAll("_", " ")}</h3>
@@ -110,6 +121,16 @@ export function OpponentContextResults({ research }: { research: OpponentContext
       <div className="research-split-grid"><SplitCard title={`Against ${research.opponent_team_name}`} split={research.against_opponent} stat={research.stat} />
         <div className="research-split-difference"><span>Against minus other opponents</span><strong className={`num ${research.raw_difference == null ? "research-value-unavailable" : ""}`}>{formatDifference(research.raw_difference)}</strong><small>{research.stat}</small></div>
         <SplitCard title="Against other opponents" split={research.against_other_opponents} stat={research.stat} /></div>
+    </section>
+    <section aria-labelledby="opponent-history-heading">
+      <h2 id="opponent-history-heading">Visual history</h2>
+      <p className="hint">Every recorded game, oldest to newest, coloured by whether it was against {research.opponent_team_name}.</p>
+      <PlayerHistoryChart
+        points={research.evidence.map((g) => ({ match_id: g.match_id, scheduled_start: g.scheduled_start, stat_value: g.stat_value, highlighted: g.is_selected_opponent }))}
+        stat={research.stat}
+        highlightedLabel={`Against ${research.opponent_team_name}`}
+        otherLabel="Other opponents"
+      />
     </section>
     <section className="card research-interpretation" aria-labelledby="opponent-meaning-heading">
       <h2 id="opponent-meaning-heading">What this means</h2><p>{explainOpponentDifference(research)}</p>

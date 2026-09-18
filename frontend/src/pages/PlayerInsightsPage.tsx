@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import "./PlayerInsightsPage.css";
 import Disclaimer from "../components/Disclaimer";
 import { DisposalProjectionTable, GoalProjectionTable } from "../components/ProjectionTable";
+import PageHeader from "../components/ui/PageHeader";
 import {
   fetchTeams,
   fetchUpcomingProjections,
@@ -85,14 +86,11 @@ function PlayerInsightsPage() {
 
   return (
     <main className="player-insights-page">
-      <header className="player-insights-page__header">
-        <h1>Player Insights</h1>
-        <p className="hint">
-          Aggregated player disposal and goal projections across every upcoming match — find the strongest model
-          probabilities across the whole round. Historical model research only where noted; live projections here
-          are pre-match estimates, not guaranteed outcomes.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Players"
+        title="Player Insights"
+        description="Aggregated player disposal and goal projections across every upcoming match — find the strongest model probabilities across the whole round. Live projections here are pre-match estimates, not guaranteed outcomes."
+      />
 
       <section className="player-insights-page__filters">
         <label>

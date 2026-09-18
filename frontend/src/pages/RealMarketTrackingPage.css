@@ -7,10 +7,12 @@
   gap: 1.25rem;
 }
 
-.rmt-page__header h1 {
-  margin: 0 0 0.5rem;
-  font-size: var(--fs-page-title);
-  color: var(--text-h);
+.rmt-detail > summary {
+  margin-bottom: 1rem;
+}
+
+.rmt-detail > summary ~ * {
+  margin-top: 1.25rem;
 }
 
 .rmt-card {
