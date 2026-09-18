@@ -5,10 +5,20 @@ import Disclaimer from "../components/Disclaimer";
 import OpportunityComparisonTable from "../components/OpportunityComparisonTable";
 import ShortlistSnapshotHistory from "../components/ShortlistSnapshotHistory";
 import WeeklyReviewOpportunityRow, { opportunityKey } from "../components/WeeklyReviewOpportunityRow";
+import PageHeader from "../components/ui/PageHeader";
 import { fetchWeeklyReviewPage, type WeeklyReviewOpportunity, type WeeklyReviewPage as WeeklyReviewPageData } from "../api/client";
 import "./WeeklyReviewPage.css";
 
 type Section = "shortlist" | "player" | "team" | "waiting" | "coverage" | "history";
+
+const SECTION_HINTS: Record<Section, string> = {
+  shortlist: "Opportunities currently clearing every readiness bar — the first thing to look at this round.",
+  player: "The strongest player opportunities right now, even where a team isn't confirmed yet — surfaced so you can watch them, not act on them early.",
+  team: "The strongest team-market (h2h/line/total) opportunities this round.",
+  waiting: "Positive-difference player markets that are on hold purely because the lineup isn't confirmed yet — re-check once teams land.",
+  coverage: "Which bookmakers currently have live markets open, and how many — current information, not historical performance.",
+  history: "Past Final Shortlist snapshots, for comparison only — historical record, never live data.",
+};
 
 function WeeklyReviewPage() {
   const [page, setPage] = useState<WeeklyReviewPageData | null>(null);
@@ -49,14 +59,11 @@ function WeeklyReviewPage() {
 
   return (
     <main className="weekly-review-page">
-      <header className="weekly-review-page__header">
-        <h1>Weekly Review</h1>
-        <p className="hint">
-          The page to open first when deciding what to inspect this round — the Final Weekly Shortlist, the strongest
-          player and team opportunities behind it, model/market disagreements worth investigating, markets still waiting
-          on team confirmation, and bookmaker coverage. Select opportunities below to compare them side by side.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Insights"
+        title="Weekly Review"
+        description="The review workflow to open first each round: what's ready to act on, what's still waiting on confirmation, and what's purely historical. Select opportunities below to compare them side by side."
+      />
 
       <DataFreshnessPanel />
 
@@ -86,6 +93,7 @@ function WeeklyReviewPage() {
 
       {!loading && !error && page && (
         <>
+          <p className="hint weekly-review-page__section-hint">{SECTION_HINTS[activeSection]}</p>
           {activeSection === "shortlist" && (
             <section>
               <p className="hint">

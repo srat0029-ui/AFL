@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import "./RoundContextDashboardPage.css";
 import { fetchContextDashboard, refreshWeather, type RoundContextDashboard, type RoundContextMatch } from "../api/client";
 import { formatCompactDateTime } from "../lib/datetime";
+import PageHeader from "../components/ui/PageHeader";
 
 const ANNOUNCEMENT_LABELS: Record<string, string> = {
   teams_not_announced: "Teams not announced",
@@ -71,18 +72,16 @@ function RoundContextDashboardPage() {
 
   return (
     <main className="round-context-page">
-      <header className="round-context-page__header">
-        <div>
-          <h1>Current Round Context</h1>
-          <p className="hint">
-            A pre-bet checklist for the current round: confirmed lineups, major outs/late changes, weather, and any
-            player projections that may not yet reflect the latest context.
-          </p>
-        </div>
-        <button type="button" onClick={handleRefreshWeather} disabled={refreshing} className="round-context-page__refresh">
-          {refreshing ? "Fetching weather…" : "Refresh weather forecasts"}
-        </button>
-      </header>
+      <PageHeader
+        eyebrow="Advanced"
+        title="Round Readiness"
+        description="A pre-bet checklist for the current round: confirmed lineups, major outs/late changes, weather, and any player projections that may not yet reflect the latest context."
+        actions={
+          <button type="button" onClick={handleRefreshWeather} disabled={refreshing} className="btn round-context-page__refresh">
+            {refreshing ? "Fetching weather…" : "Refresh weather forecasts"}
+          </button>
+        }
+      />
 
       {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="error-banner">{error}</div>}

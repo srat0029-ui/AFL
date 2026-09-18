@@ -16,6 +16,27 @@
   color: var(--danger-text);
 }
 
+.model-registry-summary {
+  margin-bottom: 1.25rem;
+}
+
+.model-registry-summary h2 {
+  margin-top: 0;
+  font-size: var(--fs-section-title);
+}
+
+.model-registry-summary__latest {
+  margin-top: 1rem;
+}
+
+.model-registry-detail {
+  margin-bottom: 1.25rem;
+}
+
+.model-registry-detail > summary {
+  margin-bottom: 0.75rem;
+}
+
 .model-registry-section,
 .model-registry-prospective {
   margin: 1.25rem 0;

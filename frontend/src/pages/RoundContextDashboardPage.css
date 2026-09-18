@@ -4,20 +4,6 @@
   padding: 1.5rem;
 }
 
-.round-context-page__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.round-context-page__header h1 {
-  margin: 0 0 0.3rem;
-  font-size: var(--fs-page-title);
-  color: var(--text-h);
-}
-
 .round-context-page__refresh {
   background: var(--bg-inset);
   border: 1px solid var(--border);

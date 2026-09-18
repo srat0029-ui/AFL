@@ -8,6 +8,7 @@ import {
   type PlacedBetSplit,
   type PlacedBetStatus,
 } from "../api/client";
+import PageHeader from "../components/ui/PageHeader";
 import "./PlacedBetsPage.css";
 
 type TabKey = "pending" | "won" | "lost" | "void" | "all";
@@ -262,13 +263,10 @@ function PlacedBetsPage() {
 
   return (
     <main className="placed-bets-page">
-      <header>
-        <h1 className="page-title">Placed Bets</h1>
-        <p className="page-subtitle">
-          A record of bets you actually placed — kept separate from everything the app merely surfaced. No staking
-          advice; results settle automatically once match/player results arrive.
-        </p>
-      </header>
+      <PageHeader
+        title="My Bets"
+        description="A record of bets you actually placed — kept separate from everything the app merely surfaced. No staking advice; results settle automatically once match/player results arrive."
+      />
 
       {error && <div className="error-banner">{error}</div>}
 

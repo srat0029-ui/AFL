@@ -7,12 +7,6 @@
   gap: 1.25rem;
 }
 
-.pec-page__header h1 {
-  margin: 0 0 0.5rem;
-  font-size: var(--fs-page-title);
-  color: var(--text-h);
-}
-
 .pec-card {
   background: var(--card-bg);
   border: 1px solid var(--border);

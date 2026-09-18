@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { fetchDbHealth, type DbHealthResponse } from "../api/client";
+import PageHeader from "../components/ui/PageHeader";
 
 type ConnectionState =
   | { status: "loading" }
@@ -22,8 +23,7 @@ function StatusPage() {
 
   return (
     <main className="status-page">
-      <h1>AFL Analytics Platform</h1>
-      <p className="subtitle">System status</p>
+      <PageHeader eyebrow="Advanced" title="System Health" description="A quick connectivity check — is the frontend able to reach the API and the database right now." />
 
       <div className={`status-card status-card--${connection.status}`}>
         {connection.status === "loading" && <p>Checking connection to backend…</p>}

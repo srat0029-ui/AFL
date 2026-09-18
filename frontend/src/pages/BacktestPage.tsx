@@ -7,6 +7,7 @@ import DisposalProjections from "../components/DisposalProjections";
 import GoalProjections from "../components/GoalProjections";
 import GradientBoostingComparison from "../components/GradientBoostingComparison";
 import PoissonRevisionComparison from "../components/PoissonRevisionComparison";
+import PageHeader from "../components/ui/PageHeader";
 import {
   fetchBacktest,
   fetchBacktestDetail,
@@ -409,11 +410,11 @@ function BacktestPage() {
 
   return (
     <main className="backtest-page">
-      <h1>Model Evaluation &amp; Backtesting</h1>
-      <p className="subtitle">
-        How the models would have performed historically, using only information that would genuinely have been
-        available before each game (walk-forward, no data leakage).
-      </p>
+      <PageHeader
+        eyebrow="Advanced"
+        title="Model Evaluation & Backtesting"
+        description="How every model — team win probability, scoring, and player disposal/goal projections — would have performed historically, using only information that would genuinely have been available before each game (walk-forward, no data leakage). The summary below is the headline; every model's full evaluation detail is expandable further down."
+      />
 
       {error && <div className="error-banner">{error}</div>}
       {loading && <p className="loading-state">Loading…</p>}
@@ -467,66 +468,73 @@ function BacktestPage() {
             </section>
           )}
 
-          {eloDetail && <ModelEvaluationSection detail={eloDetail} />}
-          {poissonDetail && <ModelEvaluationSection detail={poissonDetail} />}
-          {comparison && <ModelComparisonSection comparison={comparison} />}
-          {logisticOverview ? (
-            <AdvancedModelComparison overview={logisticOverview} />
-          ) : (
-            <section className="backtest-panel">
-              <h2>Advanced Model Comparison</h2>
-              <p className="hint">
-                Not available yet — run <code>python -m app.modelling.logistic_cli</code> (see the README).
-              </p>
-            </section>
-          )}
+          <details className="disclosure backtest-detail">
+            <summary>Team model evaluation detail — Elo, Poisson, and how they compare (technical)</summary>
+            {eloDetail && <ModelEvaluationSection detail={eloDetail} />}
+            {poissonDetail && <ModelEvaluationSection detail={poissonDetail} />}
+            {comparison && <ModelComparisonSection comparison={comparison} />}
+            {logisticOverview ? (
+              <AdvancedModelComparison overview={logisticOverview} />
+            ) : (
+              <section className="backtest-panel">
+                <h2>Advanced Model Comparison</h2>
+                <p className="hint">
+                  Not available yet — run <code>python -m app.modelling.logistic_cli</code> (see the README).
+                </p>
+              </section>
+            )}
 
-          {boostingOverview ? (
-            <GradientBoostingComparison overview={boostingOverview} />
-          ) : (
-            <section className="backtest-panel">
-              <h2>Gradient Boosting</h2>
-              <p className="hint">
-                Not available yet — requires the elo and poisson models to be run first (see the README).
-              </p>
-            </section>
-          )}
+            {boostingOverview ? (
+              <GradientBoostingComparison overview={boostingOverview} />
+            ) : (
+              <section className="backtest-panel">
+                <h2>Gradient Boosting</h2>
+                <p className="hint">
+                  Not available yet — requires the elo and poisson models to be run first (see the README).
+                </p>
+              </section>
+            )}
 
-          {poissonRevision ? (
-            <PoissonRevisionComparison comparison={poissonRevision} />
-          ) : (
-            <section className="backtest-panel">
-              <h2>Poisson Season-Transition Revision</h2>
-              <p className="hint">
-                Not available yet — run <code>python -m app.modelling.poisson_cli</code> first (see the README).
-              </p>
-            </section>
-          )}
+            {poissonRevision ? (
+              <PoissonRevisionComparison comparison={poissonRevision} />
+            ) : (
+              <section className="backtest-panel">
+                <h2>Poisson Season-Transition Revision</h2>
+                <p className="hint">
+                  Not available yet — run <code>python -m app.modelling.poisson_cli</code> first (see the README).
+                </p>
+              </section>
+            )}
+          </details>
 
-          {playerModelRuns && disposalSummary ? (
-            <DisposalProjections runList={playerModelRuns} summary={disposalSummary} calibration={disposalCalibration} />
-          ) : (
-            <section className="backtest-panel">
-              <h2>Player Models — Disposal Projections</h2>
-              <p className="hint">
-                Not available yet — run <code>python -m app.player_modelling.disposal_cli</code> first (see the README).
-              </p>
-            </section>
-          )}
+          <details className="disclosure backtest-detail">
+            <summary>Player model projection detail — disposals &amp; goals (technical)</summary>
+            {playerModelRuns && disposalSummary ? (
+              <DisposalProjections runList={playerModelRuns} summary={disposalSummary} calibration={disposalCalibration} />
+            ) : (
+              <section className="backtest-panel">
+                <h2>Player Models — Disposal Projections</h2>
+                <p className="hint">
+                  Not available yet — run <code>python -m app.player_modelling.disposal_cli</code> first (see the README).
+                </p>
+              </section>
+            )}
 
-          {goalSummary ? (
-            <GoalProjections summary={goalSummary} calibration={goalCalibration} teamDiagnostic={goalTeamDiagnostic} />
-          ) : (
-            <section className="backtest-panel">
-              <h2>Player Models — Goal Projections</h2>
-              <p className="hint">
-                Not available yet — run <code>python -m app.player_modelling.goal_cli</code> first (see the README).
-              </p>
-            </section>
-          )}
+            {goalSummary ? (
+              <GoalProjections summary={goalSummary} calibration={goalCalibration} teamDiagnostic={goalTeamDiagnostic} />
+            ) : (
+              <section className="backtest-panel">
+                <h2>Player Models — Goal Projections</h2>
+                <p className="hint">
+                  Not available yet — run <code>python -m app.player_modelling.goal_cli</code> first (see the README).
+                </p>
+              </section>
+            )}
+          </details>
 
           {overview && (
-            <>
+            <details className="disclosure backtest-detail">
+              <summary>Full history detail — every completed match, including warm-up seasons (diagnostic, not for judging model quality)</summary>
               <FullHistorySection report={overview.elo} />
               <FullHistorySection report={overview.poisson_win} />
 
@@ -539,7 +547,10 @@ function BacktestPage() {
                   metricLabels={SCORING_METRIC_LABELS}
                 />
               </section>
+            </details>
+          )}
 
+          {overview && (
               <section className="backtest-panel">
                 <h2>Betting profitability</h2>
                 <div className="backtest-callout backtest-callout--warning">
@@ -607,7 +618,6 @@ function BacktestPage() {
                   </>
                 )}
               </section>
-            </>
           )}
         </>
       )}

@@ -7,10 +7,8 @@
   gap: 1.5rem;
 }
 
-.weekly-review-page__header h1 {
-  margin: 0 0 0.5rem;
-  font-size: var(--fs-page-title);
-  color: var(--text-h);
+.weekly-review-page__section-hint {
+  margin-top: -0.5rem;
 }
 
 .weekly-review-page__rows {

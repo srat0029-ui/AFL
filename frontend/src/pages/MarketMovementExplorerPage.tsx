@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Disclaimer from "../components/Disclaimer";
 import MarketMovementExplorerView from "../components/MarketMovementExplorerView";
+import PageHeader from "../components/ui/PageHeader";
 import { buildOptions } from "../features/marketMovement";
 import {
   fetchMarketMovementMatches,
@@ -100,16 +101,11 @@ function MarketMovementExplorerPage() {
 
   return (
     <main className="mme-page">
-      <header className="mme-page__header">
-        <h1>Market Movement Explorer</h1>
-        <p className="hint">
-          A descriptive research tool for inspecting how bookmaker prices and the model's own probability moved
-          before a specific match/market — not a betting-recommendation engine. Bookmaker-quote and model-observation
-          timestamps are never aligned or fabricated onto a shared instant; every point shown is a genuine
-          observation. The latest observed price before kickoff is never presented as an official closing line unless
-          the underlying data genuinely says so.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Insights"
+        title="Market Movement Explorer"
+        description="A descriptive research tool for inspecting how bookmaker prices and the model's own probability moved before a specific match/market — not a betting-recommendation engine. Bookmaker-quote and model-observation timestamps are never aligned or fabricated onto a shared instant; every point shown is a genuine observation. The latest observed price before kickoff is never presented as an official closing line unless the underlying data genuinely says so."
+      />
 
       <MarketMovementExplorerView
         matches={matches}

@@ -18,6 +18,14 @@
   line-height: 1.5;
 }
 
+.backtest-detail > summary {
+  margin-bottom: 1rem;
+}
+
+.backtest-detail > summary ~ * {
+  margin-top: 1.25rem;
+}
+
 .backtest-panel {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);

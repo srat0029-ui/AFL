@@ -9,6 +9,7 @@ import {
   type LiveStatusReport,
 } from "../api/client";
 import { formatCompactDateTime } from "../lib/datetime";
+import PageHeader from "../components/ui/PageHeader";
 
 const STATUS_LABELS: Record<MatchSimpleStatus, string> = {
   waiting_for_teams: "Waiting for teams",
@@ -167,14 +168,11 @@ function LiveStatusPage() {
 
   return (
     <main className="live-status-page">
-      <header className="live-status-page__header">
-        <h1>Live Status</h1>
-        <p className="hint">
-          An operational control panel, not a research page — shows what's already been collected and what still
-          needs attention for the current upcoming round. Nothing on this page ever triggers an external request
-          (paid or free): refreshing data is always an explicit command you run yourself (below).
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Advanced"
+        title="Live Status"
+        description="An operational control panel, not a research page — shows what's already been collected and what still needs attention for the current upcoming round. Nothing on this page ever triggers an external request (paid or free): refreshing data is always an explicit command you run yourself (below)."
+      />
 
       {loading && <p className="loading-state">Loading…</p>}
       {error && <div className="error-banner">{error}</div>}
