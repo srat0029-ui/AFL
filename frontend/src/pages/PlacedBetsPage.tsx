@@ -9,6 +9,7 @@ import {
   type PlacedBetStatus,
 } from "../api/client";
 import PageHeader from "../components/ui/PageHeader";
+import { missedByText, multiGroupSummary } from "../features/placedBetReview";
 import "./PlacedBetsPage.css";
 
 type TabKey = "pending" | "won" | "lost" | "void" | "all";
@@ -178,7 +179,9 @@ function PlacedBetsSummary({ analytics }: { analytics: PlacedBetAnalytics }) {
 // Research/model context for a bet, one level down from the ledger row —
 // keeps the main table to the tracking-ledger columns the page is meant to
 // be (Section 5) while still making this evidence available on demand.
-function BetDetail({ bet }: { bet: PlacedBet }) {
+function BetDetail({ bet, allBets }: { bet: PlacedBet; allBets: PlacedBet[] }) {
+  const missedBy = missedByText(bet);
+  const groupSummary = multiGroupSummary(bet, allBets);
   return (
     <tr className="placed-bets-table__detail-row">
       <td colSpan={9}>
@@ -207,8 +210,15 @@ function BetDetail({ bet }: { bet: PlacedBet }) {
             <span className="placed-bets-detail__label">Actual result</span>
             <span className="placed-bets-detail__value">
               {bet.actual_stat_value ?? "—"} · {bet.status}
+              {missedBy && <span className="hint"> · {missedBy}</span>}
             </span>
           </div>
+          {groupSummary && (
+            <div>
+              <span className="placed-bets-detail__label">Multi result</span>
+              <span className="placed-bets-detail__value">{groupSummary}</span>
+            </div>
+          )}
           <div>
             <span className="placed-bets-detail__label">Settled</span>
             <span className="placed-bets-detail__value">{bet.settled_at ? new Date(bet.settled_at).toLocaleString() : "—"}</span>
@@ -341,7 +351,7 @@ function PlacedBetsPage() {
                         )}
                       </td>
                     </tr>
-                    {expanded && <BetDetail bet={bet} />}
+                    {expanded && <BetDetail bet={bet} allBets={bets ?? []} />}
                   </Fragment>
                 );
               })}

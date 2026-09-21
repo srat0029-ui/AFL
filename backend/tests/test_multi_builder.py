@@ -463,20 +463,33 @@ def test_min_leg_probability_and_leg_count_constants_are_configurable(db_session
     assert MAX_LEGS[TIER_CONSERVATIVE] <= MAX_LEGS[TIER_BALANCED] <= MAX_LEGS[TIER_HIGHER_RETURN] <= MAX_LEGS[TIER_LONGER_SHOT]
 
 
-def test_conservative_can_use_more_than_two_legs_when_that_fits_better(db_session):
-    """Combination search, not greedy top-2: four safe, short, positive-
-    edge legs whose product only lands inside Conservative's 1.80-2.50 band
-    at FOUR legs (2 and 3 both fall short) must still be found."""
+def test_conservative_can_use_three_legs_but_never_more(db_session):
+    """Combination search, not greedy top-2: three safe, short, positive-edge
+    legs whose product only lands inside Conservative's 1.80-2.50 band at
+    THREE legs (two fall short) must be found - and a band that would need a
+    fourth leg is NOT filled, because the Conservative cap is 3 (every extra
+    leg is another way to lose)."""
     match, home, away = _seed_match(db_session)
-    for i in range(4):
-        _add_player_leg(db_session, match, home, player_name=f"Safe Player {i}", threshold=5.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.20)])
-    # 1.20^2=1.44, 1.20^3=1.728 (both below 1.80); 1.20^4=2.0736 (inside 1.80-2.50).
+    for i in range(3):
+        _add_player_leg(db_session, match, home, player_name=f"Safe Player {i}", threshold=5.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.30)])
+    # 1.30^2=1.69 (below 1.80); 1.30^3=2.197 (inside 1.80-2.50).
 
     result = build_match_multis(db_session, match.id, confirmed_only=True)
     conservative = result.tiers[TIER_CONSERVATIVE].options
-    assert conservative, "expected a 4-leg Conservative combination"
-    assert conservative[0]["n_legs"] == 4
+    assert conservative, "expected a 3-leg Conservative combination"
+    assert conservative[0]["n_legs"] == 3
     assert 1.80 <= conservative[0]["indicative_combined_odds"] <= 2.50
+
+
+def test_conservative_does_not_pad_to_four_legs(db_session):
+    match, home, away = _seed_match(db_session)
+    for i in range(4):
+        _add_player_leg(db_session, match, home, player_name=f"Safe Player {i}", threshold=5.5, predicted_mean=22.0, nb_alpha=0.3, prices=[("SportsBet", 1.20)])
+    # 1.20^3=1.728 (<1.80) and only a 4th leg (2.07) would reach the band.
+
+    result = build_match_multis(db_session, match.id, confirmed_only=True)
+    assert not result.tiers[TIER_CONSERVATIVE].options
+    assert "at most 3 legs" in result.tiers[TIER_CONSERVATIVE].unavailable_reason
 
 
 def test_option_shows_lowest_and_average_leg_probability_never_a_combined_probability(db_session):

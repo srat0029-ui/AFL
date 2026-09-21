@@ -1709,6 +1709,19 @@ export interface MultiReason {
   label: string;
 }
 
+// How widely a leg's exact market is offered. A PROXY (bookmakers quoting it
+// / bookmakers quoting any player prop in the match) - never liquidity or
+// popularity. `informative` is false when too few bookmakers quote the match
+// for the share to mean anything.
+export interface MarketRelevance {
+  grade: "main" | "thin";
+  coverage_share: number | null;
+  bookmakers_offering: number | null;
+  bookmakers_in_match: number | null;
+  is_proxy: boolean;
+  informative?: boolean;
+}
+
 export interface MultiLeg {
   opportunity_type: "player" | "team";
   label: string;
@@ -1732,6 +1745,8 @@ export interface MultiLeg {
   model_name: string | null;
   model_version: string | null;
   calibration_known: boolean;
+  calibration_checked_at_threshold?: boolean;
+  market_relevance?: MarketRelevance | null;
   // null for player legs by convention (every player-market opportunity IS
   // the "over" side by construction — see backend best_opportunities.py) —
   // callers that need a selection string for a player leg (e.g. adding it
@@ -1775,6 +1790,12 @@ export interface MultiOption {
   lowest_leg_probability: number;
   average_leg_probability: number;
   legs: MultiLeg[];
+  includes_less_common_lines?: boolean;
+  selection_note?: string;
+  // 1 / indicative_combined_odds: arithmetic on the option's own price
+  // (before bookmaker margin), NOT a model probability.
+  price_implied_probability?: number | null;
+  joint_probability_note?: string;
   same_game_pricing: SameGamePricing | null;
 }
 
@@ -1821,13 +1842,20 @@ export interface MatchMultiTiers {
   match_id: number;
   n_eligible_legs: number;
   bookmakers_available: string[];
+  main_markets_only?: boolean;
+  n_main_market_legs?: number;
+  bookmakers_in_match?: number;
   tiers: MultiTier[];
   readiness: MatchReadiness;
 }
 
-export function fetchMatchMultiBuilder(matchId: number, params: { confirmedOnly?: boolean; mode?: MultiMode } = {}): Promise<MatchMultiTiers> {
+export function fetchMatchMultiBuilder(
+  matchId: number,
+  params: { confirmedOnly?: boolean; mode?: MultiMode; mainMarketsOnly?: boolean } = {},
+): Promise<MatchMultiTiers> {
   const query = new URLSearchParams();
   if (params.confirmedOnly !== undefined) query.set("confirmed_only", String(params.confirmedOnly));
+  if (params.mainMarketsOnly !== undefined) query.set("main_markets_only", String(params.mainMarketsOnly));
   if (params.mode !== undefined) query.set("mode", params.mode);
   const qs = query.toString();
   return request(`/api/afl/matches/${matchId}/multi-builder${qs ? `?${qs}` : ""}`);
@@ -2687,6 +2715,9 @@ export interface PlacedBet extends PlacedBetCreateInput {
   status: PlacedBetStatus;
   actual_stat_value: number | null;
   settled_at: string | null;
+  // Lost player-stat legs only: how far short the actual finished (1 = missed
+  // by one). Review context - a near miss is still a loss.
+  shortfall?: number | null;
 }
 
 export function fetchPlacedBets(status?: PlacedBetStatus): Promise<PlacedBet[]> {

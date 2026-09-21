@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, Field, PlainSerializer, model_validator
+from pydantic import BaseModel, Field, PlainSerializer, computed_field, model_validator
 
 
 def _serialize_as_utc(dt: datetime) -> str:
@@ -1581,6 +1581,21 @@ class MultiReasonRead(BaseModel):
     label: str
 
 
+class MarketRelevanceRead(BaseModel):
+    """How widely a leg's exact market is offered - a PROXY (bookmaker
+    coverage), never liquidity or popularity. See
+    app/player_modelling/multi_builder.py's market_relevance."""
+
+    grade: str  # "main" | "thin"
+    coverage_share: float | None = None
+    bookmakers_offering: int | None = None
+    bookmakers_in_match: int | None = None
+    is_proxy: bool = True
+    # False when too few bookmakers quote the match for coverage to mean
+    # anything - the grade is then not applied.
+    informative: bool = True
+
+
 class MultiLegRead(BaseModel):
     opportunity_type: str
     label: str
@@ -1604,6 +1619,8 @@ class MultiLegRead(BaseModel):
     model_name: str | None = None
     model_version: str | None = None
     calibration_known: bool = False
+    calibration_checked_at_threshold: bool = False
+    market_relevance: MarketRelevanceRead | None = None
     selection: str | None = None
     threshold: float | None = None
     line_type: str | None = None
@@ -1645,6 +1662,12 @@ class MultiOptionRead(BaseModel):
     lowest_leg_probability: float
     average_leg_probability: float
     legs: list[MultiLegRead]
+    includes_less_common_lines: bool = False
+    selection_note: str = ""
+    # 1 / indicative_combined_odds: arithmetic on the option's own price
+    # (before bookmaker margin), not a model probability.
+    price_implied_probability: float | None = None
+    joint_probability_note: str = ""
     same_game_pricing: SameGamePricingRead | None = None
 
 
@@ -1687,6 +1710,9 @@ class MatchMultiTiersRead(BaseModel):
     match_id: int
     n_eligible_legs: int
     bookmakers_available: list[str]
+    main_markets_only: bool = True
+    n_main_market_legs: int = 0
+    bookmakers_in_match: int = 0
     tiers: list[MultiTierRead]
     readiness: MatchReadinessRead
 
@@ -2368,6 +2394,21 @@ class PlacedBetRead(BaseModel):
     multi_group_id: str | None = None
     multi_tier: str | None = None
     multi_indicative_odds: float | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def shortfall(self) -> float | None:
+        """For a LOST player-stat leg: how far short of the requirement it
+        finished (1 = missed by one). Review context only - a near miss is
+        still a loss. None when not applicable."""
+        from app.player_modelling.multi_builder_diagnostics import LegResult, leg_shortfall
+
+        if self.opportunity_type != "player" or self.status != "lost" or self.actual_stat_value is None or self.threshold is None:
+            return None
+        return leg_shortfall(LegResult(
+            label=self.label, market_type=self.market_type, outcome="lost",
+            threshold=self.threshold, line_type=self.line_type, actual_value=self.actual_stat_value,
+        ))
 
 
 class PlayerContextSplitRead(BaseModel):

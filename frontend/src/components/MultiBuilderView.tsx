@@ -129,6 +129,13 @@ function MultiLegRow({
   // a name line + selection line only when we can find the threshold digit,
   // otherwise show the label as-is (team legs, e.g. "Melbourne +2.5").
   const thresholdMatch = leg.label.match(/^(.*?)\s(\d[\d.]*\+.*)$/);
+  // Why this line: how widely it is offered (a coverage proxy - not
+  // popularity). Only stated when the share is meaningful for this match.
+  const rel = leg.market_relevance;
+  const coverageText =
+    rel && rel.informative !== false && rel.bookmakers_offering != null && rel.bookmakers_in_match
+      ? `Offered by ${rel.bookmakers_offering} of ${rel.bookmakers_in_match} bookmakers`
+      : null;
 
   return (
     <div className="multi-leg">
@@ -154,6 +161,7 @@ function MultiLegRow({
       </div>
 
       <div className="multi-leg__meta-line">
+        {coverageText && <span className="multi-leg__coverage">{coverageText}</span>}
         <span>{CONFIDENCE_LABEL[leg.confidence_tier] ?? leg.confidence_tier}</span>
         {leg.opportunity_type === "player" && <span>{leg.is_confirmed ? "Confirmed" : "Provisional"}</span>}
         {leg.odds_freshness !== "fresh" && <span className="multi-leg__meta-warn">{leg.odds_freshness}</span>}
@@ -270,6 +278,11 @@ function MultiOptionRow({
           {option.correlation_warnings.length > 0 && (
             <span className="chip chip--neutral tier-option__chip">{option.correlation_warnings.length} correlation note</span>
           )}
+          {option.includes_less_common_lines && (
+            <span className="chip chip--warning tier-option__chip" title="At least one leg is a line offered by fewer than half of this match's bookmakers">
+              Less common lines
+            </span>
+          )}
         </div>
         <span className="tier-option__caret">{open ? "▾" : "▸"}</span>
       </button>
@@ -287,6 +300,8 @@ function MultiOptionRow({
             </div>
           )}
           {option.same_game_pricing && <SameGamePricingPanel pricing={option.same_game_pricing} />}
+          {option.selection_note && <p className="hint tier-option__selection-note">{option.selection_note}</p>}
+          {option.joint_probability_note && <p className="hint tier-option__joint-note">{option.joint_probability_note}</p>}
           <div className="tier-option__footer">
             <span className="hint">{option.indicative_odds_explanation}</span>
             <AddMultiButton matchId={matchId} tier={tierKey} option={option} sourceMode={SOURCE_MODE_BY_MULTI_MODE[option.mode]} />
@@ -311,6 +326,7 @@ interface MultiBuilderViewProps {
  * supports the combo, never in place of it. */
 function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
   const [confirmedOnly, setConfirmedOnly] = useState(true);
+  const [mainMarketsOnly, setMainMarketsOnly] = useState(true);
   const [mode, setMode] = useState<MultiMode>("high_probability");
   const [dataByMode, setDataByMode] = useState<Record<MultiMode, MatchMultiTiers> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -319,13 +335,13 @@ function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      fetchMatchMultiBuilder(matchId, { confirmedOnly, mode: "high_probability" }),
-      fetchMatchMultiBuilder(matchId, { confirmedOnly, mode: "value" }),
+      fetchMatchMultiBuilder(matchId, { confirmedOnly, mainMarketsOnly, mode: "high_probability" }),
+      fetchMatchMultiBuilder(matchId, { confirmedOnly, mainMarketsOnly, mode: "value" }),
     ])
       .then(([highProbability, value]) => setDataByMode({ high_probability: highProbability, value }))
       .catch((err) => setError(err instanceof Error ? err.message : "Failed to load multi builder"))
       .finally(() => setLoading(false));
-  }, [matchId, confirmedOnly]);
+  }, [matchId, confirmedOnly, mainMarketsOnly]);
 
   const active = dataByMode?.[mode] ?? null;
   const anyOptions = active ? active.tiers.some((t) => t.options.length > 0) : false;
@@ -356,6 +372,10 @@ function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
         <label className="multi-builder__toggle">
           <input type="checkbox" checked={confirmedOnly} onChange={(e) => setConfirmedOnly(e.target.checked)} />
           Confirmed players only
+        </label>
+        <label className="multi-builder__toggle" title="Restrict legs to lines offered by at least half of this match's bookmakers (a coverage proxy, not popularity)">
+          <input type="checkbox" checked={mainMarketsOnly} onChange={(e) => setMainMarketsOnly(e.target.checked)} />
+          Main markets only
         </label>
       </div>
 
