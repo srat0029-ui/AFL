@@ -20,12 +20,11 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.match import Match
 from app.models.player import Player
 from app.models.player_match_stat import PlayerMatchStat
 from app.models.team import Team
@@ -37,10 +36,19 @@ from app.player_modelling.player_context_analysis import (
     ContextSplitStats,
     PlayerContextConfidence,
     PlayerContextConfidenceTier,
-    _adjusted_effect,
     _confidence,
-    _split_stats,
+    compute_pair_window_result,
     compute_trailing_baselines,
+    window_selection_as_dict,
+)
+from app.player_modelling.context_windows import (
+    DEFAULT_WINDOW,
+    WINDOW_ORDER,
+    ContextWindow,
+    WindowSelection,
+    empty_selection,
+    load_club_scope,
+    select_window,
 )
 
 __all__ = [
@@ -81,6 +89,11 @@ class TeammateDiscovery:
     thresholds: tuple[int, ...]
     candidates: list[TeammateCandidate]
     explanation: str
+    window: WindowSelection | None = None
+    # How many candidates would have enough games in EACH window (sample sizes
+    # only - never an effect size), so a user who finds the active window thin
+    # can see where a usable comparison exists. Never applied automatically.
+    window_options: list[dict] = field(default_factory=list)
 
 
 def _candidate_sort_key(candidate: TeammateCandidate) -> tuple[int, int, int, str]:
@@ -100,6 +113,7 @@ def build_teammate_discovery(
     player_id: int,
     stat: str = "disposals",
     thresholds: Sequence[int] | None = None,
+    window: ContextWindow = DEFAULT_WINDOW,
 ) -> TeammateDiscovery:
     if stat not in STAT_FIELDS:
         raise ValueError(f"Unsupported stat {stat!r} - must be one of {sorted(SUPPORTED_STATS)}")
@@ -110,16 +124,8 @@ def build_teammate_discovery(
     if player is None:
         raise LookupError(f"Player {player_id} not found")
 
-    player_rows: list[PlayerMatchStat] = list(
-        db.scalars(
-            select(PlayerMatchStat)
-            .join(Match, PlayerMatchStat.match_id == Match.id)
-            .where(PlayerMatchStat.player_id == player_id)
-            .order_by(Match.scheduled_start.asc(), PlayerMatchStat.match_id.asc())
-        ).all()
-    )
-
-    if not player_rows:
+    scope = load_club_scope(db, player_id)
+    if scope is None:
         return TeammateDiscovery(
             player_id=player_id,
             player_name=player.display_name,
@@ -129,20 +135,19 @@ def build_teammate_discovery(
             thresholds=resolved_thresholds,
             candidates=[],
             explanation="No recorded match statistics found for this player.",
+            window=empty_selection(window),
         )
 
-    # Same convention as player_context_analysis: restrict to the player's
-    # most recent club, per PlayerMatchStat.team_id (the source of truth
-    # for who played for whom on a given date - see that module's
-    # docstring for why players.current_team_id is never used here).
-    team_id = player_rows[-1].team_id
+    # Same convention as player_context_analysis: the player's most recent
+    # club per PlayerMatchStat.team_id (never players.current_team_id), and the
+    # SAME explicit time window the detail analysis uses - a candidate is never
+    # ranked on one horizon and opened into another.
+    team_id = scope.team_id
     team = db.get(Team, team_id)
-    club_rows = [r for r in player_rows if r.team_id == team_id]
-    match_ids = [r.match_id for r in club_rows]
-
-    matches_by_id = {m.id: m for m in db.scalars(select(Match).where(Match.id.in_(match_ids))).all()}
-    ordered = sorted(club_rows, key=lambda r: (matches_by_id[r.match_id].scheduled_start, r.match_id))
-    baselines = compute_trailing_baselines(ordered, stat_field)
+    club_match_ids = [r.match_id for r in scope.club_rows]
+    selection = select_window(scope, window)
+    window_rows = selection.rows
+    baselines = compute_trailing_baselines(scope.club_rows, stat_field)
 
     # Every OTHER player with a same-team row in one of this player's own
     # matches at this club is, by definition, a real teammate for at least
@@ -150,13 +155,19 @@ def build_teammate_discovery(
     teammate_appearance_rows = db.execute(
         select(PlayerMatchStat.player_id, PlayerMatchStat.match_id).where(
             PlayerMatchStat.team_id == team_id,
-            PlayerMatchStat.match_id.in_(match_ids),
+            PlayerMatchStat.match_id.in_(club_match_ids),
             PlayerMatchStat.player_id != player_id,
         )
     ).all()
-    match_ids_by_teammate: dict[int, set[int]] = defaultdict(set)
+    all_match_ids_by_teammate: dict[int, set[int]] = defaultdict(set)
     for teammate_id, match_id in teammate_appearance_rows:
-        match_ids_by_teammate[teammate_id].add(match_id)
+        all_match_ids_by_teammate[teammate_id].add(match_id)
+
+    window_options = _window_options(scope, all_match_ids_by_teammate)
+    window_match_ids = {r.match_id for r in window_rows}
+    match_ids_by_teammate = {
+        tid: shared & window_match_ids for tid, shared in all_match_ids_by_teammate.items() if shared & window_match_ids
+    }
 
     if not match_ids_by_teammate:
         return TeammateDiscovery(
@@ -169,8 +180,11 @@ def build_teammate_discovery(
             candidates=[],
             explanation=(
                 f"No other player has a recorded match statistic for {team.name if team else 'this club'} "
-                "in any of this player's matches there - no teammate comparison is possible."
+                f"in any of this player's matches there in the selected window ({selection.scope_label}) - "
+                "no teammate comparison is possible in this window."
             ),
+            window=selection,
+            window_options=window_options,
         )
 
     teammates_by_id = {
@@ -182,27 +196,18 @@ def build_teammate_discovery(
         teammate = teammates_by_id.get(teammate_id)
         if teammate is None:
             continue
-        with_rows = [r for r in ordered if r.match_id in teammate_match_ids]
-        without_rows = [r for r in ordered if r.match_id not in teammate_match_ids]
-        with_stats = _split_stats(with_rows, stat_field, resolved_thresholds)
-        without_stats = _split_stats(without_rows, stat_field, resolved_thresholds)
-        raw_difference = (
-            without_stats.mean - with_stats.mean
-            if with_stats.mean is not None and without_stats.mean is not None
-            else None
-        )
-        adjusted = _adjusted_effect(ordered, baselines, teammate_match_ids, stat_field)
-        confidence = _confidence(with_stats.games, without_stats.games)
+        # The SAME calculation the detail endpoint uses for this pair/window.
+        result = compute_pair_window_result(window_rows, baselines, teammate_match_ids, stat_field, resolved_thresholds)
         candidates.append(
             TeammateCandidate(
                 teammate_id=teammate_id,
                 teammate_name=teammate.display_name,
-                with_teammate=with_stats,
-                without_teammate=without_stats,
-                raw_difference=raw_difference,
-                adjusted_effect=adjusted,
-                confidence=confidence,
-                sufficient_evidence=confidence.tier != PlayerContextConfidenceTier.INSUFFICIENT_HISTORY,
+                with_teammate=result.with_teammate,
+                without_teammate=result.without_teammate,
+                raw_difference=result.raw_difference,
+                adjusted_effect=result.adjusted_effect,
+                confidence=result.confidence,
+                sufficient_evidence=result.confidence.tier != PlayerContextConfidenceTier.INSUFFICIENT_HISTORY,
             )
         )
 
@@ -217,13 +222,34 @@ def build_teammate_discovery(
         stat=stat,
         thresholds=resolved_thresholds,
         candidates=candidates,
+        window=selection,
+        window_options=window_options,
         explanation=(
-            f"{len(candidates)} teammate(s) found with at least one shared match for "
+            f"{selection.scope_label}: {len(candidates)} teammate(s) found with at least one shared match for "
             f"{team.name if team else 'this club'}, {n_sufficient} with enough games in both groups to "
             "treat as more than anecdotal. Ordered by evidence sufficiency, then confidence tier, then "
             "shared-match sample size - never by the size of a statistical difference."
         ),
     )
+
+
+def _window_options(scope, all_match_ids_by_teammate: dict[int, set[int]]) -> list[dict]:
+    """For each window: games considered and how many candidates clear the
+    minimum sample in both groups. Counts only - no effect sizes."""
+    options = []
+    for w in WINDOW_ORDER:
+        sel = select_window(scope, w)
+        ids = {r.match_id for r in sel.rows}
+        n_sufficient = 0
+        for shared in all_match_ids_by_teammate.values():
+            games_with = len(shared & ids)
+            if games_with and _confidence(games_with, len(ids) - games_with).tier != PlayerContextConfidenceTier.INSUFFICIENT_HISTORY:
+                n_sufficient += 1
+        options.append({
+            "key": w.value, "label": sel.label, "scope_label": sel.scope_label,
+            "games_considered": sel.games_considered, "n_sufficient_candidates": n_sufficient,
+        })
+    return options
 
 
 def _split_as_dict(s: ContextSplitStats) -> dict:
@@ -247,6 +273,8 @@ def teammate_discovery_as_dict(discovery: TeammateDiscovery) -> dict:
         "stat": discovery.stat,
         "thresholds": list(discovery.thresholds),
         "explanation": discovery.explanation,
+        "window": window_selection_as_dict(discovery.window),
+        "window_options": discovery.window_options,
         "candidates": [
             {
                 "teammate_id": c.teammate_id,

@@ -3641,16 +3641,18 @@ export function fetchPlayerContext(
   teammateId: number,
   stat: import("../features/playerContext").ContextStat = "disposals",
   signal?: AbortSignal,
+  window: import("../features/playerContext").ContextWindowKey = "current_season",
 ): Promise<import("../features/playerContext").PlayerContextResearch> {
-  return request(`/api/afl/players/${playerId}/context/${teammateId}?${new URLSearchParams({ stat })}`, { signal });
+  return request(`/api/afl/players/${playerId}/context/${teammateId}?${new URLSearchParams({ stat, window })}`, { signal });
 }
 
 export function fetchTeammateDiscovery(
   playerId: number,
   stat: import("../features/playerContext").ContextStat = "disposals",
   signal?: AbortSignal,
+  window: import("../features/playerContext").ContextWindowKey = "current_season",
 ): Promise<import("../features/playerContext").TeammateDiscoveryResult> {
-  return request(`/api/afl/players/${playerId}/context-candidates?${new URLSearchParams({ stat })}`, { signal });
+  return request(`/api/afl/players/${playerId}/context-candidates?${new URLSearchParams({ stat, window })}`, { signal });
 }
 
 export function fetchOpponentContext(

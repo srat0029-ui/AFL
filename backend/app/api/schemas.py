@@ -2424,6 +2424,54 @@ class TagWatchRead(BaseModel):
     explanation: str
 
 
+class ContextWindowRead(BaseModel):
+    """The explicit time window a context comparison was computed over."""
+
+    key: str  # current_season | last_2_seasons | current_club_career
+    label: str
+    scope_label: str  # e.g. "2026 season", "Current club career · 2022–2026"
+    anchor_season_year: int | None
+    included_seasons: list[int]
+    earliest_date: UtcDatetime | None
+    latest_date: UtcDatetime | None
+    games_considered: int
+    games_excluded_missing_season: int
+
+
+class SeasonSplitGroupRead(BaseModel):
+    games: int
+    mean: float | None
+
+
+class SeasonSplitRead(BaseModel):
+    season_year: int
+    with_teammate: SeasonSplitGroupRead
+    without_teammate: SeasonSplitGroupRead
+
+
+class WindowSummaryRead(BaseModel):
+    key: str
+    label: str
+    scope_label: str
+    games_with: int
+    games_without: int
+    confidence_tier: str
+    sufficient: bool
+
+
+class WindowSufficiencyRead(BaseModel):
+    sufficient: bool
+    message: str | None
+    suggested_windows: list[str]
+
+
+class TeammateTenureRead(BaseModel):
+    first_game_at_club: UtcDatetime | None
+    apart_games_not_at_club: int
+    apart_games: int
+    note: str | None
+
+
 class PlayerContextAnalysisRead(BaseModel):
     player_id: int
     player_name: str
@@ -2442,6 +2490,11 @@ class PlayerContextAnalysisRead(BaseModel):
     evidence: list[PlayerContextEvidenceRowRead]
     role_analysis_available: bool
     role_analysis_explanation: str
+    window: ContextWindowRead
+    season_breakdown: list[SeasonSplitRead]
+    window_summaries: list[WindowSummaryRead]
+    sufficiency: WindowSufficiencyRead
+    teammate_tenure: TeammateTenureRead
     tag_watch: TagWatchRead
 
 
@@ -2464,6 +2517,8 @@ class TeammateDiscoveryRead(BaseModel):
     stat: str
     thresholds: list[int]
     explanation: str
+    window: ContextWindowRead
+    window_options: list[dict]
     candidates: list[TeammateCandidateRead]
 
 

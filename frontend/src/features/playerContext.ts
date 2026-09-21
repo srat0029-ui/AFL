@@ -1,4 +1,67 @@
 export type ContextStat = "disposals" | "goals";
+
+// Explicit time window for teammate context. The active window is always
+// shown next to the headline result and is never broadened automatically.
+export type ContextWindowKey = "current_season" | "last_2_seasons" | "current_club_career";
+export const DEFAULT_CONTEXT_WINDOW: ContextWindowKey = "current_season";
+export const CONTEXT_WINDOW_OPTIONS: { key: ContextWindowKey; short: string; action: string }[] = [
+  { key: "current_season", short: "Season", action: "View current season" },
+  { key: "last_2_seasons", short: "Last 2 seasons", action: "View last 2 seasons" },
+  { key: "current_club_career", short: "Club career", action: "View current-club career" },
+];
+export interface ContextWindowInfo {
+  key: ContextWindowKey;
+  label: string;
+  scope_label: string; // "2026 season" | "Last 2 seasons · 2025–2026" | "Current club career · 2022–2026"
+  anchor_season_year: number | null;
+  included_seasons: number[];
+  earliest_date: string | null;
+  latest_date: string | null;
+  games_considered: number;
+  games_excluded_missing_season: number;
+}
+export interface SeasonSplit {
+  season_year: number;
+  with_teammate: { games: number; mean: number | null };
+  without_teammate: { games: number; mean: number | null };
+}
+export interface WindowSummary {
+  key: ContextWindowKey;
+  label: string;
+  scope_label: string;
+  games_with: number;
+  games_without: number;
+  confidence_tier: string;
+  sufficient: boolean;
+}
+export interface WindowSufficiency {
+  sufficient: boolean;
+  message: string | null;
+  suggested_windows: ContextWindowKey[];
+}
+export interface TeammateTenure {
+  first_game_at_club: string | null;
+  apart_games_not_at_club: number;
+  apart_games: number;
+  note: string | null;
+}
+export interface WindowOption {
+  key: ContextWindowKey;
+  label: string;
+  scope_label: string;
+  games_considered: number;
+  n_sufficient_candidates: number;
+}
+
+const WINDOW_WHEN: Record<ContextWindowKey, string> = {
+  current_season: "this season",
+  last_2_seasons: "over the last 2 seasons",
+  current_club_career: "in this club career",
+};
+/** "12 together / 4 apart this season" - the sample sizes behind a comparison, scoped to the window. */
+export const togetherApartLabel = (withGames: number, withoutGames: number, window: ContextWindowKey): string =>
+  `${withGames} together / ${withoutGames} apart ${WINDOW_WHEN[window]}`;
+export const windowActionLabel = (key: ContextWindowKey): string => CONTEXT_WINDOW_OPTIONS.find(o => o.key === key)?.action ?? "View";
 export interface ContextSplit {
   games: number;
   stat_sample_size: number;
@@ -48,6 +111,11 @@ export interface PlayerContextResearch {
   evidence: ContextEvidenceGame[];
   role_analysis_available: boolean;
   role_analysis_explanation: string;
+  window: ContextWindowInfo;
+  season_breakdown: SeasonSplit[];
+  window_summaries: WindowSummary[];
+  sufficiency: WindowSufficiency;
+  teammate_tenure: TeammateTenure;
   tag_watch: { status: string; verified_annotation_count: number; games_played: number | null; tag_rate: number | null; explanation: string };
 }
 export interface TeammateCandidate {
@@ -68,6 +136,8 @@ export interface TeammateDiscoveryResult {
   stat: string;
   thresholds: number[];
   explanation: string;
+  window: ContextWindowInfo;
+  window_options: WindowOption[];
   candidates: TeammateCandidate[];
 }
 
@@ -80,7 +150,7 @@ export const formatDifference = (value: number | null): string =>
 export function explainDifference(research: PlayerContextResearch): string {
   if (research.raw_difference == null) return "A comparison is unavailable because one or both groups have no recorded values for this statistic.";
   const value = research.raw_difference;
-  return `${research.player_name} averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${research.stat} with ${research.teammate_name} absent than present${value === 0 ? " (no difference)" : ""}. This is a historical association, not proof that the teammate caused the change or a prediction for the next game.`;
+  return `${research.player_name} averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${research.stat} with ${research.teammate_name} absent than present (${research.window.scope_label})${value === 0 ? ", no difference" : ""}. This is a historical association, not proof that the teammate caused the change or a prediction for the next game.`;
 }
 
 export function explainCandidateDifference(playerName: string, stat: string, candidate: TeammateCandidate): string {

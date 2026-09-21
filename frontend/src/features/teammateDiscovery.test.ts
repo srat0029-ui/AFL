@@ -21,8 +21,10 @@ function makeCandidate(overrides: Partial<TeammateCandidate>): TeammateCandidate
   };
 }
 
+const seasonWindow = { key: "current_season" as const, label: "Current season", scope_label: "2026 season", anchor_season_year: 2026, included_seasons: [2026], earliest_date: null, latest_date: null, games_considered: 22, games_excluded_missing_season: 0 };
+
 const discoveryFixture: TeammateDiscoveryResult = {
-  player_id: 101, player_name: "Player One", team_id: 5, team_name: "Example Club", stat: "disposals", thresholds: [15], explanation: "2 teammate(s) found.",
+  player_id: 101, player_name: "Player One", team_id: 5, team_name: "Example Club", stat: "disposals", thresholds: [15], explanation: "2 teammate(s) found.", window: seasonWindow, window_options: [],
   candidates: [
     makeCandidate({
       teammate_id: 201, teammate_name: "Solid Evidence",

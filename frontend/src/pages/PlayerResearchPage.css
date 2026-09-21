@@ -634,3 +634,17 @@
 @media (max-width: 680px) {
   .discovery-candidate-list { grid-template-columns: 1fr; }
 }
+
+/* Teammate context time scope */
+.research-window-control { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem; margin: 1rem 0; }
+.research-window-control__label { color: var(--text-muted); font-size: var(--fs-meta); font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+.research-window-control .hint { flex-basis: 100%; margin: 0; }
+.research-scope { margin: .15rem 0; color: var(--text-h); }
+.research-scope strong { color: var(--accent-light); }
+.research-window-notice { padding: .8rem 1rem; border: 1px solid var(--caution-text); border-left-width: 4px; border-radius: var(--radius-xs); background: var(--caution-bg); color: var(--text-h); }
+.research-window-notice p { margin: .25rem 0; }
+.research-window-notice__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .6rem 0; }
+.research-window-notice__actions button { border: 1px solid var(--accent); border-radius: var(--radius-xs); background: var(--accent-tint-bg); color: var(--accent-light); padding: .45rem .75rem; font: inherit; font-size: var(--fs-meta); cursor: pointer; }
+.research-season-table { width: 100%; border-collapse: collapse; }
+.research-season-table th, .research-season-table td { padding: .5rem .65rem; border-bottom: 1px solid var(--border); text-align: left; }
+.discovery-candidate__sample { margin: .2rem 0 .5rem; color: var(--accent-light); font-size: var(--fs-meta); font-weight: 600; }
