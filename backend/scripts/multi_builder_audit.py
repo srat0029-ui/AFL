@@ -118,7 +118,7 @@ def section_prospective_legs(rep: Report, db) -> None:
         rep.h(3, market)
         leg_table(rep, ml, lambda l: D.prob_bucket_label(l.model_probability), "model probability bucket")
         leg_table(rep, ml, lambda l: f"{l.threshold:05.1f}", "threshold")
-        leg_table(rep, ml, lambda l: "n/a" if l.coverage_share is None else ("main (>=50% of bookmakers)" if l.coverage_share >= mb.MAIN_MARKET_MIN_COVERAGE_SHARE else "thin (<50%)"), "coverage proxy")
+        leg_table(rep, ml, lambda l: "n/a" if l.coverage_share is None else ("main (>=50% of eligible bookmakers)" if l.coverage_share >= mb.MAIN_MARKET_MIN_COVERAGE_SHARE else "thin (<50% of eligible bookmakers)"), "coverage proxy")
         leg_table(rep, ml, lambda l: l.confidence_tier or "unknown", "confidence tier")
         leg_table(rep, ml, lambda l: l.lineup_status or "unknown", "lineup at observation")
     rep.p("Coverage is a proxy for how widely a line is OFFERED. It is not liquidity or popularity, and it says nothing about whether the model is more accurate on such lines.")

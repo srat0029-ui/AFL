@@ -261,7 +261,40 @@ def _calibration_checked_at_threshold(leg: dict) -> bool:
     NEAREST evaluated one (20/25/30/35 for disposals), so a 10+ leg carries a
     calibration record that actually describes 20+ - not evidence about 10+."""
     cal = leg.get("calibration")
-    return bool(cal) and leg.get("threshold") is not None and float(cal.get("evaluated_threshold", -1)) == float(leg["threshold"])
+    if not cal or leg.get("threshold") is None:
+        return False
+    # Calibration is stored per whole-number "N+" threshold (disposals 20/25/30/35,
+    # goals 1..5) while a leg's line is a half-line ("19.5" needs 20): compare the
+    # stat the leg actually requires, or 20+ would never match its own evaluation.
+    return _needed_value(leg) == cal.get("evaluated_threshold")
+
+
+# Calibration credit used for RANKING. The opportunity pipeline attaches a
+# calibration record (and its 5-point score component) whenever ANY evaluated
+# threshold exists, mapping e.g. a 15+ line to the 20+ evaluation. That is not
+# evidence about 15+, so ranking must not be rewarded for it: without an
+# exact-threshold evaluation a leg gets NO calibration credit (0.0 - the same
+# value a leg with no calibration data at all already gets). It is neutral, not
+# a penalty and not an exclusion: the leg stays fully eligible and is simply
+# ranked on its other evidence. No calibration score is invented.
+NO_CALIBRATION_CREDIT = 0.0
+
+
+def _ranking_calibration(leg: dict) -> float:
+    if not _calibration_checked_at_threshold(leg):
+        return NO_CALIBRATION_CREDIT
+    return leg["opportunity_components"]["calibration"]
+
+
+def _ranking_opportunity_score(leg: dict) -> float:
+    """representative_score (Value mode's existing ranking) with any
+    calibration points that were borrowed from a different threshold removed
+    - exact-threshold calibration keeps its normal contribution."""
+    borrowed = leg["opportunity_components"]["calibration"] - _ranking_calibration(leg)
+    if borrowed <= 0:
+        return representative_score(leg)
+    multiplier = leg["opportunity_components"].get("penalty_multiplier", 1.0)
+    return representative_score({**leg, "opportunity_score": max(leg["opportunity_score"] - borrowed * multiplier, 0.0)})
 
 
 def _reasons_for(leg: dict) -> list[dict]:
@@ -272,15 +305,15 @@ def _reasons_for(leg: dict) -> list[dict]:
         reasons.append({"code": REASON_WELL_CALIBRATED_THRESHOLD, "label": f"Calibration checked at {leg['threshold']:g}+ (ECE {leg['calibration']['ece']:.3f})"})
     rel = leg.get("market_relevance")
     if rel and rel.get("coverage_share") is not None and rel["grade"] == GRADE_MAIN and rel.get("informative"):
-        reasons.append({"code": REASON_MARKET_COVERAGE, "label": f"Offered by {rel['bookmakers_offering']} of {rel['bookmakers_in_match']} bookmakers"})
+        reasons.append({"code": REASON_MARKET_COVERAGE, "label": f"Offered by {rel['bookmakers_offering']} of {rel['bookmakers_in_match']} eligible bookmakers"})
     if leg.get("is_confirmed"):
         reasons.append({"code": REASON_CONFIRMED_SELECTED, "label": "Lineup confirmed"})
     if leg["odds_freshness"] == "fresh":
         reasons.append({"code": REASON_FRESH_MARKET, "label": "Fresh odds"})
     if leg["confidence_tier"] in ("higher_confidence", "moderate_confidence"):
         reasons.append({"code": REASON_GOOD_CONFIDENCE, "label": "Good model confidence"})
-    if leg.get("n_bookmakers", 0) > 1:
-        reasons.append({"code": REASON_MULTIPLE_BOOKMAKERS, "label": "Multiple bookmakers quote this market"})
+    if _n_eligible_bookmakers(leg) > 1:
+        reasons.append({"code": REASON_MULTIPLE_BOOKMAKERS, "label": "Multiple eligible bookmakers quote this market"})
     if leg["model_probability"] >= 0.70:
         reasons.append({"code": REASON_HIGH_MODEL_PROBABILITY, "label": f"High model probability ({leg['model_probability'] * 100:.0f}%)"})
     if leg["difference_pp"] > 0:
@@ -296,13 +329,13 @@ def _warnings_for(leg: dict) -> list[dict]:
         warnings.append({"code": WARNING_RECENT_USAGE_REGIME_CHANGE, "label": "; ".join(f["description"] for f in leg["model_risk_flags"])})
     if leg["confidence_tier"] == "lower_confidence":
         warnings.append({"code": WARNING_LOWER_CONFIDENCE, "label": "Lower model confidence for this leg."})
-    if leg.get("n_bookmakers", 0) <= 1:
-        warnings.append({"code": WARNING_SINGLE_BOOK_MARKET, "label": "Only one bookmaker quotes this market."})
+    if _n_eligible_bookmakers(leg) <= 1:
+        warnings.append({"code": WARNING_SINGLE_BOOK_MARKET, "label": "Only one eligible bookmaker quotes this market."})
     rel = leg.get("market_relevance")
     if rel and rel["grade"] == GRADE_THIN and rel.get("coverage_share") is not None:
         warnings.append({
             "code": WARNING_LESS_COMMON_LINE,
-            "label": f"Less common line — offered by {rel['bookmakers_offering']} of {rel['bookmakers_in_match']} bookmakers.",
+            "label": f"Less common line — offered by {rel['bookmakers_offering']} of {rel['bookmakers_in_match']} eligible bookmakers.",
         })
     cal = leg.get("calibration")
     if cal and not _calibration_checked_at_threshold(leg):
@@ -313,30 +346,42 @@ def _warnings_for(leg: dict) -> list[dict]:
     return warnings
 
 
+def _eligible_bookmaker_names(leg: dict) -> set[str]:
+    """Distinct bookmakers quoting this leg that this product may use
+    (eligibility == ELIGIBILITY_INCLUDED) - the SAME rule _legs_by_bookmaker
+    applies. Excluded exchanges / disabled providers are never evidence that a
+    market is widely offered."""
+    return {b["bookmaker_name"] for b in leg.get("bookmakers", []) if b.get("eligibility") == ELIGIBILITY_INCLUDED}
+
+
+def _n_eligible_bookmakers(leg: dict) -> int:
+    return len(_eligible_bookmaker_names(leg))
+
+
 def bookmaker_universe(match_legs: list[dict]) -> int:
-    """How many distinct bookmakers quote ANY player prop for this match -
-    the denominator for a leg's coverage share."""
+    """How many distinct ELIGIBLE bookmakers quote ANY player prop for this
+    match - the denominator for a leg's coverage share."""
     names: set[str] = set()
     for leg in match_legs:
         if leg["opportunity_type"] == "player":
-            for entry in leg.get("bookmakers", []):
-                names.add(entry["bookmaker_name"])
+            names |= _eligible_bookmaker_names(leg)
     return len(names)
 
 
 def market_relevance(leg: dict, universe: int) -> dict:
     """Transparent, evidence-only relevance of one leg's market.
 
-    `coverage_share` = bookmakers quoting this exact market / bookmakers
-    quoting any player prop in the match. It is a PROXY for how widely the
+    `coverage_share` = ELIGIBLE bookmakers quoting this exact market / ELIGIBLE
+    bookmakers quoting any player prop in the match (eligible = usable by this
+    product, the same universe multis are built from). It is a PROXY for how widely the
     line is offered (standard ladder rung vs. one-off alternate line), never
     liquidity or popularity - those are not stored anywhere. Team-market legs
     (h2h/line/total) are standard products and are graded main without a
     coverage figure. With fewer than MIN_BOOKMAKERS_FOR_RELEVANCE bookmakers
     in the match the grade is not applied (`informative` False)."""
     if leg["opportunity_type"] != "player" or universe <= 0:
-        return {"grade": GRADE_MAIN, "coverage_share": None, "bookmakers_offering": leg.get("n_bookmakers"), "bookmakers_in_match": universe or None, "is_proxy": True, "informative": False}
-    offering = len(leg.get("bookmakers", [])) or int(leg.get("n_bookmakers", 0))
+        return {"grade": GRADE_MAIN, "coverage_share": None, "bookmakers_offering": _n_eligible_bookmakers(leg), "bookmakers_in_match": universe or None, "is_proxy": True, "informative": False}
+    offering = len(_eligible_bookmaker_names(leg))
     share = min(offering / universe, 1.0)
     informative = universe >= MIN_BOOKMAKERS_FOR_RELEVANCE
     grade = GRADE_MAIN if (not informative or share >= MAIN_MARKET_MIN_COVERAGE_SHARE) else GRADE_THIN
@@ -454,7 +499,7 @@ def _high_probability_score(leg: dict) -> tuple:
     lineup_ok = leg["opportunity_type"] != "player" or bool(leg.get("is_confirmed"))
     n_warnings = len(leg.get("warnings", []))
     return (
-        leg["model_probability"], comp["confidence"], comp["calibration"],
+        leg["model_probability"], comp["confidence"], _ranking_calibration(leg),
         1.0 if lineup_ok else 0.0, comp["freshness"], -n_warnings, leg["difference_pp"],
     )
 
@@ -533,7 +578,7 @@ def _candidate_pool(legs: list[dict], tier_key: str, mode: str, *, confirmed_onl
         pool = sorted(pool, key=_high_probability_score, reverse=True)
         return pool[:_SEARCH_POOL_CAP]
     pool = [leg for leg in pool if leg["model_probability"] >= MIN_LEG_PROBABILITY_VALUE]
-    pool = sorted(pool, key=representative_score, reverse=True)
+    pool = sorted(pool, key=_ranking_opportunity_score, reverse=True)
     return pool[:_MAX_POOL_SIZE]
 
 
@@ -579,7 +624,7 @@ def _combo_rank_key(combo: tuple[dict, ...], warnings: list[str], mode: str) -> 
         #      (confidence + calibration), fewer correlation warnings, average
         #      probability, then model-market edge and the usage-regime
         #      caution as the final minor tiebreaks.
-        avg_quality = mean((leg["opportunity_components"]["confidence"] + leg["opportunity_components"]["calibration"]) / 2 for leg in combo)
+        avg_quality = mean((leg["opportunity_components"]["confidence"] + _ranking_calibration(leg)) / 2 for leg in combo)
         avg_edge = mean(leg["difference_pp"] for leg in combo)
         n_risk_flagged = sum(1 for leg in combo if leg.get("model_risk_flags"))
         n_unconfirmed = len(combo) - n_confirmed
@@ -591,7 +636,7 @@ def _combo_rank_key(combo: tuple[dict, ...], warnings: list[str], mode: str) -> 
         )
     # Value mode: prioritise average model-market edge/value (the existing
     # transparent opportunity score), never raw combined odds.
-    avg_value_score = mean(representative_score(leg) for leg in combo)
+    avg_value_score = mean(_ranking_opportunity_score(leg) for leg in combo)
     return (avg_value_score, n_confirmed, -len(combo))
 
 

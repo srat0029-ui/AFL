@@ -371,10 +371,12 @@ def _outcome(result: str | None) -> str:
 
 def load_prospective_legs(db: Session, *, since: datetime | None = None, until: datetime | None = None) -> list[LegResult]:
     """One LegResult per real (match, player, market, threshold): the latest
-    pre-kickoff observation, with the number of distinct bookmakers that
-    quoted that exact market and that count as a share of every bookmaker
-    quoting ANY player prop for the match (a proxy for how widely offered the
-    market is - NOT liquidity or popularity)."""
+    pre-kickoff observation, with the number of distinct ELIGIBLE bookmakers
+    (eligibility == included, the universe the Multi Builder itself uses) that
+    quoted that exact market and that count as a share of every eligible
+    bookmaker quoting ANY player prop for the match (a proxy for how widely
+    offered the market is - NOT liquidity or popularity)."""
+    eligible_ids = {b.id for b in db.scalars(select(Bookmaker)).all() if b.eligibility == ELIGIBILITY_INCLUDED}
     q = select(Match).where(Match.status == "completed")
     matches = db.scalars(q).all()
     legs: list[LegResult] = []
@@ -387,14 +389,14 @@ def load_prospective_legs(db: Session, *, since: datetime | None = None, until: 
         quotes = _latest_pre_kickoff_quotes(db, match)
         if not quotes:
             continue
-        universe = len({r.bookmaker_id for r in quotes})
+        universe = len({r.bookmaker_id for r in quotes if r.bookmaker_id in eligible_ids})
         by_leg: dict[tuple, list[PropMarketObservation]] = defaultdict(list)
         for r in quotes:
             by_leg[(r.player_id, r.market_type, r.threshold)].append(r)
         players = {p.id: p.display_name for p in db.scalars(select(Player).where(Player.id.in_({k[0] for k in by_leg}))).all()}
         for (player_id, market_type, threshold), rows in by_leg.items():
             latest = max(rows, key=lambda r: _naive(r.observed_at))
-            n_books = len({r.bookmaker_id for r in rows})
+            n_books = len({r.bookmaker_id for r in rows if r.bookmaker_id in eligible_ids})
             best = max(rows, key=lambda r: r.offered_odds)
             legs.append(
                 LegResult(

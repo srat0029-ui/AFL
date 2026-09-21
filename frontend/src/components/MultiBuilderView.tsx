@@ -134,7 +134,7 @@ function MultiLegRow({
   const rel = leg.market_relevance;
   const coverageText =
     rel && rel.informative !== false && rel.bookmakers_offering != null && rel.bookmakers_in_match
-      ? `Offered by ${rel.bookmakers_offering} of ${rel.bookmakers_in_match} bookmakers`
+      ? `Offered by ${rel.bookmakers_offering} of ${rel.bookmakers_in_match} eligible bookmakers`
       : null;
 
   return (
@@ -161,7 +161,11 @@ function MultiLegRow({
       </div>
 
       <div className="multi-leg__meta-line">
-        {coverageText && <span className="multi-leg__coverage">{coverageText}</span>}
+        {coverageText && (
+          <span className="multi-leg__coverage" title="Bookmakers eligible for use by this product that offer this exact line. A coverage proxy, not popularity.">
+            {coverageText}
+          </span>
+        )}
         <span>{CONFIDENCE_LABEL[leg.confidence_tier] ?? leg.confidence_tier}</span>
         {leg.opportunity_type === "player" && <span>{leg.is_confirmed ? "Confirmed" : "Provisional"}</span>}
         {leg.odds_freshness !== "fresh" && <span className="multi-leg__meta-warn">{leg.odds_freshness}</span>}
@@ -279,7 +283,7 @@ function MultiOptionRow({
             <span className="chip chip--neutral tier-option__chip">{option.correlation_warnings.length} correlation note</span>
           )}
           {option.includes_less_common_lines && (
-            <span className="chip chip--warning tier-option__chip" title="At least one leg is a line offered by fewer than half of this match's bookmakers">
+            <span className="chip chip--warning tier-option__chip" title="At least one leg is a line offered by fewer than half of this match's eligible bookmakers">
               Less common lines
             </span>
           )}
@@ -373,7 +377,7 @@ function MultiBuilderView({ matchId }: MultiBuilderViewProps) {
           <input type="checkbox" checked={confirmedOnly} onChange={(e) => setConfirmedOnly(e.target.checked)} />
           Confirmed players only
         </label>
-        <label className="multi-builder__toggle" title="Restrict legs to lines offered by at least half of this match's bookmakers (a coverage proxy, not popularity)">
+        <label className="multi-builder__toggle" title="Restrict legs to lines offered by at least half of this match's eligible bookmakers (a coverage proxy, not popularity)">
           <input type="checkbox" checked={mainMarketsOnly} onChange={(e) => setMainMarketsOnly(e.target.checked)} />
           Main markets only
         </label>
