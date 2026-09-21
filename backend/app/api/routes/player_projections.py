@@ -549,7 +549,8 @@ def get_opportunity_tiers(
 def get_match_multi_builder(
     match_id: int,
     confirmed_only: bool = Query(default=True),
-    mode: str = Query(default=DEFAULT_MODE, description="'high_probability' ranks legs by individual landing probability first; 'value' ranks by model-vs-market edge"),
+    mode: str = Query(default=DEFAULT_MODE, description="'high_probability' favours the fewest legs, drawn from main markets, that still clear each tier's probability floor; 'value' ranks by model-vs-market edge"),
+    main_markets_only: bool = Query(default=True, description="Restrict legs to lines offered by most of the match's bookmakers (a coverage proxy, not popularity); false allows less common lines when a tier can't otherwise be filled"),
     db: Session = Depends(get_db),
 ) -> MatchMultiTiersRead:
     """Product feature stage: up to 3 model-informed multi combinations per
@@ -571,13 +572,17 @@ def get_match_multi_builder(
     raw_opportunities = load_best_opportunities(
         db, market_scope="all", include_uncertain=True, include_stale=True, include_insufficient_history=True, limit=None,
     )
-    result = build_match_multis(db, match_id, confirmed_only=confirmed_only, mode=mode, raw_opportunities=raw_opportunities)
+    result = build_match_multis(
+        db, match_id, confirmed_only=confirmed_only, mode=mode, raw_opportunities=raw_opportunities, main_markets_only=main_markets_only,
+    )
     readiness = compute_match_readiness(db, match_id, raw_opportunities=raw_opportunities)
     return MatchMultiTiersRead(**match_multi_tiers_as_dict(db, result), readiness=MatchReadinessRead(**readiness.__dict__))
 
 
 @router.get("/multi-builder/round-summary", response_model=RoundMultiSummaryRead)
-def get_round_multi_summary(confirmed_only: bool = Query(default=True), db: Session = Depends(get_db)) -> RoundMultiSummaryRead:
+def get_round_multi_summary(
+    confirmed_only: bool = Query(default=True), main_markets_only: bool = Query(default=True), db: Session = Depends(get_db),
+) -> RoundMultiSummaryRead:
     """Finals overview (item 17): one row per upcoming match with readiness
     and the single best High Probability option per tier already inline —
     a user should never have to open every Match Centre just to see what's
@@ -595,7 +600,10 @@ def get_round_multi_summary(confirmed_only: bool = Query(default=True), db: Sess
     rows = []
     for m in upcoming:
         match = db.get(Match, m.match_id)
-        result = build_match_multis(db, m.match_id, confirmed_only=confirmed_only, mode=MODE_HIGH_PROBABILITY, raw_opportunities=raw_opportunities)
+        result = build_match_multis(
+            db, m.match_id, confirmed_only=confirmed_only, mode=MODE_HIGH_PROBABILITY, raw_opportunities=raw_opportunities,
+            main_markets_only=main_markets_only,
+        )
         tiers_available = [t for t in MULTI_TIER_ORDER if result.tiers[t].options]
         best_options_by_tier = {
             t: option_as_dict(result.tiers[t].options[0]) if result.tiers[t].options else None for t in MULTI_TIER_ORDER

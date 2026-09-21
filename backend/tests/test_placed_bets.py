@@ -401,3 +401,21 @@ def test_rerun_settles_only_newly_eligible_legs_and_never_rewrites_settled_ones(
     assert db_session.get(PlacedBet, settled_bet.id).status == STATUS_WON
     assert db_session.get(PlacedBet, settled_bet.id).settled_at == first_settled_at  # untouched
     assert db_session.get(PlacedBet, new_bet.id).status == STATUS_VOID
+
+
+def test_placed_bet_read_reports_shortfall_only_for_lost_player_legs(db_session):
+    """Review context: "missed by 4 disposals". A near miss is still a loss,
+    and won/pending/team legs carry no shortfall."""
+    from app.api.schemas import PlacedBetRead
+
+    match, home, away, player = _seed_match(db_session)
+    db_session.add(PlayerMatchStat(player_id=player.id, match_id=match.id, team_id=home.id, source="afltables", recorded_at=NOW, disposals=20))
+    db_session.commit()
+    create_placed_bet(db_session, _player_bet_input(match, player, threshold=24.5))  # needs 25, got 20
+    create_placed_bet(db_session, _player_bet_input(match, player, threshold=14.5))  # needs 15, got 20 -> won
+    settle_placed_bets(db_session)
+
+    reads = {b.threshold: PlacedBetRead.model_validate(b) for b in db_session.query(PlacedBet).all()}
+    assert reads[24.5].status == STATUS_LOST and reads[24.5].shortfall == 5.0
+    assert reads[14.5].status == STATUS_WON and reads[14.5].shortfall is None
+    assert "shortfall" in reads[24.5].model_dump()
