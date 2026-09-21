@@ -7,7 +7,7 @@ import ContextWindowControl from "../components/ContextWindowControl";
 import TeammateDiscoveryPanel from "../components/TeammateDiscoveryPanel";
 import { ContextResults } from "../pages/PlayerResearchPage";
 import {
-  CONTEXT_WINDOW_OPTIONS, DEFAULT_CONTEXT_WINDOW, togetherApartLabel, windowActionLabel,
+  CONTEXT_WINDOW_OPTIONS, DEFAULT_CONTEXT_WINDOW, selectEvidence, togetherApartLabel, windowActionLabel,
   type ContextWindowInfo, type PlayerContextResearch, type TeammateCandidate, type TeammateDiscoveryResult,
 } from "./playerContext";
 
@@ -21,7 +21,7 @@ function research(overrides: Partial<PlayerContextResearch> = {}): PlayerContext
     adjusted_effect: { available: false, value: null, games_with_baseline_teammate_in: 0, games_with_baseline_teammate_out: 0, method: "recent_form_residual", explanation: "Not enough baseline-eligible games." },
     confounders: {}, confidence: { tier: "lower_confidence", warnings: [] }, evidence: [], role_analysis_available: false, role_analysis_explanation: "n/a",
     window: seasonWindow, season_breakdown: [], window_summaries: [], sufficiency: { sufficient: true, message: null, suggested_windows: [] },
-    teammate_tenure: { first_game_at_club: null, apart_games_not_at_club: 0, apart_games: 0, note: null },
+    teammate_tenure: { first_game_at_club: null, total_games_in_window: 0, games_with_teammate: 0, eligible_games_without_teammate: 0, comparison_eligible_games: 0, games_excluded_outside_tenure: 0, note: null },
     tag_watch: { status: "insufficient_verified_data", verified_annotation_count: 0, games_played: null, tag_rate: null, explanation: "n/a" },
     ...overrides,
   };
@@ -63,7 +63,7 @@ describe("headline scope", () => {
     const html = render(research());
     expect(html).toContain("Nick Daicos with/without Josh Daicos");
     expect(html).toContain("2026 season");
-    expect(html).toContain("18 games together");
+    expect(html).toContain("18 together");
     expect(html).toContain("3 apart");
     expect(html).toContain("(2026 season)");
   });
@@ -88,10 +88,10 @@ describe("insufficient sample is explained, never silently broadened", () => {
     const html = render(insufficient, () => {});
     expect(html).toContain("Only 2 games without Josh Daicos this season (2026)");
     expect(html).toContain("Current season comparison is insufficient");
-    expect(html).toContain("View last 2 seasons (30 together / 9 apart)");
-    expect(html).toContain("View current-club career (60 together / 20 apart)");
+    expect(html).toContain("View last 2 seasons (30 together / 9 eligible apart)");
+    expect(html).toContain("View current-club career (60 together / 20 eligible apart)");
     expect(html).toContain("Nothing has been widened automatically");
-    expect(html).toContain("19 games together");   // still the current-season sample
+    expect(html).toContain("19 together");   // still the current-season sample
   });
   it("shows no notice when the sample is sufficient", () => {
     const html = render(research());
@@ -100,12 +100,72 @@ describe("insufficient sample is explained, never silently broadened", () => {
   });
 });
 
-describe("teammate arrival note", () => {
-  it("tells the reader when 'apart' games predate the teammate joining the club", () => {
-    const note = "17 of the 26 games apart came when Nic Newman's most recent recorded game was for another club (or before their first recorded game). Those games are counted as 'apart' but may not be true absences from Carlton.";
-    const html = render(research({ teammate_tenure: { first_game_at_club: "2026-03-05T00:00:00Z", apart_games_not_at_club: 17, apart_games: 26, note } }));
-    expect(html).toContain("may not be true absences");
-    expect(render(research())).not.toContain("may not be true absences");
+const tenure = (excluded: number, total = 122): PlayerContextResearch["teammate_tenure"] => ({
+  first_game_at_club: "2019-03-21T00:00:00Z", total_games_in_window: total, games_with_teammate: 15, eligible_games_without_teammate: total - excluded - 15,
+  comparison_eligible_games: total - excluded, games_excluded_outside_tenure: excluded,
+  note: excluded ? `${total} games fall inside this player's club history for the window, but ${excluded} occurred before Wade Derksen was recorded at Carlton or while they were recorded at another club. Those games are excluded from the comparison.` : null,
+});
+const game = (id: number, status: "with_teammate" | "eligible_without" | "excluded_outside_tenure", played = false) => ({
+  match_id: id, season_year: 2024, round_number: id, round_name: null, scheduled_start: `2024-04-${String(id).padStart(2, "0")}T00:00:00Z`, team_id: 1, team_name: "Carlton",
+  opponent_team_id: 2, opponent_name: "Essendon", venue_name: null, teammate_played: played, stat_value: 20 + id, time_on_ground_pct: 80, comparison_status: status,
+});
+
+describe("comparison eligibility in the UI", () => {
+  it("shows the eligible sample in the headline and the exclusions as quiet secondary context", () => {
+    const html = render(research({
+      with_teammate: { ...split, games: 15, stat_sample_size: 15, mean: 26 }, without_teammate: { ...split, games: 8, stat_sample_size: 8, mean: 28 }, teammate_tenure: tenure(99),
+    }));
+    expect(html).toContain("15 together");
+    expect(html).toContain("8 apart");
+    expect(html).toContain("99 earlier/out-of-tenure games excluded");
+    expect(html).not.toContain("122 apart");
+    expect(html).toContain("Those games are excluded from the comparison");
+    expect(html).toContain("we hold no list or availability data");
+  });
+  it("shows no exclusion line or note when nothing is excluded", () => {
+    const html = render(research());
+    expect(html).not.toContain("out-of-tenure games excluded");
+    expect(html).not.toContain("Those games are excluded from the comparison");
+  });
+  it("keeps excluded games out of the primary evidence table and does not present them as teammate-out evidence", () => {
+    const html = render(research({
+      teammate_tenure: tenure(2, 5),
+      evidence: [game(1, "with_teammate", true), game(2, "eligible_without"), game(3, "excluded_outside_tenure"), game(4, "excluded_outside_tenure")],
+    }));
+    expect(html).toContain("Excluded from comparison (2)");
+    expect(html).toContain("not teammate-out evidence");
+    expect(html).toContain("2 comparison games in this scope");
+    expect(html).toContain("With teammate <span>(1)</span>");
+    expect(html).toContain("Without teammate <span>(1)</span>");
+    expect(html).toContain("All games <span>(2)</span>");
+  });
+  it("selectEvidence never returns excluded games, whatever the filter", () => {
+    const rows = [game(1, "with_teammate", true), game(2, "eligible_without"), game(3, "excluded_outside_tenure")];
+    for (const teammate of ["all", "in", "out"] as const)
+      expect(selectEvidence(rows, { teammate, season: null, opponent: "", order: "newest" }).map(r => r.match_id)).not.toContain(3);
+    expect(selectEvidence(rows, { teammate: "out", season: null, opponent: "", order: "newest" }).map(r => r.match_id)).toEqual([2]);
+  });
+  it("season table shows excluded counts per season without folding them into the means", () => {
+    const html = render(research({ season_breakdown: [
+      { season_year: 2026, with_teammate: { games: 6, mean: 25.8 }, without_teammate: { games: 2, mean: 29.1 }, excluded_games: 0 },
+      { season_year: 2025, with_teammate: { games: 0, mean: null }, without_teammate: { games: 0, mean: null }, excluded_games: 17 },
+    ] }));
+    expect(html).toContain("17 earlier/out-of-tenure");
+    expect(html).toContain("over comparison-eligible games only");
+  });
+  it("candidate cards mention exclusions only when they exist", () => {
+    const cand = (n: number): TeammateCandidate => ({
+      teammate_id: 9, teammate_name: "Wade Derksen", with_teammate: { ...split, games: 15, stat_sample_size: 15, mean: 25 }, without_teammate: { ...split, games: 8, stat_sample_size: 8, mean: 27 },
+      raw_difference: 2, adjusted_effect: { available: false, value: null, games_with_baseline_teammate_in: 0, games_with_baseline_teammate_out: 0, method: "x", explanation: "x" },
+      confidence: { tier: "moderate_confidence", warnings: [] }, sufficient_evidence: true, games_excluded_outside_tenure: n,
+    });
+    const panel = (n: number) => renderToStaticMarkup(createElement(TeammateDiscoveryPanel, {
+      playerName: "P", stat: "disposals", loading: false, error: null, onRetry: () => {}, onSelect: () => {},
+      discovery: { player_id: 1, player_name: "P", team_id: 5, team_name: "Carlton", stat: "disposals", thresholds: [25], explanation: "x", window: seasonWindow, window_options: [], candidates: [cand(n)] },
+    }));
+    expect(panel(92)).toContain("15 together / 8 apart this season");
+    expect(panel(92)).toContain("92 earlier/out-of-tenure excluded");
+    expect(panel(0)).not.toContain("excluded");
   });
 });
 

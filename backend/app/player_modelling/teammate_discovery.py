@@ -37,8 +37,11 @@ from app.player_modelling.player_context_analysis import (
     PlayerContextConfidence,
     PlayerContextConfidenceTier,
     _confidence,
+    classify_comparison_games,
     compute_pair_window_result,
     compute_trailing_baselines,
+    excluded_match_ids_from,
+    load_teammate_histories,
     window_selection_as_dict,
 )
 from app.player_modelling.context_windows import (
@@ -77,6 +80,9 @@ class TeammateCandidate:
     adjusted_effect: AdjustedTeammateEffect
     confidence: PlayerContextConfidence
     sufficient_evidence: bool
+    # Audit only: games in the window outside this teammate's comparable tenure.
+    # They are in NO sample, confidence or ranking below.
+    games_excluded_outside_tenure: int = 0
 
 
 @dataclass(frozen=True)
@@ -163,7 +169,17 @@ def build_teammate_discovery(
     for teammate_id, match_id in teammate_appearance_rows:
         all_match_ids_by_teammate[teammate_id].add(match_id)
 
-    window_options = _window_options(scope, all_match_ids_by_teammate)
+    # The SAME tenure eligibility the detail endpoint applies, per candidate,
+    # over the player's whole club history (independent of the window).
+    histories = load_teammate_histories(db, list(all_match_ids_by_teammate))
+    excluded_by_teammate = {
+        tid: excluded_match_ids_from(
+            classify_comparison_games(scope.club_rows, scope.matches_by_id, team_id, shared, histories[tid])
+        )
+        for tid, shared in all_match_ids_by_teammate.items()
+    }
+
+    window_options = _window_options(scope, all_match_ids_by_teammate, excluded_by_teammate)
     window_match_ids = {r.match_id for r in window_rows}
     match_ids_by_teammate = {
         tid: shared & window_match_ids for tid, shared in all_match_ids_by_teammate.items() if shared & window_match_ids
@@ -197,7 +213,9 @@ def build_teammate_discovery(
         if teammate is None:
             continue
         # The SAME calculation the detail endpoint uses for this pair/window.
-        result = compute_pair_window_result(window_rows, baselines, teammate_match_ids, stat_field, resolved_thresholds)
+        result = compute_pair_window_result(
+            window_rows, baselines, teammate_match_ids, excluded_by_teammate[teammate_id], stat_field, resolved_thresholds,
+        )
         candidates.append(
             TeammateCandidate(
                 teammate_id=teammate_id,
@@ -208,6 +226,7 @@ def build_teammate_discovery(
                 adjusted_effect=result.adjusted_effect,
                 confidence=result.confidence,
                 sufficient_evidence=result.confidence.tier != PlayerContextConfidenceTier.INSUFFICIENT_HISTORY,
+                games_excluded_outside_tenure=result.games_excluded_outside_tenure,
             )
         )
 
@@ -233,17 +252,22 @@ def build_teammate_discovery(
     )
 
 
-def _window_options(scope, all_match_ids_by_teammate: dict[int, set[int]]) -> list[dict]:
+def _window_options(scope, all_match_ids_by_teammate: dict[int, set[int]], excluded_by_teammate: dict[int, set[int]]) -> list[dict]:
     """For each window: games considered and how many candidates clear the
-    minimum sample in both groups. Counts only - no effect sizes."""
+    minimum sample in both groups, using COMPARISON-ELIGIBLE games only (games
+    outside a teammate's comparable tenure never count as "apart"). Counts only -
+    no effect sizes."""
     options = []
     for w in WINDOW_ORDER:
         sel = select_window(scope, w)
         ids = {r.match_id for r in sel.rows}
         n_sufficient = 0
-        for shared in all_match_ids_by_teammate.values():
+        for tid, shared in all_match_ids_by_teammate.items():
             games_with = len(shared & ids)
-            if games_with and _confidence(games_with, len(ids) - games_with).tier != PlayerContextConfidenceTier.INSUFFICIENT_HISTORY:
+            if not games_with:
+                continue
+            games_without = len(ids) - games_with - len(excluded_by_teammate[tid] & ids)
+            if _confidence(games_with, games_without).tier != PlayerContextConfidenceTier.INSUFFICIENT_HISTORY:
                 n_sufficient += 1
         options.append({
             "key": w.value, "label": sel.label, "scope_label": sel.scope_label,
@@ -292,6 +316,7 @@ def teammate_discovery_as_dict(discovery: TeammateDiscovery) -> dict:
                 },
                 "confidence": {"tier": c.confidence.tier.value, "warnings": c.confidence.warnings},
                 "sufficient_evidence": c.sufficient_evidence,
+                "games_excluded_outside_tenure": c.games_excluded_outside_tenure,
             }
             for c in discovery.candidates
         ],

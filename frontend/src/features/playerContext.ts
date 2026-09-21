@@ -21,6 +21,7 @@ export interface ContextWindowInfo {
   games_excluded_missing_season: number;
 }
 export interface SeasonSplit {
+  excluded_games?: number;
   season_year: number;
   with_teammate: { games: number; mean: number | null };
   without_teammate: { games: number; mean: number | null };
@@ -33,6 +34,7 @@ export interface WindowSummary {
   games_without: number;
   confidence_tier: string;
   sufficient: boolean;
+  games_excluded?: number;
 }
 export interface WindowSufficiency {
   sufficient: boolean;
@@ -41,8 +43,11 @@ export interface WindowSufficiency {
 }
 export interface TeammateTenure {
   first_game_at_club: string | null;
-  apart_games_not_at_club: number;
-  apart_games: number;
+  total_games_in_window: number;
+  games_with_teammate: number;
+  eligible_games_without_teammate: number;
+  comparison_eligible_games: number;
+  games_excluded_outside_tenure: number;
   note: string | null;
 }
 export interface WindowOption {
@@ -85,7 +90,15 @@ export interface ContextEvidenceGame {
   teammate_played: boolean;
   stat_value: number | null;
   time_on_ground_pct: number | null;
+  // Excluded games fall outside the teammate's comparable tenure (before they
+  // were recorded at the club, or while recorded at another club). Audit
+  // context only - never teammate-out evidence.
+  comparison_status?: ComparisonStatus;
 }
+export type ComparisonStatus = "with_teammate" | "eligible_without" | "excluded_outside_tenure";
+export const comparisonStatus = (row: ContextEvidenceGame): ComparisonStatus =>
+  row.comparison_status ?? (row.teammate_played ? "with_teammate" : "eligible_without");
+export const isExcludedGame = (row: ContextEvidenceGame): boolean => comparisonStatus(row) === "excluded_outside_tenure";
 export interface PlayerContextResearch {
   player_id: number;
   player_name: string;
@@ -127,6 +140,7 @@ export interface TeammateCandidate {
   adjusted_effect: PlayerContextResearch["adjusted_effect"];
   confidence: { tier: string; warnings: string[] };
   sufficient_evidence: boolean;
+  games_excluded_outside_tenure?: number;
 }
 export interface TeammateDiscoveryResult {
   player_id: number;
@@ -168,7 +182,9 @@ export interface EvidenceFilters {
 }
 export function selectEvidence(rows: ContextEvidenceGame[], filters: EvidenceFilters): ContextEvidenceGame[] {
   const opponent = filters.opponent.trim().toLocaleLowerCase();
-  return rows.filter(row =>
+  // Games outside the comparable tenure are never selectable as evidence rows:
+  // they are shown separately as audit context.
+  return rows.filter(row => !isExcludedGame(row)).filter(row =>
     (filters.teammate === "all" || row.teammate_played === (filters.teammate === "in")) &&
     (filters.season === null || row.season_year === filters.season) &&
     (!opponent || (row.opponent_name ?? "").toLocaleLowerCase().includes(opponent)),

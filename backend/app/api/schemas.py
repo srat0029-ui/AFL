@@ -2394,6 +2394,9 @@ class PlayerContextEvidenceRowRead(BaseModel):
     teammate_played: bool
     stat_value: int | None
     time_on_ground_pct: int | None
+    # with_teammate | eligible_without | excluded_outside_tenure. Excluded games
+    # are audit context only - they are NOT teammate-out evidence.
+    comparison_status: str = "with_teammate"
 
 
 class PlayerContextConfounderRead(BaseModel):
@@ -2447,6 +2450,7 @@ class SeasonSplitRead(BaseModel):
     season_year: int
     with_teammate: SeasonSplitGroupRead
     without_teammate: SeasonSplitGroupRead
+    excluded_games: int = 0
 
 
 class WindowSummaryRead(BaseModel):
@@ -2457,6 +2461,7 @@ class WindowSummaryRead(BaseModel):
     games_without: int
     confidence_tier: str
     sufficient: bool
+    games_excluded: int = 0
 
 
 class WindowSufficiencyRead(BaseModel):
@@ -2466,9 +2471,16 @@ class WindowSufficiencyRead(BaseModel):
 
 
 class TeammateTenureRead(BaseModel):
+    """How the window's games split for this pair. Comparison-eligible games =
+    with the teammate + eligible without; excluded games are outside the
+    teammate's comparable tenure and are in no statistic."""
+
     first_game_at_club: UtcDatetime | None
-    apart_games_not_at_club: int
-    apart_games: int
+    total_games_in_window: int
+    games_with_teammate: int
+    eligible_games_without_teammate: int
+    comparison_eligible_games: int
+    games_excluded_outside_tenure: int
     note: str | None
 
 
@@ -2507,6 +2519,7 @@ class TeammateCandidateRead(BaseModel):
     adjusted_effect: PlayerContextAdjustedEffectRead
     confidence: PlayerContextConfidenceRead
     sufficient_evidence: bool
+    games_excluded_outside_tenure: int = 0
 
 
 class TeammateDiscoveryRead(BaseModel):

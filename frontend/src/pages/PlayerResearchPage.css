@@ -648,3 +648,7 @@
 .research-season-table { width: 100%; border-collapse: collapse; }
 .research-season-table th, .research-season-table td { padding: .5rem .65rem; border-bottom: 1px solid var(--border); text-align: left; }
 .discovery-candidate__sample { margin: .2rem 0 .5rem; color: var(--accent-light); font-size: var(--fs-meta); font-weight: 600; }
+.research-scope__excluded { color: var(--text-muted); font-size: var(--fs-meta); }
+.discovery-candidate__excluded { color: var(--text-muted); font-weight: 400; }
+.research-excluded-games { margin-top: 1rem; padding: .6rem .9rem; border: 1px dashed var(--border); border-radius: var(--radius-xs); }
+.research-excluded-games summary { cursor: pointer; color: var(--text-muted); }

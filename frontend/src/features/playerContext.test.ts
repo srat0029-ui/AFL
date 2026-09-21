@@ -13,7 +13,7 @@ const fixture: PlayerContextResearch = {
   adjusted_effect: { available: false, value: null, games_with_baseline_teammate_in: 0, games_with_baseline_teammate_out: 0, method: "recent_form_residual", explanation: "Not enough baseline-eligible games." },
   confounders: { role: { considered: false, method: null, reason: "No historical role records." } },
   confidence: { tier: "insufficient_history", warnings: ["Fewer than 3 games in the smaller group."] }, evidence: [], role_analysis_available: false, role_analysis_explanation: "Role-conditioned analysis is unavailable.",
-  window: seasonWindow, season_breakdown: [], window_summaries: [], sufficiency: { sufficient: true, message: null, suggested_windows: [] }, teammate_tenure: { first_game_at_club: null, apart_games_not_at_club: 0, apart_games: 0, note: null },
+  window: seasonWindow, season_breakdown: [], window_summaries: [], sufficiency: { sufficient: true, message: null, suggested_windows: [] }, teammate_tenure: { first_game_at_club: null, total_games_in_window: 0, games_with_teammate: 0, eligible_games_without_teammate: 0, comparison_eligible_games: 0, games_excluded_outside_tenure: 0, note: null },
   tag_watch: { status: "insufficient_verified_data", verified_annotation_count: 0, games_played: null, tag_rate: null, explanation: "Not enough verified tagging annotations." },
 };
 const render = (data: PlayerContextResearch) => renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ContextResults, { research: data })));
@@ -100,7 +100,7 @@ describe("evidence exploration", () => {
     const html = render({ ...fixture, evidence });
     expect(html).toContain("Showing 1–20 of 25 matching games");
     expect(html).toContain("Page 1 of 2");
-    expect(html).toContain("comparison above uses the full API history");
+    expect(html).toContain("comparison above uses every comparison-eligible game in the selected scope");
     expect(html.match(/href="\/matches\//g)).toHaveLength(20);
   });
 });

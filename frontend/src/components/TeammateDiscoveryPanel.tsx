@@ -9,7 +9,7 @@ function CandidateCard({ playerName, stat, candidate, windowKey, onSelect }: {
       <h3>{candidate.teammate_name}</h3>
       <span className={`research-confidence-badge ${candidate.sufficient_evidence ? "" : "research-confidence-badge--limited"}`}>{candidate.confidence.tier.replaceAll("_", " ")}</span>
     </div>
-    <p className="discovery-candidate__sample">{togetherApartLabel(candidate.with_teammate.games, candidate.without_teammate.games, windowKey)}</p>
+    <p className="discovery-candidate__sample">{togetherApartLabel(candidate.with_teammate.games, candidate.without_teammate.games, windowKey)}{(candidate.games_excluded_outside_tenure ?? 0) > 0 && <span className="discovery-candidate__excluded"> · {candidate.games_excluded_outside_tenure} earlier/out-of-tenure excluded</span>}</p>
     <dl className="discovery-candidate__stats">
       <div><dt>Shared matches</dt><dd>{candidate.with_teammate.games}</dd></div>
       <div><dt>Games without</dt><dd>{candidate.without_teammate.games}</dd></div>

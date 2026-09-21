@@ -25,6 +25,16 @@ the player's most recent club as evidenced by their own match rows, and
 reports which club that was so the caller can see exactly what was
 compared.
 
+Comparison eligibility: the headline "without" sample is games where the
+teammate plausibly COULD have been at this club, not every game the teammate
+lacks a row for. Using only positive evidence from recorded match history (see
+classify_comparison_games), games before the teammate's first recorded
+appearance, or after their most recent recorded appearance was for a different
+club, are excluded from every statistic and kept only as audit context. We hold
+no list-membership, injury or selection-availability data, so an eligible
+"without" game means "no teammate row, with recorded history consistent with
+them being at this club" - never "verified available but omitted".
+
 Time scope: the comparison is further restricted to an explicit, visible
 window (see context_windows.py - current season by default, last 2 seasons, or
 the whole current-club career). A window is never silently broadened.
@@ -33,7 +43,7 @@ the whole current-club career). A window is never silently broadened.
 from __future__ import annotations
 
 import statistics
-from bisect import bisect_left
+from bisect import bisect_right
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -133,6 +143,7 @@ class ContextEvidenceRow:
     teammate_played: bool
     stat_value: int | None
     time_on_ground_pct: int | None
+    comparison_status: str = "with_teammate"  # with_teammate | eligible_without | excluded_outside_tenure
 
 
 @dataclass(frozen=True)
@@ -340,6 +351,7 @@ def _confidence(games_in: int, games_out: int) -> PlayerContextConfidence:
 def _build_evidence(
     ordered_rows: Sequence[PlayerMatchStat],
     teammate_match_ids: set[int],
+    statuses: dict[int, str],
     matches_by_id: dict[int, Match],
     rounds_by_id: dict[int, Round],
     seasons_by_id: dict[int, Season],
@@ -369,9 +381,75 @@ def _build_evidence(
                 teammate_played=r.match_id in teammate_match_ids,
                 stat_value=getattr(r, stat_field),
                 time_on_ground_pct=r.time_on_ground_pct,
+                comparison_status=statuses.get(r.match_id, STATUS_ELIGIBLE_WITHOUT),
             )
         )
     return rows
+
+
+STATUS_WITH = "with_teammate"
+STATUS_ELIGIBLE_WITHOUT = "eligible_without"
+STATUS_EXCLUDED = "excluded_outside_tenure"
+
+
+def _as_naive(dt: datetime) -> datetime:
+    return dt.replace(tzinfo=None) if dt.tzinfo else dt
+
+
+def load_teammate_histories(db: Session, teammate_ids: Sequence[int]) -> dict[int, list[tuple[datetime, int]]]:
+    """Every recorded appearance (date, club) of each given player, ALL clubs,
+    chronological. Positive evidence from recorded match history only - nothing
+    about list membership, contracts, injuries or players.current_team_id."""
+    histories: dict[int, list[tuple[datetime, int]]] = {tid: [] for tid in teammate_ids}
+    if not teammate_ids:
+        return histories
+    for player_id, start, team_id in db.execute(
+        select(PlayerMatchStat.player_id, Match.scheduled_start, PlayerMatchStat.team_id)
+        .join(Match, PlayerMatchStat.match_id == Match.id)
+        .where(PlayerMatchStat.player_id.in_(list(teammate_ids)))
+    ).all():
+        histories[player_id].append((_as_naive(start), team_id))
+    for games in histories.values():
+        games.sort()
+    return histories
+
+
+def classify_comparison_games(
+    club_rows: Sequence[PlayerMatchStat],
+    matches_by_id: dict[int, Match],
+    team_id: int,
+    teammate_match_ids: set[int],
+    teammate_history: Sequence[tuple[datetime, int]],
+) -> dict[int, str]:
+    """Classify each of the player's club games for one teammate.
+
+    WITH               - the teammate has a same-club row in that match.
+    EXCLUDED           - no same-club row, AND recorded history clearly shows the
+                         teammate relationship was not active: the teammate has no
+                         recorded appearance at or before that game, or their most
+                         recent recorded appearance at or before it - including a row
+                         for another club in that very match - was for a DIFFERENT
+                         club (not yet joined, or moved and not yet returned, which
+                         also handles leave-and-return stints).
+    ELIGIBLE WITHOUT   - no row, and the teammate's most recent recorded
+                         appearance before the game was for THIS club. No
+                         positive evidence they had left, so it may be a genuine
+                         injury, rest or omission. Deliberately NOT excluded
+                         merely for being after their latest same-club game.
+    """
+    starts = [start for start, _ in teammate_history]
+    statuses: dict[int, str] = {}
+    for r in club_rows:
+        if r.match_id in teammate_match_ids:
+            statuses[r.match_id] = STATUS_WITH
+            continue
+        idx = bisect_right(starts, _as_naive(matches_by_id[r.match_id].scheduled_start))  # appearances at or before this game
+        statuses[r.match_id] = STATUS_EXCLUDED if idx == 0 or teammate_history[idx - 1][1] != team_id else STATUS_ELIGIBLE_WITHOUT
+    return statuses
+
+
+def excluded_match_ids_from(statuses: dict[int, str]) -> set[int]:
+    return {m for m, s in statuses.items() if s == STATUS_EXCLUDED}
 
 
 @dataclass(frozen=True)
@@ -386,20 +464,27 @@ class PairWindowResult:
     raw_difference: float | None
     adjusted_effect: AdjustedTeammateEffect
     confidence: PlayerContextConfidence
+    games_excluded_outside_tenure: int = 0
 
 
 def compute_pair_window_result(
     window_rows: Sequence[PlayerMatchStat],
     baselines: dict[int, float | None],
     teammate_match_ids: set[int],
+    excluded_match_ids: set[int],
     stat_field: str,
     thresholds: Sequence[int],
 ) -> PairWindowResult:
-    """`window_rows` are the chronological games inside the window; `baselines`
-    were computed over the player's whole club history (strictly earlier games
-    only), so they stay point-in-time safe however the window is cut."""
-    with_rows = [r for r in window_rows if r.match_id in teammate_match_ids]
-    without_rows = [r for r in window_rows if r.match_id not in teammate_match_ids]
+    """`window_rows` are the chronological games inside the window. Games in
+    `excluded_match_ids` (outside the teammate's comparable tenure) contribute to
+    NOTHING here - not the means, medians, milestone rates, sample sizes,
+    confidence or adjusted effect. `baselines` were computed over the player's
+    whole club history (strictly earlier games only, excluded games included as
+    legitimate prior form), so they stay point-in-time safe however the window or
+    the exclusions are cut."""
+    comparison_rows = [r for r in window_rows if r.match_id not in excluded_match_ids]
+    with_rows = [r for r in comparison_rows if r.match_id in teammate_match_ids]
+    without_rows = [r for r in comparison_rows if r.match_id not in teammate_match_ids]
     with_stats = _split_stats(with_rows, stat_field, thresholds)
     without_stats = _split_stats(without_rows, stat_field, thresholds)
     raw_difference = (
@@ -409,8 +494,9 @@ def compute_pair_window_result(
         with_teammate=with_stats,
         without_teammate=without_stats,
         raw_difference=raw_difference,
-        adjusted_effect=_adjusted_effect(window_rows, baselines, teammate_match_ids, stat_field),
+        adjusted_effect=_adjusted_effect(comparison_rows, baselines, teammate_match_ids, stat_field),
         confidence=_confidence(with_stats.games, without_stats.games),
+        games_excluded_outside_tenure=len(window_rows) - len(comparison_rows),
     )
 
 
@@ -422,24 +508,29 @@ class SeasonSplitGroup:
 
 @dataclass(frozen=True)
 class SeasonSplit:
-    """Descriptive only - one season's with/without means. Not a model."""
+    """Descriptive only - one season's with/without means over comparison-
+    eligible games. `excluded_games` counts that season's games outside the
+    teammate's comparable tenure (shown for audit, never in the means)."""
 
     season_year: int
     with_teammate: SeasonSplitGroup
     without_teammate: SeasonSplitGroup
+    excluded_games: int = 0
 
 
 def build_season_breakdown(
     window_rows: Sequence[PlayerMatchStat],
     teammate_match_ids: set[int],
+    excluded_match_ids: set[int],
     season_year_by_match: dict[int, int | None],
     stat_field: str,
 ) -> list[SeasonSplit]:
     """Per-season with/without means, newest season first, only when the window
-    spans more than one known season. This lets a reader see whether a
-    multi-season difference is consistent across seasons, driven by one older
-    season, or resting on almost no teammate-out games. Deliberately NOT
-    summarised into a consistency score - there is no validated method for one."""
+    spans more than one known season, using comparison-eligible games only. Lets
+    a reader see whether a multi-season difference is consistent across seasons,
+    driven by one older season, or resting on very few eligible games apart.
+    Deliberately NOT summarised into a consistency score - there is no validated
+    method for one."""
     years = sorted({y for r in window_rows if (y := season_year_by_match.get(r.match_id)) is not None}, reverse=True)
     if len(years) < 2:
         return []
@@ -451,11 +542,13 @@ def build_season_breakdown(
     result = []
     for year in years:
         in_year = [r for r in window_rows if season_year_by_match.get(r.match_id) == year]
+        eligible = [r for r in in_year if r.match_id not in excluded_match_ids]
         result.append(
             SeasonSplit(
                 season_year=year,
-                with_teammate=group([r for r in in_year if r.match_id in teammate_match_ids]),
-                without_teammate=group([r for r in in_year if r.match_id not in teammate_match_ids]),
+                with_teammate=group([r for r in eligible if r.match_id in teammate_match_ids]),
+                without_teammate=group([r for r in eligible if r.match_id not in teammate_match_ids]),
+                excluded_games=len(in_year) - len(eligible),
             )
         )
     return result
@@ -465,7 +558,9 @@ def build_season_breakdown(
 class WindowSummary:
     """What each window would contain for this pair - shown so a user who
     finds the active window insufficient can see, before switching, whether a
-    broader one is usable. Sample sizes and the confidence tier only."""
+    broader one is usable. COMPARISON-ELIGIBLE sample sizes and the confidence
+    tier only; `games_excluded` is the audit count outside the teammate's
+    comparable tenure."""
 
     window: ContextWindow
     label: str
@@ -474,19 +569,21 @@ class WindowSummary:
     games_without: int
     confidence_tier: PlayerContextConfidenceTier
     sufficient: bool
+    games_excluded: int = 0
 
 
-def build_window_summaries(scope: ClubScope, teammate_match_ids: set[int]) -> list[WindowSummary]:
+def build_window_summaries(scope: ClubScope, teammate_match_ids: set[int], excluded_match_ids: set[int]) -> list[WindowSummary]:
     summaries = []
     for window in WINDOW_ORDER:
         selection = select_window(scope, window)
         games_with = sum(1 for r in selection.rows if r.match_id in teammate_match_ids)
-        games_without = selection.games_considered - games_with
+        games_excluded = sum(1 for r in selection.rows if r.match_id in excluded_match_ids)
+        games_without = selection.games_considered - games_with - games_excluded
         tier = _confidence(games_with, games_without).tier
         summaries.append(
             WindowSummary(
                 window=window, label=selection.label, scope_label=selection.scope_label, games_with=games_with,
-                games_without=games_without, confidence_tier=tier,
+                games_without=games_without, confidence_tier=tier, games_excluded=games_excluded,
                 sufficient=tier != PlayerContextConfidenceTier.INSUFFICIENT_HISTORY,
             )
         )
@@ -531,54 +628,42 @@ def build_window_sufficiency(
 
 @dataclass(frozen=True)
 class TeammateTenureNote:
-    """Transparency about what "without" means. A game counts as "apart" simply
-    because the teammate has no row for it - including games played while the
-    teammate was at ANOTHER club, or before they had played at all, when they
-    could not have been present. Those games are counted here, not removed: the
-    split itself is unchanged."""
+    """The comparison sample, made explicit. Only "no teammate match row, with
+    recorded history consistent with them plausibly being at this club" counts
+    as an eligible "without" game. We hold no official list-membership, injury or
+    selection data, so an eligible-without game is NOT verified as "available but
+    omitted"."""
 
     first_game_at_club: datetime | None
-    apart_games_not_at_club: int
-    apart_games: int
+    total_games_in_window: int
+    games_with_teammate: int
+    eligible_games_without_teammate: int
+    comparison_eligible_games: int
+    games_excluded_outside_tenure: int
     note: str | None
 
 
 def build_teammate_tenure_note(
-    db: Session, teammate_id: int, team_id: int, window_rows: Sequence[PlayerMatchStat], teammate_match_ids: set[int],
-    matches_by_id: dict[int, Match], teammate_name: str, club_name: str | None,
+    statuses: dict[int, str], window_rows: Sequence[PlayerMatchStat], teammate_history: Sequence[tuple[datetime, int]],
+    team_id: int, teammate_name: str, club_name: str | None, scope_label: str,
 ) -> TeammateTenureNote:
-    """An apart game is flagged only when the evidence is clear: the teammate's
-    most recent recorded appearance BEFORE that game (any club) was for a
-    different club, or they had no earlier appearance at all. A teammate whose
-    last appearance was for this club is not flagged - that could be a real
-    absence (injury, rest, omission)."""
-    teammate_games = sorted(
-        (_as_naive(start), row_team_id)
-        for start, row_team_id in db.execute(
-            select(Match.scheduled_start, PlayerMatchStat.team_id)
-            .join(PlayerMatchStat, PlayerMatchStat.match_id == Match.id)
-            .where(PlayerMatchStat.player_id == teammate_id)
-        ).all()
-    )
-    starts = [start for start, _ in teammate_games]
-    first_at_club = next((start for start, tid in teammate_games if tid == team_id), None)
-    apart = [r for r in window_rows if r.match_id not in teammate_match_ids]
-    flagged = 0
-    for r in apart:
-        idx = bisect_left(starts, _as_naive(matches_by_id[r.match_id].scheduled_start))  # games strictly before this one
-        if idx == 0 or teammate_games[idx - 1][1] != team_id:
-            flagged += 1
+    in_window = [statuses[r.match_id] for r in window_rows]
+    with_games = in_window.count(STATUS_WITH)
+    eligible_without = in_window.count(STATUS_ELIGIBLE_WITHOUT)
+    excluded = in_window.count(STATUS_EXCLUDED)
+    first_at_club = next((start for start, tid in teammate_history if tid == team_id), None)
     note = None
-    if flagged:
+    if excluded:
         note = (
-            f"{flagged} of the {len(apart)} games apart came when {teammate_name}'s most recent recorded game was for another club "
-            f"(or before their first recorded game). Those games are counted as 'apart' but may not be true absences from {club_name or 'this club'}."
+            f"{len(in_window)} games fall inside this player's club history for {scope_label}, but {excluded} occurred before "
+            f"{teammate_name} was recorded at {club_name or 'this club'} or while they were recorded at another club. "
+            "Those games are excluded from the comparison."
         )
-    return TeammateTenureNote(first_game_at_club=first_at_club, apart_games_not_at_club=flagged, apart_games=len(apart), note=note)
-
-
-def _as_naive(dt: datetime) -> datetime:
-    return dt.replace(tzinfo=None) if dt.tzinfo else dt
+    return TeammateTenureNote(
+        first_game_at_club=first_at_club, total_games_in_window=len(in_window), games_with_teammate=with_games,
+        eligible_games_without_teammate=eligible_without, comparison_eligible_games=with_games + eligible_without,
+        games_excluded_outside_tenure=excluded, note=note,
+    )
 
 
 def _empty_result(thresholds: Sequence[int], explanation: str) -> PairWindowResult:
@@ -656,6 +741,10 @@ def build_player_context_analysis(
         ).all()
     )
 
+    teammate_history = load_teammate_histories(db, [teammate_id])[teammate_id]
+    statuses = classify_comparison_games(scope.club_rows, scope.matches_by_id, team_id, teammate_match_ids, teammate_history)
+    excluded_ids = excluded_match_ids_from(statuses)
+
     selection = select_window(scope, window)
     window_rows = selection.rows
     matches_by_id = scope.matches_by_id
@@ -674,12 +763,12 @@ def build_player_context_analysis(
     # Point-in-time baselines over the WHOLE club history (each game's baseline
     # uses only strictly earlier games), then read for the window's games only.
     baselines = compute_trailing_baselines(scope.club_rows, stat_field)
-    result = compute_pair_window_result(window_rows, baselines, teammate_match_ids, stat_field, resolved_thresholds)
-    summaries = build_window_summaries(scope, teammate_match_ids)
+    result = compute_pair_window_result(window_rows, baselines, teammate_match_ids, excluded_ids, stat_field, resolved_thresholds)
+    summaries = build_window_summaries(scope, teammate_match_ids, excluded_ids)
     sufficiency = build_window_sufficiency(selection, teammate.display_name, team.name if team else None, result, summaries)
 
     evidence = _build_evidence(
-        window_rows, teammate_match_ids, matches_by_id, rounds_by_id, seasons_by_id, venues_by_id, teams_by_id, stat_field
+        window_rows, teammate_match_ids, statuses, matches_by_id, rounds_by_id, seasons_by_id, venues_by_id, teams_by_id, stat_field
     )
     evidence.sort(key=lambda e: e.scheduled_start, reverse=True)
 
@@ -702,11 +791,11 @@ def build_player_context_analysis(
         role_analysis_available=False,
         role_analysis_explanation=_ROLE_UNAVAILABLE_EXPLANATION,
         window=selection,
-        season_breakdown=build_season_breakdown(window_rows, teammate_match_ids, scope.season_year_by_match, stat_field),
+        season_breakdown=build_season_breakdown(window_rows, teammate_match_ids, excluded_ids, scope.season_year_by_match, stat_field),
         window_summaries=summaries,
         sufficiency=sufficiency,
         teammate_tenure=build_teammate_tenure_note(
-            db, teammate_id, team_id, window_rows, teammate_match_ids, matches_by_id, teammate.display_name, team.name if team else None,
+            statuses, window_rows, teammate_history, team_id, teammate.display_name, team.name if team else None, selection.scope_label,
         ),
     )
 
@@ -777,6 +866,7 @@ def player_context_analysis_as_dict(analysis: PlayerContextAnalysis) -> dict:
                 "teammate_played": e.teammate_played,
                 "stat_value": e.stat_value,
                 "time_on_ground_pct": e.time_on_ground_pct,
+                "comparison_status": e.comparison_status,
             }
             for e in analysis.evidence
         ],
@@ -788,6 +878,7 @@ def player_context_analysis_as_dict(analysis: PlayerContextAnalysis) -> dict:
                 "season_year": sp.season_year,
                 "with_teammate": {"games": sp.with_teammate.games, "mean": sp.with_teammate.mean},
                 "without_teammate": {"games": sp.without_teammate.games, "mean": sp.without_teammate.mean},
+                "excluded_games": sp.excluded_games,
             }
             for sp in analysis.season_breakdown
         ],
@@ -800,6 +891,7 @@ def player_context_analysis_as_dict(analysis: PlayerContextAnalysis) -> dict:
                 "games_without": ws.games_without,
                 "confidence_tier": ws.confidence_tier.value,
                 "sufficient": ws.sufficient,
+                "games_excluded": ws.games_excluded,
             }
             for ws in analysis.window_summaries
         ],
@@ -811,11 +903,17 @@ def player_context_analysis_as_dict(analysis: PlayerContextAnalysis) -> dict:
         "teammate_tenure": (
             {
                 "first_game_at_club": analysis.teammate_tenure.first_game_at_club,
-                "apart_games_not_at_club": analysis.teammate_tenure.apart_games_not_at_club,
-                "apart_games": analysis.teammate_tenure.apart_games,
+                "total_games_in_window": analysis.teammate_tenure.total_games_in_window,
+                "games_with_teammate": analysis.teammate_tenure.games_with_teammate,
+                "eligible_games_without_teammate": analysis.teammate_tenure.eligible_games_without_teammate,
+                "comparison_eligible_games": analysis.teammate_tenure.comparison_eligible_games,
+                "games_excluded_outside_tenure": analysis.teammate_tenure.games_excluded_outside_tenure,
                 "note": analysis.teammate_tenure.note,
             }
             if analysis.teammate_tenure is not None
-            else {"first_game_at_club": None, "apart_games_not_at_club": 0, "apart_games": 0, "note": None}
+            else {
+                "first_game_at_club": None, "total_games_in_window": 0, "games_with_teammate": 0, "eligible_games_without_teammate": 0,
+                "comparison_eligible_games": 0, "games_excluded_outside_tenure": 0, "note": None,
+            }
         ),
     }
