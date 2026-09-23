@@ -20,6 +20,7 @@ from app.player_modelling.opponent_context_analysis import (
     opponent_context_analysis_as_dict,
 )
 from app.player_modelling.opponent_discovery import build_opponent_discovery, opponent_discovery_as_dict
+from app.player_modelling.context_windows import DEFAULT_WINDOW, ContextWindow
 from app.player_modelling.player_context_analysis import (
     SUPPORTED_STATS,
     build_player_context_analysis,
@@ -47,6 +48,10 @@ def get_player_context_analysis(
     teammate_id: int,
     stat: str = Query("disposals", description="Which stat to analyse - one of: " + ", ".join(sorted(SUPPORTED_STATS))),
     thresholds: str | None = Query(None, description="Comma-separated milestone thresholds, e.g. '15,20,25'."),
+    window: ContextWindow = Query(
+        DEFAULT_WINDOW,
+        description="Time window: current_season (default), last_2_seasons or current_club_career. Never broadened automatically.",
+    ),
     db: Session = Depends(get_db),
 ) -> PlayerContextAnalysisRead:
     if player_id == teammate_id:
@@ -57,7 +62,7 @@ def get_player_context_analysis(
     parsed_thresholds = _parse_thresholds(thresholds)
 
     try:
-        analysis = build_player_context_analysis(db, player_id, teammate_id, stat=stat, thresholds=parsed_thresholds)
+        analysis = build_player_context_analysis(db, player_id, teammate_id, stat=stat, thresholds=parsed_thresholds, window=window)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 
@@ -71,6 +76,10 @@ def get_teammate_discovery(
     player_id: int,
     stat: str = Query("disposals", description="Which stat to analyse - one of: " + ", ".join(sorted(SUPPORTED_STATS))),
     thresholds: str | None = Query(None, description="Comma-separated milestone thresholds, e.g. '15,20,25'."),
+    window: ContextWindow = Query(
+        DEFAULT_WINDOW,
+        description="Time window - the same values, and the same meaning, as the detail endpoint's `window`.",
+    ),
     db: Session = Depends(get_db),
 ) -> TeammateDiscoveryRead:
     """Discover which of a player's teammates have enough shared match
@@ -84,7 +93,7 @@ def get_teammate_discovery(
     parsed_thresholds = _parse_thresholds(thresholds)
 
     try:
-        discovery = build_teammate_discovery(db, player_id, stat=stat, thresholds=parsed_thresholds)
+        discovery = build_teammate_discovery(db, player_id, stat=stat, thresholds=parsed_thresholds, window=window)
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc))
 

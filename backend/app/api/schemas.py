@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Annotated
 
-from pydantic import BaseModel, Field, PlainSerializer, model_validator
+from pydantic import BaseModel, Field, PlainSerializer, computed_field, model_validator
 
 
 def _serialize_as_utc(dt: datetime) -> str:
@@ -1581,6 +1581,21 @@ class MultiReasonRead(BaseModel):
     label: str
 
 
+class MarketRelevanceRead(BaseModel):
+    """How widely a leg's exact market is offered - a PROXY (bookmaker
+    coverage), never liquidity or popularity. See
+    app/player_modelling/multi_builder.py's market_relevance."""
+
+    grade: str  # "main" | "thin"
+    coverage_share: float | None = None
+    bookmakers_offering: int | None = None
+    bookmakers_in_match: int | None = None
+    is_proxy: bool = True
+    # False when too few bookmakers quote the match for coverage to mean
+    # anything - the grade is then not applied.
+    informative: bool = True
+
+
 class MultiLegRead(BaseModel):
     opportunity_type: str
     label: str
@@ -1604,6 +1619,8 @@ class MultiLegRead(BaseModel):
     model_name: str | None = None
     model_version: str | None = None
     calibration_known: bool = False
+    calibration_checked_at_threshold: bool = False
+    market_relevance: MarketRelevanceRead | None = None
     selection: str | None = None
     threshold: float | None = None
     line_type: str | None = None
@@ -1645,6 +1662,12 @@ class MultiOptionRead(BaseModel):
     lowest_leg_probability: float
     average_leg_probability: float
     legs: list[MultiLegRead]
+    includes_less_common_lines: bool = False
+    selection_note: str = ""
+    # 1 / indicative_combined_odds: arithmetic on the option's own price
+    # (before bookmaker margin), not a model probability.
+    price_implied_probability: float | None = None
+    joint_probability_note: str = ""
     same_game_pricing: SameGamePricingRead | None = None
 
 
@@ -1687,6 +1710,9 @@ class MatchMultiTiersRead(BaseModel):
     match_id: int
     n_eligible_legs: int
     bookmakers_available: list[str]
+    main_markets_only: bool = True
+    n_main_market_legs: int = 0
+    bookmakers_in_match: int = 0
     tiers: list[MultiTierRead]
     readiness: MatchReadinessRead
 
@@ -2369,6 +2395,21 @@ class PlacedBetRead(BaseModel):
     multi_tier: str | None = None
     multi_indicative_odds: float | None = None
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def shortfall(self) -> float | None:
+        """For a LOST player-stat leg: how far short of the requirement it
+        finished (1 = missed by one). Review context only - a near miss is
+        still a loss. None when not applicable."""
+        from app.player_modelling.multi_builder_diagnostics import LegResult, leg_shortfall
+
+        if self.opportunity_type != "player" or self.status != "lost" or self.actual_stat_value is None or self.threshold is None:
+            return None
+        return leg_shortfall(LegResult(
+            label=self.label, market_type=self.market_type, outcome="lost",
+            threshold=self.threshold, line_type=self.line_type, actual_value=self.actual_stat_value,
+        ))
+
 
 class PlayerContextSplitRead(BaseModel):
     games: int
@@ -2394,6 +2435,9 @@ class PlayerContextEvidenceRowRead(BaseModel):
     teammate_played: bool
     stat_value: int | None
     time_on_ground_pct: int | None
+    # with_teammate | eligible_without | excluded_outside_tenure. Excluded games
+    # are audit context only - they are NOT teammate-out evidence.
+    comparison_status: str = "with_teammate"
 
 
 class PlayerContextConfounderRead(BaseModel):
@@ -2424,6 +2468,63 @@ class TagWatchRead(BaseModel):
     explanation: str
 
 
+class ContextWindowRead(BaseModel):
+    """The explicit time window a context comparison was computed over."""
+
+    key: str  # current_season | last_2_seasons | current_club_career
+    label: str
+    scope_label: str  # e.g. "2026 season", "Current club career · 2022–2026"
+    anchor_season_year: int | None
+    included_seasons: list[int]
+    earliest_date: UtcDatetime | None
+    latest_date: UtcDatetime | None
+    games_considered: int
+    games_excluded_missing_season: int
+
+
+class SeasonSplitGroupRead(BaseModel):
+    games: int
+    mean: float | None
+
+
+class SeasonSplitRead(BaseModel):
+    season_year: int
+    with_teammate: SeasonSplitGroupRead
+    without_teammate: SeasonSplitGroupRead
+    excluded_games: int = 0
+
+
+class WindowSummaryRead(BaseModel):
+    key: str
+    label: str
+    scope_label: str
+    games_with: int
+    games_without: int
+    confidence_tier: str
+    sufficient: bool
+    games_excluded: int = 0
+
+
+class WindowSufficiencyRead(BaseModel):
+    sufficient: bool
+    message: str | None
+    suggested_windows: list[str]
+
+
+class TeammateTenureRead(BaseModel):
+    """How the window's games split for this pair. Comparison-eligible games =
+    with the teammate + eligible without; excluded games are outside the
+    teammate's comparable tenure and are in no statistic."""
+
+    first_game_at_club: UtcDatetime | None
+    total_games_in_window: int
+    games_with_teammate: int
+    eligible_games_without_teammate: int
+    comparison_eligible_games: int
+    games_excluded_outside_tenure: int
+    note: str | None
+
+
 class PlayerContextAnalysisRead(BaseModel):
     player_id: int
     player_name: str
@@ -2442,6 +2543,11 @@ class PlayerContextAnalysisRead(BaseModel):
     evidence: list[PlayerContextEvidenceRowRead]
     role_analysis_available: bool
     role_analysis_explanation: str
+    window: ContextWindowRead
+    season_breakdown: list[SeasonSplitRead]
+    window_summaries: list[WindowSummaryRead]
+    sufficiency: WindowSufficiencyRead
+    teammate_tenure: TeammateTenureRead
     tag_watch: TagWatchRead
 
 
@@ -2454,6 +2560,7 @@ class TeammateCandidateRead(BaseModel):
     adjusted_effect: PlayerContextAdjustedEffectRead
     confidence: PlayerContextConfidenceRead
     sufficient_evidence: bool
+    games_excluded_outside_tenure: int = 0
 
 
 class TeammateDiscoveryRead(BaseModel):
@@ -2464,6 +2571,8 @@ class TeammateDiscoveryRead(BaseModel):
     stat: str
     thresholds: list[int]
     explanation: str
+    window: ContextWindowRead
+    window_options: list[dict]
     candidates: list[TeammateCandidateRead]
 
 

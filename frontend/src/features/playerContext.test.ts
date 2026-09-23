@@ -6,12 +6,14 @@ import { fetchPlayerContext } from "../api/client";
 import PlayerResearchPage, { ContextResults } from "../pages/PlayerResearchPage";
 import { selectEvidence, formatValue, formatRate, type PlayerContextResearch } from "./playerContext";
 const split = { games: 0, stat_sample_size: 0, mean: null, median: null, milestone_rates: { "25+": null }, average_time_on_ground_pct: null, time_on_ground_sample_size: 0 };
+const seasonWindow = { key: "current_season" as const, label: "Current season", scope_label: "2026 season", anchor_season_year: 2026, included_seasons: [2026], earliest_date: null, latest_date: null, games_considered: 0, games_excluded_missing_season: 0 };
 const fixture: PlayerContextResearch = {
   player_id: 101, player_name: "Player One", teammate_id: 202, teammate_name: "Player Two", team_id: null, team_name: null, stat: "disposals", thresholds: [25],
   with_teammate: split, without_teammate: split, raw_difference: null,
   adjusted_effect: { available: false, value: null, games_with_baseline_teammate_in: 0, games_with_baseline_teammate_out: 0, method: "recent_form_residual", explanation: "Not enough baseline-eligible games." },
   confounders: { role: { considered: false, method: null, reason: "No historical role records." } },
   confidence: { tier: "insufficient_history", warnings: ["Fewer than 3 games in the smaller group."] }, evidence: [], role_analysis_available: false, role_analysis_explanation: "Role-conditioned analysis is unavailable.",
+  window: seasonWindow, season_breakdown: [], window_summaries: [], sufficiency: { sufficient: true, message: null, suggested_windows: [] }, teammate_tenure: { first_game_at_club: null, total_games_in_window: 0, games_with_teammate: 0, eligible_games_without_teammate: 0, comparison_eligible_games: 0, games_excluded_outside_tenure: 0, note: null },
   tag_watch: { status: "insufficient_verified_data", verified_annotation_count: 0, games_played: null, tag_rate: null, explanation: "Not enough verified tagging annotations." },
 };
 const render = (data: PlayerContextResearch) => renderToStaticMarkup(createElement(MemoryRouter, null, createElement(ContextResults, { research: data })));
@@ -22,7 +24,7 @@ describe("real player context API", () => {
     vi.stubGlobal("fetch", fetch);
     const signal = new AbortController().signal;
     expect(await fetchPlayerContext(101, 202, "goals", signal)).toEqual(fixture);
-    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/afl/players/101/context/202?stat=goals"), expect.objectContaining({ signal }));
+    expect(fetch).toHaveBeenCalledWith(expect.stringContaining("/api/afl/players/101/context/202?stat=goals&window=current_season"), expect.objectContaining({ signal }));
   });
   it.each([404, 500])("surfaces HTTP %s without mock fallback", async status => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ detail: "Context unavailable" }), { status })));
@@ -98,7 +100,7 @@ describe("evidence exploration", () => {
     const html = render({ ...fixture, evidence });
     expect(html).toContain("Showing 1–20 of 25 matching games");
     expect(html).toContain("Page 1 of 2");
-    expect(html).toContain("comparison above uses the full API history");
+    expect(html).toContain("comparison above uses every comparison-eligible game in the selected scope");
     expect(html.match(/href="\/matches\//g)).toHaveLength(20);
   });
 });
