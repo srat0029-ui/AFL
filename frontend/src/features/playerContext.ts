@@ -1,4 +1,72 @@
 export type ContextStat = "disposals" | "goals";
+
+// Explicit time window for teammate context. The active window is always
+// shown next to the headline result and is never broadened automatically.
+export type ContextWindowKey = "current_season" | "last_2_seasons" | "current_club_career";
+export const DEFAULT_CONTEXT_WINDOW: ContextWindowKey = "current_season";
+export const CONTEXT_WINDOW_OPTIONS: { key: ContextWindowKey; short: string; action: string }[] = [
+  { key: "current_season", short: "Season", action: "View current season" },
+  { key: "last_2_seasons", short: "Last 2 seasons", action: "View last 2 seasons" },
+  { key: "current_club_career", short: "Club career", action: "View current-club career" },
+];
+export interface ContextWindowInfo {
+  key: ContextWindowKey;
+  label: string;
+  scope_label: string; // "2026 season" | "Last 2 seasons · 2025–2026" | "Current club career · 2022–2026"
+  anchor_season_year: number | null;
+  included_seasons: number[];
+  earliest_date: string | null;
+  latest_date: string | null;
+  games_considered: number;
+  games_excluded_missing_season: number;
+}
+export interface SeasonSplit {
+  excluded_games?: number;
+  season_year: number;
+  with_teammate: { games: number; mean: number | null };
+  without_teammate: { games: number; mean: number | null };
+}
+export interface WindowSummary {
+  key: ContextWindowKey;
+  label: string;
+  scope_label: string;
+  games_with: number;
+  games_without: number;
+  confidence_tier: string;
+  sufficient: boolean;
+  games_excluded?: number;
+}
+export interface WindowSufficiency {
+  sufficient: boolean;
+  message: string | null;
+  suggested_windows: ContextWindowKey[];
+}
+export interface TeammateTenure {
+  first_game_at_club: string | null;
+  total_games_in_window: number;
+  games_with_teammate: number;
+  eligible_games_without_teammate: number;
+  comparison_eligible_games: number;
+  games_excluded_outside_tenure: number;
+  note: string | null;
+}
+export interface WindowOption {
+  key: ContextWindowKey;
+  label: string;
+  scope_label: string;
+  games_considered: number;
+  n_sufficient_candidates: number;
+}
+
+const WINDOW_WHEN: Record<ContextWindowKey, string> = {
+  current_season: "this season",
+  last_2_seasons: "over the last 2 seasons",
+  current_club_career: "in this club career",
+};
+/** "12 together / 4 apart this season" - the sample sizes behind a comparison, scoped to the window. */
+export const togetherApartLabel = (withGames: number, withoutGames: number, window: ContextWindowKey): string =>
+  `${withGames} together / ${withoutGames} apart ${WINDOW_WHEN[window]}`;
+export const windowActionLabel = (key: ContextWindowKey): string => CONTEXT_WINDOW_OPTIONS.find(o => o.key === key)?.action ?? "View";
 export interface ContextSplit {
   games: number;
   stat_sample_size: number;
@@ -22,7 +90,15 @@ export interface ContextEvidenceGame {
   teammate_played: boolean;
   stat_value: number | null;
   time_on_ground_pct: number | null;
+  // Excluded games fall outside the teammate's comparable tenure (before they
+  // were recorded at the club, or while recorded at another club). Audit
+  // context only - never teammate-out evidence.
+  comparison_status?: ComparisonStatus;
 }
+export type ComparisonStatus = "with_teammate" | "eligible_without" | "excluded_outside_tenure";
+export const comparisonStatus = (row: ContextEvidenceGame): ComparisonStatus =>
+  row.comparison_status ?? (row.teammate_played ? "with_teammate" : "eligible_without");
+export const isExcludedGame = (row: ContextEvidenceGame): boolean => comparisonStatus(row) === "excluded_outside_tenure";
 export interface PlayerContextResearch {
   player_id: number;
   player_name: string;
@@ -48,6 +124,11 @@ export interface PlayerContextResearch {
   evidence: ContextEvidenceGame[];
   role_analysis_available: boolean;
   role_analysis_explanation: string;
+  window: ContextWindowInfo;
+  season_breakdown: SeasonSplit[];
+  window_summaries: WindowSummary[];
+  sufficiency: WindowSufficiency;
+  teammate_tenure: TeammateTenure;
   tag_watch: { status: string; verified_annotation_count: number; games_played: number | null; tag_rate: number | null; explanation: string };
 }
 export interface TeammateCandidate {
@@ -59,6 +140,7 @@ export interface TeammateCandidate {
   adjusted_effect: PlayerContextResearch["adjusted_effect"];
   confidence: { tier: string; warnings: string[] };
   sufficient_evidence: boolean;
+  games_excluded_outside_tenure?: number;
 }
 export interface TeammateDiscoveryResult {
   player_id: number;
@@ -68,6 +150,8 @@ export interface TeammateDiscoveryResult {
   stat: string;
   thresholds: number[];
   explanation: string;
+  window: ContextWindowInfo;
+  window_options: WindowOption[];
   candidates: TeammateCandidate[];
 }
 
@@ -80,7 +164,7 @@ export const formatDifference = (value: number | null): string =>
 export function explainDifference(research: PlayerContextResearch): string {
   if (research.raw_difference == null) return "A comparison is unavailable because one or both groups have no recorded values for this statistic.";
   const value = research.raw_difference;
-  return `${research.player_name} averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${research.stat} with ${research.teammate_name} absent than present${value === 0 ? " (no difference)" : ""}. This is a historical association, not proof that the teammate caused the change or a prediction for the next game.`;
+  return `${research.player_name} averaged ${Math.abs(value).toFixed(1)} ${value < 0 ? "fewer" : "more"} ${research.stat} with ${research.teammate_name} absent than present (${research.window.scope_label})${value === 0 ? ", no difference" : ""}. This is a historical association, not proof that the teammate caused the change or a prediction for the next game.`;
 }
 
 export function explainCandidateDifference(playerName: string, stat: string, candidate: TeammateCandidate): string {
@@ -98,7 +182,9 @@ export interface EvidenceFilters {
 }
 export function selectEvidence(rows: ContextEvidenceGame[], filters: EvidenceFilters): ContextEvidenceGame[] {
   const opponent = filters.opponent.trim().toLocaleLowerCase();
-  return rows.filter(row =>
+  // Games outside the comparable tenure are never selectable as evidence rows:
+  // they are shown separately as audit context.
+  return rows.filter(row => !isExcludedGame(row)).filter(row =>
     (filters.teammate === "all" || row.teammate_played === (filters.teammate === "in")) &&
     (filters.season === null || row.season_year === filters.season) &&
     (!opponent || (row.opponent_name ?? "").toLocaleLowerCase().includes(opponent)),

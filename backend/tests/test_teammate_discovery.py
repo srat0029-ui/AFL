@@ -155,6 +155,9 @@ def test_ordering_is_evidence_first_never_effect_size_first(db_session):
     db_session.add_all([solid, noisy])
     db_session.commit()
 
+    # `noisy` has an earlier same-club appearance, so the player's 20 earlier games are eligible "without" games for them.
+    early = _add_match(db_session, sport, season, 0, home, away, BASE - timedelta(days=7))
+    _add_stat(db_session, player=noisy, match=early, team=home, opponent_team=away, disposals=12)
     round_number = 1
     start = BASE
     # 20 games with `solid`: player's disposals barely differ in/out.

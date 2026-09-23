@@ -111,6 +111,9 @@ def test_milestone_rates_computed_per_group(db_session):
 
 def test_time_on_ground_averaged_only_over_non_null(db_session):
     sport, season, home, aways, player, teammate = _seed_club(db_session)
+    # the teammate's own earlier same-club appearance makes the later games eligible "without" games
+    m0 = _add_match(db_session, sport, season, 0, home, aways[0], BASE - timedelta(days=7))
+    _add_stat(db_session, player=teammate, match=m0, team=home, opponent_team=aways[0], disposals=15)
     m1 = _add_match(db_session, sport, season, 1, home, aways[0], BASE)
     _add_stat(db_session, player=player, match=m1, team=home, opponent_team=aways[0], disposals=20, tog=90)
     m2 = _add_match(db_session, sport, season, 2, home, aways[0], BASE + timedelta(days=7))
@@ -156,7 +159,10 @@ def test_no_recorded_stats_returns_insufficient_history_not_an_error(db_session)
 
 def test_never_teammates_reports_zero_with_games_and_a_warning(db_session):
     """Player has games, but the requested teammate never has a row for
-    any of them - a real, meaningful "no" answer, not an error."""
+    any of them - a real, meaningful "no" answer, not an error. With no
+    recorded appearance for the teammate at all there is no evidence they were
+    ever at the club, so the game is excluded from the comparison (not counted
+    as a "without" game)."""
     sport, season, home, aways, player, teammate = _seed_club(db_session)
     m1 = _add_match(db_session, sport, season, 1, home, aways[0], BASE)
     _add_stat(db_session, player=player, match=m1, team=home, opponent_team=aways[0], disposals=20)
@@ -164,7 +170,8 @@ def test_never_teammates_reports_zero_with_games_and_a_warning(db_session):
     analysis = build_player_context_analysis(db_session, player.id, teammate.id)
 
     assert analysis.with_teammate.games == 0
-    assert analysis.without_teammate.games == 1
+    assert analysis.without_teammate.games == 0
+    assert analysis.teammate_tenure.games_excluded_outside_tenure == 1
     assert any("teammate played alongside" in w for w in analysis.confidence.warnings)
 
 
@@ -180,7 +187,9 @@ def test_teammate_on_different_team_in_same_match_does_not_count_as_in(db_sessio
     analysis = build_player_context_analysis(db_session, player.id, teammate.id)
 
     assert analysis.with_teammate.games == 0
-    assert analysis.without_teammate.games == 1
+    # ...and his only recorded game was for ANOTHER club, so this game is outside the comparable tenure
+    assert analysis.without_teammate.games == 0
+    assert analysis.teammate_tenure.games_excluded_outside_tenure == 1
 
 
 def test_analysis_restricted_to_players_most_recent_club(db_session):

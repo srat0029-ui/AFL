@@ -2435,6 +2435,9 @@ class PlayerContextEvidenceRowRead(BaseModel):
     teammate_played: bool
     stat_value: int | None
     time_on_ground_pct: int | None
+    # with_teammate | eligible_without | excluded_outside_tenure. Excluded games
+    # are audit context only - they are NOT teammate-out evidence.
+    comparison_status: str = "with_teammate"
 
 
 class PlayerContextConfounderRead(BaseModel):
@@ -2465,6 +2468,63 @@ class TagWatchRead(BaseModel):
     explanation: str
 
 
+class ContextWindowRead(BaseModel):
+    """The explicit time window a context comparison was computed over."""
+
+    key: str  # current_season | last_2_seasons | current_club_career
+    label: str
+    scope_label: str  # e.g. "2026 season", "Current club career · 2022–2026"
+    anchor_season_year: int | None
+    included_seasons: list[int]
+    earliest_date: UtcDatetime | None
+    latest_date: UtcDatetime | None
+    games_considered: int
+    games_excluded_missing_season: int
+
+
+class SeasonSplitGroupRead(BaseModel):
+    games: int
+    mean: float | None
+
+
+class SeasonSplitRead(BaseModel):
+    season_year: int
+    with_teammate: SeasonSplitGroupRead
+    without_teammate: SeasonSplitGroupRead
+    excluded_games: int = 0
+
+
+class WindowSummaryRead(BaseModel):
+    key: str
+    label: str
+    scope_label: str
+    games_with: int
+    games_without: int
+    confidence_tier: str
+    sufficient: bool
+    games_excluded: int = 0
+
+
+class WindowSufficiencyRead(BaseModel):
+    sufficient: bool
+    message: str | None
+    suggested_windows: list[str]
+
+
+class TeammateTenureRead(BaseModel):
+    """How the window's games split for this pair. Comparison-eligible games =
+    with the teammate + eligible without; excluded games are outside the
+    teammate's comparable tenure and are in no statistic."""
+
+    first_game_at_club: UtcDatetime | None
+    total_games_in_window: int
+    games_with_teammate: int
+    eligible_games_without_teammate: int
+    comparison_eligible_games: int
+    games_excluded_outside_tenure: int
+    note: str | None
+
+
 class PlayerContextAnalysisRead(BaseModel):
     player_id: int
     player_name: str
@@ -2483,6 +2543,11 @@ class PlayerContextAnalysisRead(BaseModel):
     evidence: list[PlayerContextEvidenceRowRead]
     role_analysis_available: bool
     role_analysis_explanation: str
+    window: ContextWindowRead
+    season_breakdown: list[SeasonSplitRead]
+    window_summaries: list[WindowSummaryRead]
+    sufficiency: WindowSufficiencyRead
+    teammate_tenure: TeammateTenureRead
     tag_watch: TagWatchRead
 
 
@@ -2495,6 +2560,7 @@ class TeammateCandidateRead(BaseModel):
     adjusted_effect: PlayerContextAdjustedEffectRead
     confidence: PlayerContextConfidenceRead
     sufficient_evidence: bool
+    games_excluded_outside_tenure: int = 0
 
 
 class TeammateDiscoveryRead(BaseModel):
@@ -2505,6 +2571,8 @@ class TeammateDiscoveryRead(BaseModel):
     stat: str
     thresholds: list[int]
     explanation: str
+    window: ContextWindowRead
+    window_options: list[dict]
     candidates: list[TeammateCandidateRead]
 
 

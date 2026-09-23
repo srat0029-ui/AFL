@@ -8,6 +8,8 @@ import Disclaimer from "../components/Disclaimer";
 import PageHeader from "../components/ui/PageHeader";
 import EmptyState from "../components/ui/EmptyState";
 import { ApiError, fetchOpponentContext, fetchOpponentDiscovery, fetchPlayer, fetchPlayerContext, fetchPlayers, fetchTeammateDiscovery, type PlayerSummary } from "../api/client";
+import ContextWindowControl from "../components/ContextWindowControl";
+import { DEFAULT_CONTEXT_WINDOW, isExcludedGame, windowActionLabel, type ContextWindowKey, type SeasonSplit } from "../features/playerContext";
 import { explainDifference, explainOpponentDifference, formatDifference, formatRate, formatValue, type ContextSplit, type ContextStat, type OpponentCandidate, type OpponentContextResearch, type OpponentDiscoveryResult, type PlayerContextResearch, type TeammateCandidate, type TeammateDiscoveryResult } from "../features/playerContext";
 import "./PlayerResearchPage.css";
 
@@ -66,24 +68,43 @@ function SplitCard({ title, split, stat }: { title: string; split: ContextSplit;
   </article>;
 }
 
-export function ContextResults({ research }: { research: PlayerContextResearch }) {
+function SeasonBreakdown({ rows, stat, teammateName }: { rows: SeasonSplit[]; stat: string; teammateName: string }) {
+  const anyExcluded = rows.some(row => (row.excluded_games ?? 0) > 0);
+  const cell = (group: SeasonSplit["with_teammate"]) => group.games === 0 ? "no games" : `${formatValue(group.mean)} · ${group.games} game${group.games === 1 ? "" : "s"}`;
+  return <section aria-labelledby="season-breakdown-heading">
+    <h2 id="season-breakdown-heading">Season by season</h2>
+    <p className="hint">Average {stat} in each season of this scope, over comparison-eligible games only. Descriptive only - use it to see whether the overall difference shows up in every season, comes mostly from one older season, or rests on very few games apart from {teammateName}.</p>
+    <div className="research-table-wrap"><table className="research-season-table"><thead><tr><th>Season</th><th>With {teammateName}</th><th>Without {teammateName}</th>{anyExcluded && <th>Excluded</th>}</tr></thead>
+      <tbody>{rows.map(row => <tr key={row.season_year}><th scope="row">{row.season_year}</th><td className="num">{cell(row.with_teammate)}</td><td className="num">{cell(row.without_teammate)}</td>{anyExcluded && <td className="num">{row.excluded_games ? `${row.excluded_games} earlier/out-of-tenure` : "-"}</td>}</tr>)}</tbody></table></div>
+  </section>;
+}
+
+export function ContextResults({ research, onChangeWindow }: { research: PlayerContextResearch; onChangeWindow?: (next: ContextWindowKey) => void }) {
   const adjusted = research.adjusted_effect;
   const tag = research.tag_watch;
+  const suggestions = research.sufficiency.suggested_windows.map(key => ({ key, summary: research.window_summaries.find(s => s.key === key) }));
   return <>
-    <header className="research-header research-results-header"><div className="research-header__copy"><span className="research-eyebrow">Historical player context</span><h2>{research.player_name}</h2><p>{research.team_name ?? "Club unavailable"} · Comparing games with and without {research.teammate_name}</p></div><span className={`research-confidence-badge ${research.confidence.tier === "insufficient_history" || research.confidence.tier === "lower_confidence" ? "research-confidence-badge--limited" : ""}`}>{research.confidence.tier.replaceAll("_", " ")}</span></header>
+    <header className="research-header research-results-header"><div className="research-header__copy"><span className="research-eyebrow">Historical player context</span><h2>{research.player_name} with/without {research.teammate_name}</h2><p className="research-scope"><strong>{research.window.scope_label}</strong> · {research.with_teammate.games} together · {research.without_teammate.games} apart{research.teammate_tenure.games_excluded_outside_tenure > 0 && <span className="research-scope__excluded"> · {research.teammate_tenure.games_excluded_outside_tenure} earlier/out-of-tenure games excluded</span>}</p><p>{research.team_name ?? "Club unavailable"}</p></div><span className={`research-confidence-badge ${research.confidence.tier === "insufficient_history" || research.confidence.tier === "lower_confidence" ? "research-confidence-badge--limited" : ""}`}>{research.confidence.tier.replaceAll("_", " ")}</span></header>
     {research.evidence.length === 0 && <div className="card" role="status">No recorded match evidence is available for this comparison.</div>}
+    {!research.sufficiency.sufficient && research.sufficiency.message && <section className="research-window-notice" role="status" aria-label="Sample too small for this scope">
+      <p>{research.sufficiency.message}</p>
+      {suggestions.length > 0 && onChangeWindow && <div className="research-window-notice__actions">{suggestions.map(({ key, summary }) => <button key={key} type="button" onClick={() => onChangeWindow(key)}>{windowActionLabel(key)}{summary ? ` (${summary.games_with} together / ${summary.games_without} eligible apart)` : ""}</button>)}</div>}
+      <p className="hint">Nothing has been widened automatically - the numbers below are for {research.window.scope_label} only.</p>
+    </section>}
     <section aria-labelledby="split-heading">
       <h2 id="split-heading">With and without comparison</h2>
-      <p className="hint">The API restricts this history to the player’s most recent recorded club. “Without” means no same-club teammate match record was found, not a verified injury or selection status.</p>
+      <p className="hint">The API restricts this history to the player’s most recent recorded club and to games where {research.teammate_name} plausibly could have been there. “Without” means no same-club teammate match record, with recorded history consistent with them being at the club - not a verified injury, rest or selection status; we hold no list or availability data.</p>
+      {research.teammate_tenure.note && <p className="research-coverage-note">{research.teammate_tenure.note}</p>}
       <div className="research-split-grid"><SplitCard title="With teammate" split={research.with_teammate} stat={research.stat} />
         <div className="research-split-difference"><span>Without minus with</span><strong className={`num ${research.raw_difference == null ? "research-value-unavailable" : ""}`}>{formatDifference(research.raw_difference)}</strong><small>{research.stat}</small></div>
         <SplitCard title="Without teammate" split={research.without_teammate} stat={research.stat} /></div>
     </section>
+    {research.season_breakdown.length > 0 && <SeasonBreakdown rows={research.season_breakdown} stat={research.stat} teammateName={research.teammate_name} />}
     <section aria-labelledby="history-heading">
       <h2 id="history-heading">Visual history</h2>
-      <p className="hint">Every recorded game, oldest to newest, coloured by whether {research.teammate_name} played that game too.</p>
+      <p className="hint">Every game in {research.window.scope_label}, oldest to newest, coloured by whether {research.teammate_name} played that game too.</p>
       <PlayerHistoryChart
-        points={research.evidence.map((g) => ({ match_id: g.match_id, scheduled_start: g.scheduled_start, stat_value: g.stat_value, highlighted: g.teammate_played }))}
+        points={research.evidence.filter((g) => !isExcludedGame(g)).map((g) => ({ match_id: g.match_id, scheduled_start: g.scheduled_start, stat_value: g.stat_value, highlighted: g.teammate_played }))}
         stat={research.stat}
         highlightedLabel="With teammate"
         otherLabel="Without teammate"
@@ -92,7 +113,7 @@ export function ContextResults({ research }: { research: PlayerContextResearch }
     <section className="card research-interpretation" aria-labelledby="meaning-heading">
       <h2 id="meaning-heading">What this means</h2><p>{explainDifference(research)}</p>
       <h3>Sample-size confidence: {research.confidence.tier.replaceAll("_", " ")}</h3>
-      <p>Based on {research.with_teammate.games} games with the teammate and {research.without_teammate.games} without. Confidence is the API’s sample-size assessment, not a probability that the effect is real.</p>
+      <p>Based on {research.with_teammate.games} games with the teammate and {research.without_teammate.games} without in the {research.window.scope_label}. Confidence is the API’s sample-size assessment, not a probability that the effect is real.</p>
       <ul>{research.confidence.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul>
       <h3>{adjusted.available && adjusted.value != null ? `Adjusted difference: ${formatDifference(adjusted.value)} ${research.stat}` : "Adjusted difference unavailable"}</h3>
       <p>{adjusted.explanation}</p>
@@ -106,7 +127,7 @@ export function ContextResults({ research }: { research: PlayerContextResearch }
       {tag.status === "available" && tag.tag_rate != null && <p>Historical verified tag annotation rate: <strong>{formatRate(tag.tag_rate)}</strong>. This is not a likelihood of being tagged next game.</p>}
       <p className="hint">{tag.verified_annotation_count} verified annotations; {tag.games_played == null ? "game count unavailable" : `${tag.games_played} games played`}. No role adjustment or future tag probability is estimated on this page.</p>
     </section>
-    <PlayerContextEvidence rows={research.evidence} stat={research.stat} />
+    <PlayerContextEvidence rows={research.evidence} stat={research.stat} teammateName={research.teammate_name} />
   </>;
 }
 
@@ -155,37 +176,38 @@ export default function PlayerResearchPage() {
   const [player, setPlayer] = useState<PlayerSummary | null>(null);
   const [teammate, setTeammate] = useState<PlayerSummary | null>(null);
   const [stat, setStat] = useState<ContextStat>("disposals");
+  const [contextWindow, setContextWindow] = useState<ContextWindowKey>(DEFAULT_CONTEXT_WINDOW);
   const [retry, setRetry] = useState(0);
   const [state, setState] = useState<{ key: string; loading: boolean; data: PlayerContextResearch | null; error: string | null }>({ key: "", loading: false, data: null, error: null });
-  const key = player && teammate ? `${player.id}/${teammate.id}/${stat}/${retry}` : "";
+  const key = player && teammate ? `${player.id}/${teammate.id}/${stat}/${contextWindow}/${retry}` : "";
   useEffect(() => {
     if (!player || !teammate || player.id === teammate.id) return;
     const controller = new AbortController();
     setState({ key, loading: true, data: null, error: null });
-    fetchPlayerContext(player.id, teammate.id, stat, controller.signal).then(data => {
+    fetchPlayerContext(player.id, teammate.id, stat, controller.signal, contextWindow).then(data => {
       if (!controller.signal.aborted) setState({ key, loading: false, data, error: null });
     }).catch(error => {
       if (!controller.signal.aborted) setState({ key, loading: false, data: null, error: error instanceof ApiError && error.status === 404 ? `Context data could not be found. The player may be unavailable or the context service may not be deployed yet. ${error.message}` : error instanceof Error ? error.message : "Unable to load player context." });
     });
     return () => controller.abort();
-  }, [player, teammate, stat, key]);
+  }, [player, teammate, stat, contextWindow, key]);
 
   // Teammate discovery - who is worth investigating for the selected
   // player, before a specific teammate has been chosen.
   const [discoveryRetry, setDiscoveryRetry] = useState(0);
-  const discoveryKey = player ? `${player.id}/${stat}/${discoveryRetry}` : "";
+  const discoveryKey = player ? `${player.id}/${stat}/${contextWindow}/${discoveryRetry}` : "";
   const [discoveryState, setDiscoveryState] = useState<{ key: string; loading: boolean; data: TeammateDiscoveryResult | null; error: string | null }>({ key: "", loading: false, data: null, error: null });
   useEffect(() => {
     if (!player) { setDiscoveryState({ key: "", loading: false, data: null, error: null }); return; }
     const controller = new AbortController();
     setDiscoveryState({ key: discoveryKey, loading: true, data: null, error: null });
-    fetchTeammateDiscovery(player.id, stat, controller.signal).then(data => {
+    fetchTeammateDiscovery(player.id, stat, controller.signal, contextWindow).then(data => {
       if (!controller.signal.aborted) setDiscoveryState({ key: discoveryKey, loading: false, data, error: null });
     }).catch(error => {
       if (!controller.signal.aborted) setDiscoveryState({ key: discoveryKey, loading: false, data: null, error: error instanceof Error ? error.message : "Unable to load teammate suggestions." });
     });
     return () => controller.abort();
-  }, [player, stat, discoveryKey]);
+  }, [player, stat, contextWindow, discoveryKey]);
 
   const [resolvingCandidateId, setResolvingCandidateId] = useState<number | null>(null);
   const [resolveError, setResolveError] = useState<string | null>(null);
@@ -261,14 +283,15 @@ export default function PlayerResearchPage() {
       <button type="button" aria-pressed={mode === "opponents"} className={mode === "opponents" ? "is-active" : ""} onClick={() => handleModeChange("opponents")}>Opponents</button>
     </div>}
     {mode === "teammates" && <>
+      {player && <ContextWindowControl value={contextWindow} onChange={setContextWindow} />}
       {player && teammate && <div className="research-comparison-actions"><button type="button" onClick={() => { setPlayer(teammate); setTeammate(player); }}>Swap player and teammate</button><button type="button" onClick={() => setTeammate(null)}>Choose a different teammate</button><p className="hint">Swapping asks how the other player performs. The result may differ.</p></div>}
       {player && !teammate && <section aria-labelledby="discovery-heading">
         <div className="section-row research-section-heading"><div><h2 id="discovery-heading">Teammates worth investigating</h2><p className="hint">Ranked by evidence sufficiency and shared-match sample size — never by the size of a statistical difference. Or search for a specific teammate above.</p></div></div>
-        <TeammateDiscoveryPanel playerName={player.display_name} stat={stat} loading={discoveryState.loading || discoveryState.key !== discoveryKey} error={discoveryState.error} discovery={discoveryState.data} onRetry={() => setDiscoveryRetry(r => r + 1)} onSelect={handleSelectCandidate} />
+        <TeammateDiscoveryPanel playerName={player.display_name} stat={stat} loading={discoveryState.loading || discoveryState.key !== discoveryKey} error={discoveryState.error} discovery={discoveryState.data} onRetry={() => setDiscoveryRetry(r => r + 1)} onSelect={handleSelectCandidate} onChangeWindow={setContextWindow} />
         {resolvingCandidateId != null && <p role="status">Loading teammate…</p>}
         {resolveError && <div className="error-banner" role="alert"><p>{resolveError}</p></div>}
       </section>}
-      {!player ? <EmptyState title="Choose a player to get started" description="Search for a player above to see which teammates are worth investigating, then compare their numbers with and without that teammate on the field." /> : !teammate ? null : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} />}
+      {!player ? <EmptyState title="Choose a player to get started" description="Search for a player above to see which teammates are worth investigating, then compare their numbers with and without that teammate on the field." /> : !teammate ? null : state.key !== key || state.loading ? <p role="status">Loading player context…</p> : state.error ? <div className="error-banner" role="alert"><p>{state.error}</p><button type="button" onClick={() => setRetry(retry + 1)}>Retry comparison</button></div> : state.data && <ContextResults key={key} research={state.data} onChangeWindow={setContextWindow} />}
     </>}
     {mode === "opponents" && <>
       {player && opponent && <div className="research-comparison-actions"><button type="button" onClick={() => setOpponent(null)}>Choose a different opponent</button></div>}
