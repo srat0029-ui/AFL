@@ -1,6 +1,6 @@
 # Architecture
 
-**Status as of the AFL v1 freeze (2026-09-18):** the diagram below is the
+**Status as of the AFL v1 freeze refresh (2026-09-23, master `3777604`):** the diagram below is the
 *designed* topology — every box is real code/config that exists and has
 been verified (CI-built, migration-tested, boots locally), but two boxes
 are not currently live. **Actually running in production:** `GitHub CI`,
@@ -116,7 +116,20 @@ about what's AFL-specific vs. genuinely shared:
   AFL's own rules (disposals, goals, margin-of-victory scaling). This is
   the layer a second sport cannot reuse directly — the *shape* of a
   promotion-gated model registry can generalise, the model classes
-  themselves cannot.
+  themselves cannot. The Multi Builder's selection logic
+  (`app/player_modelling/multi_builder.py`) and its research/audit harness
+  (`multi_builder_diagnostics.py`, `scripts/multi_builder_audit.py`) live
+  here too: the *evidence-audit method* (keep prospective, retrospective and
+  replay evidence separate; never tune and validate on the same sample) is a
+  reusable pattern, but the tier/leg-count/market-coverage rules it audits
+  are AFL product decisions. Teammate/opponent context
+  (`player_context_analysis.py`, `context_windows.py`,
+  `teammate_discovery.py`) is similarly AFL-specific in its data source
+  (`PlayerMatchStat.team_id`-based club scoping, AFL disposals/goals) even
+  though its *shape* — an explicit, never-silently-broadened time window,
+  and a with/without split gated on positive tenure evidence rather than
+  mere row absence — would read the same way for another sport's own
+  teammate context, if one were ever built.
 - **Pricing** (`app/pricing/`) — turns an already-fitted model's output
   into `model_fair_odds`, runs the SGM Monte Carlo engine, and reads
   persisted model state rather than refitting per request. Downstream of

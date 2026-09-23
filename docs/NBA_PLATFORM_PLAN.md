@@ -58,6 +58,25 @@ rewritten, not just parameterised:
   structure between a player's output and their team's result. NBA's
   correlation structure (e.g. a star's points vs. blowout margin) is an
   unstudied, separate question.
+- **AFL team modelling** and **AFL-specific lineup concepts**
+  (`ExpectedLineup`, the confirmed/provisional selection-status vocabulary,
+  Multi Builder's per-team lineup-confirmation gating) — built around AFL's
+  weekly team-selection announcement rhythm and manual entry workflow. NBA
+  has a different (and much more frequent, in-season-trade-affected)
+  roster/availability cadence that needs its own modelling, not a
+  parameter on AFL's.
+- **AFL teammate context** (`app/player_modelling/player_context_analysis.py`,
+  `context_windows.py`, `teammate_discovery.py`) — the *data source* is
+  AFL-specific (`PlayerMatchStat.team_id`-based club scoping, AFL
+  disposals/goals stat fields, AFL season/round structure for the time
+  windows), even though the *method* (an explicit never-silently-widened
+  time window; a with/without split gated on positive recorded-tenure
+  evidence rather than mere row absence) is a genuinely portable pattern.
+  NBA's own teammate-context feature, if built, would copy this pattern
+  next to it (per this document's guiding principle), not import AFL's
+  module — NBA's own player-stat fields, season structure (regular season/
+  play-in/playoffs — see section E), and much higher in-season trade
+  frequency (more, shorter club stints) all need their own handling.
 
 ## B. What becomes genuinely shared platform infrastructure
 
@@ -112,6 +131,25 @@ the point: don't manufacture more shared surface than what's proven.
   `Tabs`, `FilterChips`, `EmptyState`, `Skeleton`, the graphite/teal/gold
   CSS tokens in `index.css`) — already sport-agnostic presentational
   components with zero AFL-specific logic; see section M.
+- **Bookmaker eligibility** (`app/models/bookmaker.py`'s `Bookmaker` model
+  and its `eligibility` column — `included`/`excluded`/`informational_only`)
+  — already sport-agnostic: `Bookmaker` has no `sport_id` at all (a
+  bookmaker is the same company regardless of which sport it prices), so
+  an NBA market's coverage/eligibility checks (e.g. Multi Builder's
+  "offered by N of M *eligible* bookmakers" coverage proxy — see AFL's
+  `market_relevance()`) reuse the exact same table and rule, not a second
+  eligibility concept.
+- **Placed-bet tracking and post-settlement review shape** (`PlacedBet`,
+  `app/player_modelling/multi_builder_diagnostics.py`'s `classify_multi`/
+  `near_miss_summary`/`needed_value`) — the record-keeping shape (frozen
+  belief at placement time, settled once, never overwritten) and the
+  near-miss classification (how many legs of a multi hit, how far a lost
+  leg missed by) are generic over `(market_type, threshold, line_type,
+  actual_value)`, which is already a free-string/nullable-float shape, not
+  an AFL-specific enum. An NBA prop ("over 24.5 points") settles through
+  the identical `needed_value`/shortfall arithmetic a disposals or goals
+  leg does today — reusable once NBA settlement produces `actual_value`
+  in the same shape (see section K).
 
 ## C. Proposed repository/module structure
 
@@ -285,6 +323,11 @@ change) rather than deferring "prospective tracking" to a later phase.
 - NBA-specific work here is narrow: mapping NBA's own box-score result
   format into the same `actual_value` shape settlement already expects —
   an ingestion-layer concern, not a new settlement mechanism.
+- Placed-bet review (near-miss diagnostics: "N of M legs hit", "missed by
+  2 [stat]") is the same reuse story one layer up (section B) — it reads
+  off the same settled `(market_type, threshold, line_type, actual_value)`
+  shape, so it needs no NBA-specific code once NBA settlement writes rows
+  in that shape.
 
 ## L. Frontend sport switching/navigation
 
@@ -332,7 +375,7 @@ change) rather than deferring "prospective tracking" to a later phase.
   routes are additive (`app/api/routes/nba_*.py`, `frontend/src/pages/`
   NBA pages) rather than existing AFL routes gaining an `if sport == ...`
   branch.
-- The existing backend test suite (1,999 tests) and frontend suite (109
+- The existing backend test suite (2,065 tests) and frontend suite (130
   tests) continue to pass unmodified by NBA work — NBA work adds its own
   new test files rather than editing AFL test fixtures to "also cover
   NBA," which would risk exactly the kind of coupling this plan is
