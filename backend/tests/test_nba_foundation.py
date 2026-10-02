@@ -160,7 +160,7 @@ def _imported_modules(path: Path) -> set[str]:
 AFL_ONLY_PACKAGES = ("app.player_modelling", "app.modelling", "app.pricing", "app.market_monitor", "app.trading_monitor", "app.ingestion", "app.providers.afl")
 
 
-@pytest.mark.parametrize("package", ["nba", "models/nba", "core"])
+@pytest.mark.parametrize("package", ["nba", "models/nba", "core", "providers/nba"])
 def test_nba_and_core_code_do_not_import_afl_packages(package):
     for path in (APP_DIR / package).rglob("*.py"):
         offending = {m for m in _imported_modules(path) if m.startswith(AFL_ONLY_PACKAGES)}

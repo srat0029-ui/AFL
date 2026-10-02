@@ -18,7 +18,8 @@ company whichever sport it prices). See docs/MULTI_SPORT_ARCHITECTURE.md.
 Rows fall into three integrity classes (enforced below via
 app/core/prospective.py's protect_frozen_record):
 
-- Reference/result data, corrected in place: teams, players, games, game logs.
+- Reference/result data, corrected in place: teams, players, games, game logs
+  (plus the schedule-sync checkpoint, which is operational bookkeeping).
 - Append-only observations of the outside world, never edited: availability
   reports, prop quotes. Each carries `observed_at` — when THIS system
   learned it — which is what the as-of boundary filters on.
@@ -28,7 +29,8 @@ app/core/prospective.py's protect_frozen_record):
 """
 
 from app.core.prospective import protect_frozen_record
-from app.models.nba.game import NbaGame, NbaGameStatus, NbaSeasonType
+from app.models.nba.game import COMPETITIVE_SEASON_TYPES, NbaBoxScoreState, NbaGame, NbaGameStatus, NbaSeasonType
+from app.models.nba.ingestion_checkpoint import NbaScheduleSyncDate
 from app.models.nba.player import NbaPlayer
 from app.models.nba.player_availability_report import NbaAvailabilityStatus, NbaPlayerAvailabilityReport
 from app.models.nba.player_game_log import NbaPlayerGameLog
@@ -51,6 +53,9 @@ __all__ = [
     "NbaGame",
     "NbaGameStatus",
     "NbaSeasonType",
+    "NbaBoxScoreState",
+    "COMPETITIVE_SEASON_TYPES",
+    "NbaScheduleSyncDate",
     "NbaPlayerGameLog",
     "NbaPlayerAvailabilityReport",
     "NbaAvailabilityStatus",

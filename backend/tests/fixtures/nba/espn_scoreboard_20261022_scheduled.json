@@ -1,0 +1,104 @@
+{
+ "events": [
+  {
+   "id": "401909093",
+   "date": "2026-10-22T23:00Z",
+   "name": "Cleveland Cavaliers at Philadelphia 76ers",
+   "shortName": "CLE @ PHI",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Thu, October 22nd at 7:00 PM EDT",
+     "shortDetail": "10/22 - 7:00 PM EDT"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "20",
+        "abbreviation": "PHI",
+        "displayName": "Philadelphia 76ers"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "5",
+        "abbreviation": "CLE",
+        "displayName": "Cleveland Cavaliers"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401909094",
+   "date": "2026-10-23T01:30Z",
+   "name": "Denver Nuggets at Oklahoma City Thunder",
+   "shortName": "DEN @ OKC",
+   "season": {
+    "year": 2027,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "1",
+     "name": "STATUS_SCHEDULED",
+     "state": "pre",
+     "completed": false,
+     "description": "Scheduled",
+     "detail": "Thu, October 22nd at 9:30 PM EDT",
+     "shortDetail": "10/22 - 9:30 PM EDT"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "25",
+        "abbreviation": "OKC",
+        "displayName": "Oklahoma City Thunder"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "7",
+        "abbreviation": "DEN",
+        "displayName": "Denver Nuggets"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

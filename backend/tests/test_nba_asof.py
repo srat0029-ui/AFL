@@ -47,7 +47,7 @@ def test_availability_known_at_uses_when_we_observed_it_not_when_it_was_publishe
 
     def report(status, observed_at, published_at=None):
         row = NbaPlayerAvailabilityReport(
-            player_id=player.id, team_id=home.id, game_id=game.id, status=status.value, source="test",
+            player_id=player.id, team_id=home.id, game_id=game.id, status=status.value, source_status=status.value.title(), source="test",
             observed_at=observed_at, source_published_at=published_at,
         )
         db_session.add(row)

@@ -1,0 +1,785 @@
+{
+ "header": {
+  "id": "400827889",
+  "season": {
+   "year": 2016,
+   "current": false,
+   "type": 2
+  },
+  "competitions": [
+   {
+    "date": "2015-10-28T00:00Z",
+    "status": {
+     "type": {
+      "id": "3",
+      "name": "STATUS_FINAL",
+      "state": "post",
+      "completed": true,
+      "description": "Final",
+      "detail": "Final",
+      "shortDetail": "Final"
+     }
+    },
+    "competitors": [
+     {
+      "homeAway": "home",
+      "score": "97",
+      "team": {
+       "id": "4",
+       "abbreviation": "CHI"
+      }
+     },
+     {
+      "homeAway": "away",
+      "score": "95",
+      "team": {
+       "id": "5",
+       "abbreviation": "CLE"
+      }
+     }
+    ]
+   }
+  ]
+ },
+ "boxscore": {
+  "players": [
+   {
+    "team": {
+     "id": "5",
+     "abbreviation": "CLE",
+     "displayName": "Cleveland Cavaliers"
+    },
+    "statistics": [
+     {
+      "keys": [
+       "minutes",
+       "points",
+       "fieldGoalsMade-fieldGoalsAttempted",
+       "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+       "freeThrowsMade-freeThrowsAttempted",
+       "rebounds",
+       "assists",
+       "turnovers",
+       "steals",
+       "blocks",
+       "offensiveRebounds",
+       "defensiveRebounds",
+       "fouls",
+       "plusMinus"
+      ],
+      "athletes": [
+       {
+        "active": true,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "1966",
+         "displayName": "LeBron James",
+         "position": {
+          "abbreviation": "F"
+         }
+        }
+       },
+       {
+        "active": true,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "3449",
+         "displayName": "Kevin Love",
+         "position": {
+          "abbreviation": "F"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "4298",
+         "displayName": "Timofey Mozgov",
+         "position": {
+          "abbreviation": "C"
+         }
+        }
+       },
+       {
+        "active": true,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "2178",
+         "displayName": "Mo Williams",
+         "position": {
+          "abbreviation": "PG"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "2444",
+         "displayName": "JR Smith",
+         "position": {
+          "abbreviation": "G"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "1006",
+         "displayName": "Richard Jefferson",
+         "position": {
+          "abbreviation": "F"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "2419",
+         "displayName": "Anderson Varejao",
+         "position": {
+          "abbreviation": "C"
+         }
+        }
+       },
+       {
+        "active": true,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "6474",
+         "displayName": "Tristan Thompson",
+         "position": {
+          "abbreviation": "C"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "2009",
+         "displayName": "James Jones",
+         "position": {
+          "abbreviation": "SG"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "6582",
+         "displayName": "Jared Cunningham",
+         "position": {
+          "abbreviation": "G"
+         }
+        }
+       },
+       {
+        "active": true,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "2489716",
+         "displayName": "Matthew Dellavedova",
+         "position": {
+          "abbreviation": "G"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": true,
+        "reason": "COACH'S DECISION",
+        "stats": [],
+        "athlete": {
+         "id": "2528794",
+         "displayName": "Joe Harris",
+         "position": {
+          "abbreviation": "SF"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": true,
+        "reason": "COACH'S DECISION",
+        "stats": [],
+        "athlete": {
+         "id": "3443",
+         "displayName": "Sasha Kaun",
+         "position": {
+          "abbreviation": "C"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "team": {
+     "id": "4",
+     "abbreviation": "CHI",
+     "displayName": "Chicago Bulls"
+    },
+    "statistics": [
+     {
+      "keys": [
+       "minutes",
+       "points",
+       "fieldGoalsMade-fieldGoalsAttempted",
+       "threePointFieldGoalsMade-threePointFieldGoalsAttempted",
+       "freeThrowsMade-freeThrowsAttempted",
+       "rebounds",
+       "assists",
+       "turnovers",
+       "steals",
+       "blocks",
+       "offensiveRebounds",
+       "defensiveRebounds",
+       "fouls",
+       "plusMinus"
+      ],
+      "athletes": [
+       {
+        "active": true,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "996",
+         "displayName": "Pau Gasol",
+         "position": {
+          "abbreviation": "PF"
+         }
+        }
+       },
+       {
+        "active": true,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "6430",
+         "displayName": "Jimmy Butler III",
+         "position": {
+          "abbreviation": "F"
+         }
+        }
+       },
+       {
+        "active": true,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "6459",
+         "displayName": "Nikola Mirotic",
+         "position": {
+          "abbreviation": "F"
+         }
+        }
+       },
+       {
+        "active": true,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "2528353",
+         "displayName": "Tony Snell",
+         "position": {
+          "abbreviation": "SF"
+         }
+        }
+       },
+       {
+        "active": true,
+        "starter": true,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "3456",
+         "displayName": "Derrick Rose",
+         "position": {
+          "abbreviation": "PG"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "3986",
+         "displayName": "Taj Gibson",
+         "position": {
+          "abbreviation": "F"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "2528588",
+         "displayName": "Doug McDermott",
+         "position": {
+          "abbreviation": "F"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "3224",
+         "displayName": "Joakim Noah",
+         "position": {
+          "abbreviation": "C"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "3192",
+         "displayName": "Aaron Brooks",
+         "position": {
+          "abbreviation": "G"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": false,
+        "reason": "COACH'S DECISION",
+        "stats": [
+         "--",
+         "0",
+         "0-0",
+         "0-0",
+         "0-0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0",
+         "0"
+        ],
+        "athlete": {
+         "id": "6460",
+         "displayName": "E'Twaun Moore",
+         "position": {
+          "abbreviation": "G"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": true,
+        "reason": "COACH'S DECISION",
+        "stats": [],
+        "athlete": {
+         "id": "2528354",
+         "displayName": "Cameron Bairstow",
+         "position": {
+          "abbreviation": "PF"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": true,
+        "reason": "COACH'S DECISION",
+        "stats": [],
+        "athlete": {
+         "id": "3064482",
+         "displayName": "Bobby Portis",
+         "position": {
+          "abbreviation": "F"
+         }
+        }
+       },
+       {
+        "active": false,
+        "starter": false,
+        "didNotPlay": true,
+        "reason": "COACH'S DECISION",
+        "stats": [],
+        "athlete": {
+         "id": "1981",
+         "displayName": "Kirk Hinrich",
+         "position": {
+          "abbreviation": "SG"
+         }
+        }
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+}

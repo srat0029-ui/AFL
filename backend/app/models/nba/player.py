@@ -5,9 +5,21 @@ unique nor stable (same rule as AFL's Player, for the same reason).
 current_team_id is a display convenience only. NBA players change teams
 mid-season far more often than AFL players, so the team a player actually
 represented in a given game is always read from NbaPlayerGameLog.team_id.
+It follows the player's most recent ingested game (`last_game_at`), so
+re-ingesting an old game can never move a traded player back to a former
+team.
+
+`id` is this project's canonical player id. Another provider's identifier
+for the same person (e.g. a bookmaker feed that only supplies a name) must
+be attached to this row by an explicit, reviewed mapping — never by
+matching names alone: two different NBA players can share a name, and one
+player's published name can change. Names seen for this player are kept in
+`source_metadata["name_variants"]` for audit, not for matching.
 """
 
-from sqlalchemy import JSON, Boolean, ForeignKey, String, UniqueConstraint
+from datetime import datetime
+
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -26,6 +38,10 @@ class NbaPlayer(TimestampMixin, Base):
     source: Mapped[str] = mapped_column(String(32), nullable=False)
     source_player_id: Mapped[str] = mapped_column(String(64), nullable=False)
     source_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+    # Tip-off of the most recent game ingested for this player; what
+    # current_team_id is "as of".
+    last_game_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # NULL until there is evidence either way — never guessed.
     is_active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)

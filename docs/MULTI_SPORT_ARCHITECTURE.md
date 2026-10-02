@@ -1,9 +1,14 @@
 # Multi-sport architecture (AFL + NBA)
 
-Status: **NBA foundation only.** The NBA data model, information boundary and
-prospective pipeline exist and are tested. There is **no NBA data ingestion,
-no NBA model, and no NBA data in any table yet.** Nothing in the NBA code
-fabricates data, and the `/nba` page shows only real row counts (all zero).
+Status: **NBA foundation plus a historical data pipeline.** The NBA data
+model, information boundary and prospective pipeline exist and are tested.
+Teams, schedule, results and player box scores are ingested from ESPN, with
+a validation report over what is stored; the local development database
+holds 2015-16 through 2025-26 plus the 2026-27 schedule (see
+[NBA_DATA_SOURCES.md](NBA_DATA_SOURCES.md) for the source, its limits and
+the validation results). There is **no odds or injury ingestion, no NBA
+model, no recommendations and no live cycle yet**. Nothing in the NBA code
+fabricates data; the `/nba` page shows only real row counts.
 
 This document records what is shared between the sports, what is not, and
 why. It supersedes the parts of [NBA_PLATFORM_PLAN.md](NBA_PLATFORM_PLAN.md)
@@ -32,6 +37,7 @@ backend/app/
   modelling/bootstrap.py     "
   providers/the_odds_api.py  shared odds client (sport key + region per sport)
   providers/afl/             AFL providers (+ AFL's odds market keys)
+  providers/nba/             NBA stats provider (ESPN) + its record shapes
   api_platform/              shared (API keys, rate limiting, errors)
 
   models/                  AFL tables (+ shared `bookmakers`, `sports`)
@@ -41,6 +47,9 @@ backend/app/
     projection.py            model contract: minutes x per-minute rate
     asof.py                  THE information boundary
     prospective.py           project -> freeze -> close -> settle
+    ingestion.py             teams, games, players, game logs (idempotent, resumable)
+    validation.py            data-quality report over the stored history
+    cli.py                   backfill / sync-* / validate
     status.py                what data exists
   api/routes/nba.py        /api/nba/*
   player_modelling/, modelling/, pricing/, market_monitor/,
@@ -119,10 +128,11 @@ construction), so no `Sport(code="NBA")` row is inserted.
 
 | Table | Kind | Notes |
 | --- | --- | --- |
-| `nba_teams`, `nba_players` | reference | Player identity is `(source, source_player_id)`, never the name. |
+| `nba_teams`, `nba_players` | reference | Team identity is the provider's team id; player identity is `(source, source_player_id)`. Never the name. |
 | `nba_games` | reference/result | `scheduled_start` (UTC tip-off) is the prospective boundary; `game_date` is the league's local date. No rounds. Rest days, back-to-backs, home/away and opponent are **derived** from this table as of a cutoff, never stored. |
-| `nba_player_game_logs` | result, corrected in place | Minutes and `started` are first-class. A did-not-play row is distinct from no row (box score not ingested). |
-| `nba_player_availability_reports` | append-only | `observed_at` (when we fetched it) is separate from `source_published_at`. |
+| `nba_player_game_logs` | result, corrected in place | Minutes and `started` are first-class; minutes are whole numbers as the source publishes them. A did-not-play row is distinct from no row (box score not ingested). Stored only if the player points add up to the team score. |
+| `nba_schedule_sync_dates` | bookkeeping | Which dates the schedule sync has fetched; makes a backfill resumable. Not read for modelling. |
+| `nba_player_availability_reports` | append-only | `observed_at` (when we fetched it) is separate from `source_published_at`. `source_status` is the raw status; canonical `status` is empty when there is no safe mapping. |
 | `nba_prop_quotes` | append-only | One row per bookmaker / line / side / observation. Both sides stored so the book can be de-vigged. `is_alternate_line` separates the main line from the ladder. This table is the market-movement history and the source of the closing line. |
 | `nba_prop_projections` | append-only, frozen | Stores `expected_minutes`, `rate_per_minute`, distribution parameters and `information_cutoff`. A re-projection is a new row. |
 | `nba_prop_predictions` | frozen at entry; closing and settlement each written once | The prospective evidence record. |
@@ -188,4 +198,6 @@ Known limits, stated plainly:
   "mainly limited to US sports and US bookmakers", so the client defaults
   NBA to the `us` region. Whether Australian books return NBA props has not
   been tested against a live key.
-- **Stats source.** No NBA box-score/schedule provider has been chosen.
+- **Stats source.** ESPN's public site API is in use for schedule and box
+  scores. It is unofficial; see NBA_DATA_SOURCES.md for what that means and
+  what else was tested.

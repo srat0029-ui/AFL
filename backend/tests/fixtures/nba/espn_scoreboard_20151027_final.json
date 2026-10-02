@@ -1,0 +1,54 @@
+{
+ "events": [
+  {
+   "id": "400827889",
+   "date": "2015-10-28T00:00Z",
+   "name": "Cleveland Cavaliers at Chicago Bulls",
+   "shortName": "CLE @ CHI",
+   "season": {
+    "year": 2016,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "97",
+       "team": {
+        "id": "4",
+        "abbreviation": "CHI",
+        "displayName": "Chicago Bulls"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "95",
+       "team": {
+        "id": "5",
+        "abbreviation": "CLE",
+        "displayName": "Cleveland Cavaliers"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}
