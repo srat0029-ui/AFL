@@ -62,11 +62,21 @@ from dataclasses import dataclass, field, fields
 from datetime import date, datetime, timedelta, timezone
 from typing import Protocol
 
-from sqlalchemy import or_, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.prospective import ensure_utc
-from app.models.nba import COMPETITIVE_SEASON_TYPES, NbaBoxScoreState, NbaGame, NbaGameStatus, NbaPlayer, NbaPlayerGameLog, NbaScheduleSyncDate, NbaTeam
+from app.models.nba import (
+    COMPETITIVE_SEASON_TYPES,
+    NbaBoxScoreState,
+    NbaGame,
+    NbaGameScheduleObservation,
+    NbaGameStatus,
+    NbaPlayer,
+    NbaPlayerGameLog,
+    NbaScheduleSyncDate,
+    NbaTeam,
+)
 from app.providers.nba.types import NbaBoxScore, NbaGameRecord, NbaPlayerBoxLine, NbaTeamRecord
 
 logger = logging.getLogger(__name__)
@@ -149,6 +159,34 @@ class GameIngestionReport:
     updated: int = 0
     unchanged: int = 0
     skipped_unknown_team: list[str] = field(default_factory=list)
+    schedule_observations_added: int = 0
+
+
+def record_schedule_observations(db: Session, games: list[NbaGame], *, source: str, now: datetime) -> int:
+    """Append a schedule observation for each game seen for the first time,
+    or whose status, tip-off time or listed date differs from its latest
+    observation. `nba_games` itself is corrected in place and so only holds
+    the current schedule; these rows keep every earlier version, which is
+    what makes a postponement or a moved tip-off history rather than an
+    overwrite. Does not commit."""
+    games = [g for g in games if g.id is not None]
+    if not games:
+        return 0
+    latest_ids = select(func.max(NbaGameScheduleObservation.id)).where(NbaGameScheduleObservation.game_id.in_([g.id for g in games])).group_by(NbaGameScheduleObservation.game_id)
+    latest = {o.game_id: o for o in db.scalars(select(NbaGameScheduleObservation).where(NbaGameScheduleObservation.id.in_(latest_ids))).all()}
+    added = 0
+    for game in games:
+        previous = latest.get(game.id)
+        if previous is not None and previous.status == game.status and previous.game_date == game.game_date and _same(previous.scheduled_start, game.scheduled_start):
+            continue
+        db.add(
+            NbaGameScheduleObservation(
+                game_id=game.id, source=source, observed_at=now, status=game.status, source_status=game.source_status,
+                scheduled_start=game.scheduled_start, game_date=game.game_date,
+            )
+        )
+        added += 1
+    return added
 
 
 _GAME_FIELDS = ("season_start_year", "season_type", "game_date", "scheduled_start", "status", "home_score", "away_score", "source_status", "source_season_type")
@@ -165,6 +203,7 @@ def ingest_games(db: Session, records: list[NbaGameRecord], report: GameIngestio
         game.source_game_id: game
         for game in db.scalars(select(NbaGame).where(NbaGame.source == source, NbaGame.source_game_id.in_([r.source_game_id for r in records]))).all()
     }
+    touched: dict[str, NbaGame] = {}
     for record in records:
         report.seen += 1
         home, away = teams.get(record.home_source_team_id), teams.get(record.away_source_team_id)
@@ -172,6 +211,8 @@ def ingest_games(db: Session, records: list[NbaGameRecord], report: GameIngestio
             report.skipped_unknown_team.append(f"{record.source_game_id}: {record.away_team_name} @ {record.home_team_name}")
             continue
         game = existing.get(record.source_game_id)
+        if game is not None:
+            touched[record.source_game_id] = game
         if game is None:
             game = NbaGame(
                 source=record.source, source_game_id=record.source_game_id, home_team_id=home.id, away_team_id=away.id, source_synced_at=now,
@@ -179,6 +220,7 @@ def ingest_games(db: Session, records: list[NbaGameRecord], report: GameIngestio
             )
             db.add(game)
             existing[record.source_game_id] = game  # the same game listed twice in one batch is one row
+            touched[record.source_game_id] = game
             report.created += 1
             continue
         changed = False
@@ -194,6 +236,8 @@ def ingest_games(db: Session, records: list[NbaGameRecord], report: GameIngestio
             report.updated += 1
         else:
             report.unchanged += 1
+    db.flush()
+    report.schedule_observations_added += record_schedule_observations(db, list(touched.values()), source=source, now=now)
     db.commit()
     return report
 
@@ -390,6 +434,7 @@ def sync_schedule(
     source: str,
     refresh: bool = False,
     today: date | None = None,
+    now: datetime | None = None,
     on_progress: Callable[[date, ScheduleSyncReport], None] | None = None,
 ) -> ScheduleSyncReport:
     """Fetch and upsert every game listed on each date in [start, end] —
@@ -398,7 +443,10 @@ def sync_schedule(
 
     A past date already fetched with nothing left unsettled is skipped
     unless `refresh` is set; that is what lets an interrupted backfill
-    resume where it stopped."""
+    resume where it stopped.
+
+    `now` is the observation time stamped on schedule observations; it
+    defaults to the wall clock at the moment each date's response arrives."""
     report = ScheduleSyncReport()
     team_ids = set(teams_by_source_id(db, source))
     if not team_ids:
@@ -420,13 +468,13 @@ def sync_schedule(
             logger.warning("nba.sync_schedule.date_failed date=%s error=%s", day.isoformat(), str(exc)[:200])
             report.dates_failed.append(f"{day.isoformat()}: {str(exc)[:120]}")
             continue
-        now = _utcnow()
-        ingest_games(db, records, report.games, now=now)
+        observed_at = now or _utcnow()
+        ingest_games(db, records, report.games, now=observed_at)
         settled = day <= today - timedelta(days=SETTLED_AFTER_DAYS) and all(r.status in _SETTLED_STATUSES for r in records)
         if checkpoint is None:
-            db.add(NbaScheduleSyncDate(source=source, game_date=day, synced_at=now, games_kept=len(records), is_settled=settled))
+            db.add(NbaScheduleSyncDate(source=source, game_date=day, synced_at=observed_at, games_kept=len(records), is_settled=settled))
         else:
-            checkpoint.synced_at, checkpoint.games_kept, checkpoint.is_settled = now, len(records), settled
+            checkpoint.synced_at, checkpoint.games_kept, checkpoint.is_settled = observed_at, len(records), settled
         db.commit()
         if on_progress is not None:
             on_progress(day, report)

@@ -141,7 +141,8 @@ jobs:
             tests/test_nba_asof.py \
             tests/test_nba_foundation.py \
             tests/test_nba_ingestion.py \
-            tests/test_nba_validation.py
+            tests/test_nba_validation.py \
+            tests/test_nba_live_evidence.py
 
   frontend-test:
     name: Frontend tests

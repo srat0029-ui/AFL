@@ -6,8 +6,11 @@ Teams, schedule, results and player box scores are ingested from ESPN, with
 a validation report over what is stored; the local development database
 holds 2015-16 through 2025-26 plus the 2026-27 schedule (see
 [NBA_DATA_SOURCES.md](NBA_DATA_SOURCES.md) for the source, its limits and
-the validation results). There is **no odds or injury ingestion, no NBA
-model, no recommendations and no live cycle yet**. Nothing in the NBA code
+the validation results). A live evidence cycle records injuries, rosters,
+depth charts, pregame lineups and schedule changes as append-only
+observations (see [NBA_LIVE_EVIDENCE.md](NBA_LIVE_EVIDENCE.md)); it runs
+on demand and is not yet scheduled. There is **no odds ingestion, no NBA
+model and no recommendations yet**. Nothing in the NBA code
 fabricates data; the `/nba` page shows only real row counts.
 
 This document records what is shared between the sports, what is not, and
@@ -49,6 +52,8 @@ backend/app/
     prospective.py           project -> freeze -> close -> settle
     ingestion.py             teams, games, players, game logs (idempotent, resumable)
     validation.py            data-quality report over the stored history
+    evidence.py              append-only availability/roster/lineup observations
+    live_cycle.py            one pass of schedule, evidence and box scores
     cli.py                   backfill / sync-* / validate
     status.py                what data exists
   api/routes/nba.py        /api/nba/*
@@ -132,7 +137,12 @@ construction), so no `Sport(code="NBA")` row is inserted.
 | `nba_games` | reference/result | `scheduled_start` (UTC tip-off) is the prospective boundary; `game_date` is the league's local date. No rounds. Rest days, back-to-backs, home/away and opponent are **derived** from this table as of a cutoff, never stored. |
 | `nba_player_game_logs` | result, corrected in place | Minutes and `started` are first-class; minutes are whole numbers as the source publishes them. A did-not-play row is distinct from no row (box score not ingested). Stored only if the player points add up to the team score. |
 | `nba_schedule_sync_dates` | bookkeeping | Which dates the schedule sync has fetched; makes a backfill resumable. Not read for modelling. |
-| `nba_player_availability_reports` | append-only | `observed_at` (when we fetched it) is separate from `source_published_at`. `source_status` is the raw status; canonical `status` is empty when there is no safe mapping. |
+| `nba_player_availability_reports` | append-only | A row per change in a player's injury-feed state, including "no longer listed". `observed_at` (when we fetched it) is separate from `source_published_at`. `source_status` is the raw status; canonical `status` is empty when there is no safe mapping. |
+| `nba_team_observations` | append-only | A team's listed roster or depth chart, written when it changes. |
+| `nba_game_lineup_observations` | append-only | A team's listed players for a game and whether starter flags were present, written when it changes. |
+| `nba_game_schedule_observations` | append-only | A game's status and tip-off time each time they change; `nba_games` holds only the current state. |
+| `nba_evidence_polls` | append-only | One row per successful read of a source: when a state was last confirmed. |
+| `nba_live_cycle_runs` | bookkeeping | One row per cycle run with each step's outcome. |
 | `nba_prop_quotes` | append-only | One row per bookmaker / line / side / observation. Both sides stored so the book can be de-vigged. `is_alternate_line` separates the main line from the ladder. This table is the market-movement history and the source of the closing line. |
 | `nba_prop_projections` | append-only, frozen | Stores `expected_minutes`, `rate_per_minute`, distribution parameters and `information_cutoff`. A re-projection is a new row. |
 | `nba_prop_predictions` | frozen at entry; closing and settlement each written once | The prospective evidence record. |

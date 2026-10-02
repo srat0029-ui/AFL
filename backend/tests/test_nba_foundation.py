@@ -102,7 +102,8 @@ def test_status_reports_an_empty_foundation_honestly(client):
     assert body["sport"] == "NBA"
     assert body["markets"] == ["player_points", "player_rebounds", "player_assists"]
     assert {d["key"] for d in body["datasets"]} == {
-        "teams", "players", "games", "player_game_logs", "availability_reports", "prop_quotes", "projections", "predictions",
+        "teams", "players", "games", "player_game_logs", "availability_reports", "team_observations", "game_lineup_observations",
+        "game_schedule_observations", "prop_quotes", "projections", "predictions",
     }
     assert all(d["rows"] == 0 and d["latest_at"] is None for d in body["datasets"])
     assert (body["predictions_frozen"], body["predictions_with_closing_line"], body["predictions_settled"]) == (0, 0, 0)

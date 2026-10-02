@@ -11,7 +11,7 @@ not a reading of documentation — unless it says "documentation only".
 | --- | --- | --- |
 | Teams, schedule, results | ESPN public site API | **Built; 2015-16 to 2026-27 loaded locally** |
 | Player box scores | ESPN public site API | **Built; 2015-16 to 2025-26 loaded locally** |
-| Injuries / availability | ESPN public site API | Tested, **not built** (by decision) |
+| Injuries / availability, rosters, depth charts, pregame lineups | ESPN public APIs | **Collected prospectively** from 2 October 2026 — see [NBA_LIVE_EVIDENCE.md](NBA_LIVE_EVIDENCE.md). No history before that. |
 | Bookmaker prop odds | The Odds API (existing client) | Events endpoint tested; **no quota spent, not built** |
 
 ESPN is the V1 provider for schedule and historical box scores. No paid
@@ -242,6 +242,17 @@ it).
 
 ### What this means for modelling
 
+Decided defaults (also recorded in `app/nba/__init__.py`):
+
+- **All seasons stay stored; player models train from 2018-19 by default.**
+  Other training windows and recency weighting are to be compared
+  prospectively.
+- **Schedule features come from `nba_games`** — previous game, rest days,
+  back-to-backs — never from the presence of player rows.
+- **A game with no box score is an unavailable outcome**, never a zero-stat
+  game.
+- The incomplete 2015-16 to 2017-18 box scores are not being filled in.
+
 - **2018-19 onward is close to complete** (44 gaps in 10,231
   competitive games).
 - **2015-16 to 2017-18 are structurally incomplete**: two teams are absent
@@ -259,7 +270,9 @@ Database size after the backfill: 575,459,328 bytes (549 MB), up from
 
 ## Injuries and availability
 
-Not built, by decision.
+Live collection is built and described in
+[NBA_LIVE_EVIDENCE.md](NBA_LIVE_EVIDENCE.md). **Historical** injury
+ingestion is not built, by decision, for the reasons below.
 
 - ESPN's `/injuries` endpoint works: 59 entries across 24 teams on
   2 October 2026, each with a status, a date, comments and a player id.
@@ -273,8 +286,8 @@ Not built, by decision.
   pre-game availability cannot be reconstructed from this source. Loading
   it would put information from after the game into "what was known
   before" — exactly the leak the as-of boundary exists to prevent.
-- Live availability tracking — polling on a schedule and recording what was
-  known when — is a separate piece of design.
+- Live availability tracking — recording what was known when — now exists;
+  it starts from 2 October 2026 and cannot reach back before that.
 
 ## Bookmaker odds
 
@@ -319,4 +332,5 @@ What the code assumes today, so this stays open:
 2. **How to detect a withdrawn quote** (see MULTI_SPORT_ARCHITECTURE.md).
 3. **Whether to fill the games ESPN has no box score for** from another
    source, or leave them as known gaps.
-4. **Design of live availability tracking.**
+4. **Scheduling the live evidence cycle** so it runs without someone
+   starting it.

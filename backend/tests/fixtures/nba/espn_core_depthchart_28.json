@@ -1,0 +1,266 @@
+{
+ "count": 1,
+ "pageIndex": 1,
+ "pageSize": 25,
+ "pageCount": 1,
+ "items": [
+  {
+   "id": "1",
+   "name": "Depth Chart",
+   "positions": {
+    "pg": {
+     "position": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/1?lang=en",
+      "id": "1",
+      "name": "Point Guard",
+      "displayName": "Point Guard",
+      "abbreviation": "PG",
+      "leaf": true,
+      "parent": {
+       "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/3?lang=en"
+      }
+     },
+     "athletes": [
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4395724?lang=en"
+       },
+       "rank": 1
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4432241?lang=en"
+       },
+       "rank": 2
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4684272?lang=en"
+       },
+       "rank": 3
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4432737?lang=en"
+       },
+       "rank": 4
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4433134?lang=en"
+       },
+       "rank": 5
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4590360?lang=en"
+       },
+       "rank": 6
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4397784?lang=en"
+       },
+       "rank": 7
+      }
+     ]
+    },
+    "sg": {
+     "position": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/2?lang=en",
+      "id": "2",
+      "name": "Shooting Guard",
+      "displayName": "Shooting Guard",
+      "abbreviation": "SG",
+      "leaf": true,
+      "parent": {
+       "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/3?lang=en"
+      }
+     },
+     "athletes": [
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4395625?lang=en"
+       },
+       "rank": 1
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4684272?lang=en"
+       },
+       "rank": 2
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4432241?lang=en"
+       },
+       "rank": 3
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4432737?lang=en"
+       },
+       "rank": 4
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4702656?lang=en"
+       },
+       "rank": 5
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4397784?lang=en"
+       },
+       "rank": 6
+      }
+     ]
+    },
+    "sf": {
+     "position": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/5?lang=en",
+      "id": "5",
+      "name": "Small Forward",
+      "displayName": "Small Forward",
+      "abbreviation": "SF",
+      "leaf": true,
+      "parent": {
+       "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/7?lang=en"
+      }
+     },
+     "athletes": [
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/6450?lang=en"
+       },
+       "rank": 1
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/5149115?lang=en"
+       },
+       "rank": 2
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4431893?lang=en"
+       },
+       "rank": 3
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4433134?lang=en"
+       },
+       "rank": 4
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/2993874?lang=en"
+       },
+       "rank": 5
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4684272?lang=en"
+       },
+       "rank": 6
+      }
+     ]
+    },
+    "pf": {
+     "position": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/6?lang=en",
+      "id": "6",
+      "name": "Power Forward",
+      "displayName": "Power Forward",
+      "abbreviation": "PF",
+      "leaf": true,
+      "parent": {
+       "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/7?lang=en"
+      }
+     },
+     "athletes": [
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4433134?lang=en"
+       },
+       "rank": 1
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/5093267?lang=en"
+       },
+       "rank": 2
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/2993874?lang=en"
+       },
+       "rank": 3
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/5149115?lang=en"
+       },
+       "rank": 4
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4395625?lang=en"
+       },
+       "rank": 5
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4431893?lang=en"
+       },
+       "rank": 6
+      }
+     ]
+    },
+    "c": {
+     "position": {
+      "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/positions/9?lang=en",
+      "id": "9",
+      "name": "Center",
+      "displayName": "Center",
+      "abbreviation": "C",
+      "leaf": false
+     },
+     "athletes": [
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/3134908?lang=en"
+       },
+       "rank": 1
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/5093267?lang=en"
+       },
+       "rank": 2
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4431684?lang=en"
+       },
+       "rank": 3
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4431893?lang=en"
+       },
+       "rank": 4
+      },
+      {
+       "athlete": {
+        "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/seasons/2027/athletes/4395623?lang=en"
+       },
+       "rank": 5
+      }
+     ]
+    }
+   }
+  }
+ ]
+}

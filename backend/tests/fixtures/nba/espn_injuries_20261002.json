@@ -1,0 +1,949 @@
+{
+ "timestamp": "2026-10-02T13:23:38Z",
+ "status": "success",
+ "season": {
+  "year": 2027,
+  "type": 1,
+  "name": "Preseason",
+  "displayName": "2026-27"
+ },
+ "injuries": [
+  {
+   "id": "1",
+   "displayName": "Atlanta Hawks",
+   "injuries": [
+    {
+     "id": "-57577",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Out",
+     "date": "2026-09-21T19:50Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "4",
+      "name": "INJURY_STATUS_OUT",
+      "description": "out",
+      "abbreviation": "O"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "OFS",
+       "abbreviation": "OFS"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "side": "Right",
+      "returnDate": "2027-07-01"
+     },
+     "athlete": {
+      "firstName": "Henri",
+      "lastName": "Veesaar",
+      "displayName": "Henri Veesaar",
+      "shortName": "H. Veesaar",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/5105571/henri-veesaar"
+       }
+      ],
+      "position": {
+       "abbreviation": "C"
+      },
+      "team": {
+       "id": "1",
+       "abbreviation": "ATL",
+       "displayName": "Atlanta Hawks"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "-56292",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-07-19T00:14Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Foot",
+      "location": "Leg",
+      "detail": "Fracture",
+      "side": "Left",
+      "returnDate": "2026-10-15"
+     },
+     "athlete": {
+      "firstName": "Mouhamed",
+      "lastName": "Gueye",
+      "displayName": "Mouhamed Gueye",
+      "shortName": "M. Gueye",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4712863/mouhamed-gueye"
+       }
+      ],
+      "position": {
+       "abbreviation": "F"
+      },
+      "team": {
+       "id": "1",
+       "abbreviation": "ATL",
+       "displayName": "Atlanta Hawks"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "532102",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-07-18T23:19Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Hip",
+      "location": "Torso",
+      "returnDate": "2026-10-05"
+     },
+     "athlete": {
+      "firstName": "Keshon",
+      "lastName": "Gilbert",
+      "displayName": "Keshon Gilbert",
+      "shortName": "K. Gilbert",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4585618/keshon-gilbert"
+       }
+      ],
+      "position": {
+       "abbreviation": "G"
+      },
+      "team": {
+       "id": "1",
+       "abbreviation": "ATL",
+       "displayName": "Atlanta Hawks"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "532101",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-07-18T23:18Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Achilles",
+      "location": "Leg",
+      "detail": "Not Specified",
+      "side": "Right",
+      "returnDate": "2026-10-05"
+     },
+     "athlete": {
+      "firstName": "RayJ",
+      "lastName": "Dennis",
+      "displayName": "RayJ Dennis",
+      "shortName": "R. Dennis",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4431941/rayj-dennis"
+       }
+      ],
+      "position": {
+       "abbreviation": "G"
+      },
+      "team": {
+       "id": "1",
+       "abbreviation": "ATL",
+       "displayName": "Atlanta Hawks"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "5",
+   "displayName": "Cleveland Cavaliers",
+   "injuries": [
+    {
+     "id": "532792",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-09-25T22:58Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "detail": "Strain",
+      "side": "Right",
+      "returnDate": "2026-10-08"
+     },
+     "athlete": {
+      "firstName": "Peyton",
+      "lastName": "Watson",
+      "displayName": "Peyton Watson",
+      "shortName": "P. Watson",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4576087/peyton-watson"
+       }
+      ],
+      "position": {
+       "abbreviation": "G"
+      },
+      "team": {
+       "id": "7",
+       "abbreviation": "DEN",
+       "displayName": "Denver Nuggets"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "6",
+   "displayName": "Dallas Mavericks",
+   "injuries": [
+    {
+     "id": "532998",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-10-01T01:45Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Lower Leg",
+      "location": "Leg",
+      "detail": "Soreness",
+      "returnDate": "2026-10-09"
+     },
+     "athlete": {
+      "firstName": "Morez",
+      "lastName": "Johnson Jr.",
+      "displayName": "Morez Johnson Jr.",
+      "shortName": "M. Johnson Jr.",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4873153/morez-johnson-jr"
+       }
+      ],
+      "position": {
+       "abbreviation": "F"
+      },
+      "team": {
+       "id": "6",
+       "abbreviation": "DAL",
+       "displayName": "Dallas Mavericks"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "532820",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-09-26T18:15Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Undisclosed",
+      "location": "Other",
+      "side": "Not Specified",
+      "returnDate": "2026-10-09"
+     },
+     "athlete": {
+      "firstName": "Santi",
+      "lastName": "Aldama",
+      "displayName": "Santi Aldama",
+      "shortName": "S. Aldama",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4593125/santi-aldama"
+       }
+      ],
+      "position": {
+       "abbreviation": "F"
+      },
+      "team": {
+       "id": "29",
+       "abbreviation": "MEM",
+       "displayName": "Memphis Grizzlies"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "532767",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-09-25T15:38Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "side": "Left",
+      "returnDate": "2026-10-09"
+     },
+     "athlete": {
+      "firstName": "Kyrie",
+      "lastName": "Irving",
+      "displayName": "Kyrie Irving",
+      "shortName": "K. Irving",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/6442/kyrie-irving"
+       }
+      ],
+      "position": {
+       "abbreviation": "G"
+      },
+      "team": {
+       "id": "6",
+       "abbreviation": "DAL",
+       "displayName": "Dallas Mavericks"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "532766",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-09-25T15:34Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Foot",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2026-10-09"
+     },
+     "athlete": {
+      "firstName": "Dereck",
+      "lastName": "Lively II",
+      "displayName": "Dereck Lively II",
+      "shortName": "D. Lively II",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4683688/dereck-lively-ii"
+       }
+      ],
+      "position": {
+       "abbreviation": "C"
+      },
+      "team": {
+       "id": "6",
+       "abbreviation": "DAL",
+       "displayName": "Dallas Mavericks"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "11",
+   "displayName": "Indiana Pacers",
+   "injuries": [
+    {
+     "id": "532935",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-09-29T17:33Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Hamstring",
+      "location": "Leg",
+      "returnDate": "2026-10-07"
+     },
+     "athlete": {
+      "firstName": "Larry",
+      "lastName": "Nance Jr.",
+      "displayName": "Larry Nance Jr.",
+      "shortName": "L. Nance Jr.",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/2580365/larry-nance-jr"
+       }
+      ],
+      "position": {
+       "abbreviation": "F"
+      },
+      "team": {
+       "id": "5",
+       "abbreviation": "CLE",
+       "displayName": "Cleveland Cavaliers"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "518463",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Out",
+     "date": "2026-02-09T21:43Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "4",
+      "name": "INJURY_STATUS_OUT",
+      "description": "out",
+      "abbreviation": "O"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "OUT",
+       "abbreviation": "OUT"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Surgery",
+      "side": "Right",
+      "returnDate": "2027-01-01"
+     },
+     "athlete": {
+      "firstName": "Johnny",
+      "lastName": "Furphy",
+      "displayName": "Johnny Furphy",
+      "shortName": "J. Furphy",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/5157066/johnny-furphy"
+       }
+      ],
+      "position": {
+       "abbreviation": "G"
+      },
+      "team": {
+       "id": "11",
+       "abbreviation": "IND",
+       "displayName": "Indiana Pacers"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "id": "28",
+   "displayName": "Toronto Raptors",
+   "injuries": [
+    {
+     "id": "533036",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-10-01T23:00Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Back",
+      "location": "Torso",
+      "detail": "Not Specified",
+      "side": "Not Specified",
+      "returnDate": "2026-10-03"
+     },
+     "athlete": {
+      "firstName": "Jamison",
+      "lastName": "Battle",
+      "displayName": "Jamison Battle",
+      "shortName": "J. Battle",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4431893/jamison-battle"
+       }
+      ],
+      "position": {
+       "abbreviation": "F"
+      },
+      "team": {
+       "id": "28",
+       "abbreviation": "TOR",
+       "displayName": "Toronto Raptors"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "533035",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-10-01T22:56Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Bruise",
+      "side": "Right",
+      "returnDate": "2026-10-03"
+     },
+     "athlete": {
+      "firstName": "Kyle",
+      "lastName": "Anderson",
+      "displayName": "Kyle Anderson",
+      "shortName": "K. Anderson",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/2993874/kyle-anderson"
+       }
+      ],
+      "position": {
+       "abbreviation": "F"
+      },
+      "team": {
+       "id": "28",
+       "abbreviation": "TOR",
+       "displayName": "Toronto Raptors"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "533034",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-10-01T22:47Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Groin",
+      "location": "Groin",
+      "detail": "Not Specified",
+      "side": "Not Specified",
+      "returnDate": "2026-10-03"
+     },
+     "athlete": {
+      "firstName": "Allen",
+      "lastName": "Graves",
+      "displayName": "Allen Graves",
+      "shortName": "A. Graves",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/5149115/allen-graves"
+       }
+      ],
+      "position": {
+       "abbreviation": "F"
+      },
+      "team": {
+       "id": "28",
+       "abbreviation": "TOR",
+       "displayName": "Toronto Raptors"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "532551",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-09-10T01:30Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Lower Leg",
+      "location": "Leg",
+      "side": "Right",
+      "returnDate": "2026-10-03"
+     },
+     "athlete": {
+      "firstName": "Nate",
+      "lastName": "Bittle",
+      "displayName": "Nate Bittle",
+      "shortName": "N. Bittle",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4432586/nate-bittle"
+       }
+      ],
+      "position": {
+       "abbreviation": "C"
+      },
+      "team": {
+       "id": "28",
+       "abbreviation": "TOR",
+       "displayName": "Toronto Raptors"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "532152",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-07-19T22:30Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "detail": "Inflammation",
+      "side": "Not Specified",
+      "returnDate": "2026-10-03"
+     },
+     "athlete": {
+      "firstName": "Alijah",
+      "lastName": "Martin",
+      "displayName": "Alijah Martin",
+      "shortName": "A. Martin",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4702656/alijah-martin"
+       }
+      ],
+      "position": {
+       "abbreviation": "G"
+      },
+      "team": {
+       "id": "28",
+       "abbreviation": "TOR",
+       "displayName": "Toronto Raptors"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    },
+    {
+     "id": "532150",
+     "longComment": "Long comment text removed from this fixture.",
+     "shortComment": "Short comment text removed from this fixture.",
+     "status": "Day-To-Day",
+     "date": "2026-07-19T22:26Z",
+     "source": {
+      "id": "1",
+      "description": "basic/manual",
+      "state": "basic"
+     },
+     "type": {
+      "id": "6",
+      "name": "INJURY_STATUS_DAYTODAY",
+      "description": "day-to-day",
+      "abbreviation": "DD"
+     },
+     "details": {
+      "fantasyStatus": {
+       "description": "GTD",
+       "abbreviation": "GTD"
+      },
+      "type": "Knee",
+      "location": "Leg",
+      "returnDate": "2026-10-03"
+     },
+     "athlete": {
+      "firstName": "Chucky",
+      "lastName": "Hepburn",
+      "displayName": "Chucky Hepburn",
+      "shortName": "C. Hepburn",
+      "links": [
+       {
+        "href": "https://www.espn.com/nba/player/_/id/4590360/chucky-hepburn"
+       }
+      ],
+      "position": {
+       "abbreviation": "G"
+      },
+      "team": {
+       "id": "28",
+       "abbreviation": "TOR",
+       "displayName": "Toronto Raptors"
+      },
+      "status": {
+       "id": "1",
+       "name": "Active",
+       "type": "active",
+       "abbreviation": "Active"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

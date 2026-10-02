@@ -1,0 +1,124 @@
+{
+ "entries": [
+  {
+   "playerId": 4277961,
+   "starter": true,
+   "active": true,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": true,
+   "period": 0
+  },
+  {
+   "playerId": 4903027,
+   "starter": true,
+   "active": true,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": true,
+   "period": 0
+  },
+  {
+   "playerId": 5112087,
+   "starter": true,
+   "active": false,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": false,
+   "period": 0
+  },
+  {
+   "playerId": 3146557,
+   "starter": true,
+   "active": true,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": true,
+   "period": 0
+  },
+  {
+   "playerId": 4433083,
+   "starter": true,
+   "active": true,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": true,
+   "period": 0
+  },
+  {
+   "playerId": 4593125,
+   "starter": false,
+   "active": true,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": true,
+   "period": 0
+  },
+  {
+   "playerId": 5105550,
+   "starter": false,
+   "active": false,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": false,
+   "period": 0
+  },
+  {
+   "playerId": 2581018,
+   "starter": false,
+   "active": false,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": false,
+   "period": 0
+  },
+  {
+   "playerId": 3134932,
+   "starter": false,
+   "active": false,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": false,
+   "period": 0
+  },
+  {
+   "playerId": 4397227,
+   "starter": false,
+   "active": false,
+   "didNotPlay": false,
+   "reason": "COACH'S DECISION",
+   "ejected": false,
+   "valid": false,
+   "period": 0
+  },
+  {
+   "playerId": 3906665,
+   "starter": false,
+   "active": false,
+   "didNotPlay": true,
+   "reason": "RIGHT CALF STRAIN",
+   "ejected": false,
+   "valid": false,
+   "period": 0
+  },
+  {
+   "playerId": 4431785,
+   "starter": false,
+   "active": false,
+   "didNotPlay": true,
+   "reason": "LEFT TOE SURGERY",
+   "ejected": false,
+   "valid": false,
+   "period": 0
+  }
+ ]
+}
