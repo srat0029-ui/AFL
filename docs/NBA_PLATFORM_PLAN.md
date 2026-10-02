@@ -1,6 +1,23 @@
 # NBA Platform Plan
 
-Status: **planning document only — no NBA code exists yet.** Written at the
+> **Update (2026-10-02, branch `feature/nba-foundation`):** the NBA foundation
+> now exists — see [MULTI_SPORT_ARCHITECTURE.md](MULTI_SPORT_ARCHITECTURE.md),
+> which is the current source of truth. Two things in this plan were revised
+> once the code was read closely:
+>
+> 1. **NBA does not share AFL's `matches`/`players`/`teams` tables**
+>    (sections B, D, N below assumed it would). `sport_id` exists on those
+>    tables, but 39 AFL modules query them without a sport filter, so NBA
+>    rows would flow into AFL pricing and monitoring. NBA has its own
+>    `nba_*` tables; only `bookmakers` is shared.
+> 2. **The first NBA workstream is player-prop singles (points, rebounds,
+>    assists) judged by closing-line value**, not a team model first
+>    (section O's ordering). There is no NBA team model on the roadmap yet.
+>
+> The guiding principle below — extract a shared abstraction only when the
+> second sport proves it is shared — is unchanged and was followed.
+
+Status: **planning document, written before any NBA code existed.** Written at the
 AFL v1 freeze point (see [AFL_V1_RELEASE.md](AFL_V1_RELEASE.md)) so NBA work
 starts from a deliberate plan rather than an ad hoc first PR. There is no
 `docs/MULTI_SPORT_READINESS.md` in this repository to build on — this

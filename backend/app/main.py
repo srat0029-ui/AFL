@@ -17,6 +17,7 @@ from app.api.routes import (
     market_movement_v1,
     matches,
     model_registry_v1,
+    nba,
     odds,
     placed_bets,
     player_context,
@@ -99,3 +100,4 @@ app.include_router(market_monitor_v1.router)
 app.include_router(trading_monitor_v1.router)
 app.include_router(prospective_evidence_center_v1.router)
 app.include_router(market_movement_v1.router)
+app.include_router(nba.router)

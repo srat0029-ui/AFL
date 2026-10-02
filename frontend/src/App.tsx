@@ -9,6 +9,7 @@ import HomePage from "./pages/HomePage";
 import MatchDetailPage from "./pages/MatchDetailPage";
 import MatchesPage from "./pages/MatchesPage";
 import MultisPage from "./pages/MultisPage";
+import NbaOverviewPage from "./pages/nba/NbaOverviewPage";
 import MarketMonitorPage from "./pages/MarketMonitorPage";
 import MarketMovementExplorerPage from "./pages/MarketMovementExplorerPage";
 import ModelRegistryPage from "./pages/ModelRegistryPage";
@@ -34,11 +35,17 @@ import WeeklyReviewPage from "./pages/WeeklyReviewPage";
  * everything else is a single obvious top-level destination. Advanced
  * groups every model-evaluation/operational/B2B surface behind one
  * clearly-labelled door so a casual visitor is never confronted with it,
- * while it all remains one click away for anyone who wants it. */
+ * while it all remains one click away for anyone who wants it.
+ *
+ * NBA is a route namespace (/nba/...), not a global sport toggle: every
+ * existing route, page and API call above stays AFL and is untouched. A
+ * visitor reaches NBA by navigating to it, the same way they reach
+ * "Players". */
 const PRIMARY_LINKS: { to: string; label: string; extraActivePaths?: string[] }[] = [
   { to: "/", label: "Home" },
   { to: "/matches", label: "Matches", extraActivePaths: ["/matches"] },
   { to: "/players", label: "Players", extraActivePaths: ["/players", "/player-research", "/player-insights"] },
+  { to: "/nba", label: "NBA" },
   { to: "/placed-bets", label: "My Bets" },
 ];
 
@@ -284,6 +291,7 @@ function App() {
           <Route path="/live-status" element={<LiveStatusPage />} />
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/status" element={<StatusPage />} />
+          <Route path="/nba" element={<NbaOverviewPage />} />
         </Routes>
       </main>
     </div>

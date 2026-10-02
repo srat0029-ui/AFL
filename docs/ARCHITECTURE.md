@@ -99,6 +99,15 @@ flowchart TB
   [OPERATIONS.md](OPERATIONS.md#network-surface) for the full route-by-route
   breakdown.
 
+## Multi-sport
+
+Everything on this page describes the AFL application. An NBA foundation
+(its own `nba_*` tables, `app/nba/`, `/api/nba`, the `/nba` route) sits
+alongside it and shares only sport-agnostic pieces — see
+[MULTI_SPORT_ARCHITECTURE.md](MULTI_SPORT_ARCHITECTURE.md) for the boundary
+and the reasoning. NBA has no ingestion, model or live cycle yet, so the
+diagram above is unchanged.
+
 ## Module boundaries (ingestion / modelling / pricing / monitoring)
 
 The `pricing` box above conflates two genuinely different concerns for

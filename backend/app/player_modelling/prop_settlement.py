@@ -12,14 +12,13 @@ from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+# The result vocabulary and the line arithmetic are sport-agnostic and live
+# in app/core/settlement.py; re-exported here because the rest of the AFL
+# codebase imports them from this module.
+from app.core.settlement import RESULT_LOST, RESULT_PUSH, RESULT_UNRESOLVED, RESULT_VOID, RESULT_WON, settle_line  # noqa: F401
 from app.models import Match, MatchStatus, PlayerMatchStat, PropMarketObservation
-from app.player_modelling.market import LineType, PlayerMarket
+from app.player_modelling.market import PlayerMarket
 
-RESULT_WON = "won"
-RESULT_LOST = "lost"
-RESULT_PUSH = "push"
-RESULT_VOID = "void"
-RESULT_UNRESOLVED = "unresolved"
 
 # Section 15: an actual stat value settlement cannot trust at face value
 # (currently just "negative," the one unambiguous impossibility for a count
@@ -75,24 +74,9 @@ def _settle_result(actual: float, threshold: float, line_type: str) -> str:
     """Every observation represents the "over" (or "yes") side only (see
     prop_observation.py — only PRIMARY_SELECTIONS get an observation), so
     settlement only ever needs to ask "did the player clear this line,"
-    never which literal side was bet."""
-    if line_type == LineType.OVER_UNDER.value:
-        # "Over 29.5 wins if actual disposals >= 30" - Section 7's own
-        # example is just the arithmetic consequence of actual > threshold
-        # for a .5 line; expressed as a strict inequality here so it's
-        # correct for a WHOLE-NUMBER threshold too, where actual == threshold
-        # is a genuine push (can't happen on a .5 line, but this function
-        # doesn't assume every real threshold will be .5 forever).
-        if actual > threshold:
-            return RESULT_WON
-        if actual < threshold:
-            return RESULT_LOST
-        return RESULT_PUSH
-    if line_type == LineType.MULTI_PLUS.value:
-        # "N+" is already an inclusive lower bound - actual == threshold
-        # wins outright, there is no boundary value that produces a push.
-        return RESULT_WON if actual >= threshold else RESULT_LOST
-    return RESULT_UNRESOLVED
+    never which literal side was bet. The arithmetic itself is
+    app/core/settlement.py's settle_line."""
+    return settle_line(actual, threshold, line_type)
 
 
 @dataclass
