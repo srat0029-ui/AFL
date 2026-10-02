@@ -94,6 +94,32 @@ describe("App navigation", () => {
   });
 });
 
+describe("NBA route namespace", () => {
+  it("is reachable from the primary nav without displacing any AFL destination", () => {
+    const html = renderAt("/");
+    expect(html).toContain('href="/nba"');
+    expect(html).toContain(">NBA<");
+    expect(html).toContain('href="/matches"');
+    expect(html).toContain('href="/players"');
+    expect(html).toContain('href="/prop-insights"');
+  });
+
+  it("renders the NBA overview at /nba with a loading state and no placeholder numbers", () => {
+    const html = renderAt("/nba");
+    expect(html).toContain("NBA player props");
+    expect(html).toContain("frozen before tip-off");
+    expect(html).toContain("skeleton");
+    // Nothing is fetched during a static render, so no figures may appear.
+    expect(html).not.toContain("Predictions frozen");
+    expect(html).not.toContain("data-table");
+  });
+
+  it("leaves the AFL home page at the root route", () => {
+    expect(renderAt("/")).toContain("Explore the numbers behind every match, player and market.");
+    expect(renderAt("/")).not.toContain("NBA player props");
+  });
+});
+
 describe("HomePage", () => {
   it("shows the primary journeys as clear actions", () => {
     const html = renderToStaticMarkup(createElement(MemoryRouter, null, createElement(HomePage)));

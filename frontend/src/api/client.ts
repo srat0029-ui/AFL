@@ -3702,3 +3702,27 @@ export function fetchOpponentDiscovery(
 ): Promise<import("../features/playerContext").OpponentDiscoveryResult> {
   return request(`/api/afl/players/${playerId}/opponent-context-candidates?${new URLSearchParams({ stat })}`, { signal });
 }
+
+// --- NBA ---------------------------------------------------------------
+// NBA is served from its own /api/nba namespace; nothing above this line
+// is NBA-aware and no AFL call takes a sport parameter from the UI.
+
+export interface NbaDatasetStatus {
+  key: string;
+  label: string;
+  rows: number;
+  latest_at: string | null;
+}
+
+export interface NbaStatus {
+  sport: string;
+  markets: string[];
+  datasets: NbaDatasetStatus[];
+  predictions_frozen: number;
+  predictions_with_closing_line: number;
+  predictions_settled: number;
+}
+
+export function fetchNbaStatus(signal?: AbortSignal): Promise<NbaStatus> {
+  return request("/api/nba/status", { signal });
+}

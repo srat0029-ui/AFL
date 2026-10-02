@@ -97,6 +97,11 @@ from app.models.venue import Venue
 from app.models.venue_weather import VenueWeatherSnapshot
 from app.models.weekly_shortlist_snapshot import WeeklyShortlistSnapshot, WeeklyShortlistSnapshotItem
 
+# NBA's tables register themselves on Base.metadata here; import the classes
+# themselves from app.models.nba (kept out of this flat namespace on purpose
+# so AFL and NBA model names never have to be disambiguated by prefix alone).
+from app.models import nba  # noqa: E402, F401
+
 __all__ = [
     "Sport",
     "Team",
