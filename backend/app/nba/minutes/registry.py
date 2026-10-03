@@ -22,7 +22,7 @@ MODEL_ARTIFACT_DIR = Path(__file__).resolve().parents[3] / "model_artifacts" / "
 def code_version() -> str | None:
     try:
         sha = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True, cwd=Path(__file__).parent).stdout.strip()
-        dirty = subprocess.run(["git", "status", "--porcelain"], capture_output=True, text=True, check=True, cwd=Path(__file__).parent).stdout.strip()
+        dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no"], capture_output=True, text=True, check=True, cwd=Path(__file__).parent).stdout.strip()
         return f"{sha}{'+dirty' if dirty else ''}"
     except (OSError, subprocess.CalledProcessError):
         return None
