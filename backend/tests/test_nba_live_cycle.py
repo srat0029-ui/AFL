@@ -530,7 +530,7 @@ def test_status_api_carries_live_evidence_health(client, db_session):
 
 def test_workflow_is_gated_serialised_and_uses_the_existing_database_secret():
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    assert 'cron: "4,19,34,49 * * * *"' in workflow
+    assert 'cron: "11,26,41,56 * * * *"' in workflow
     assert "workflow_dispatch:" in workflow
     assert "group: nba-live-cycle" in workflow and "cancel-in-progress: false" in workflow
     assert "vars.NBA_LIVE_CYCLE_ENABLED == 'true'" in workflow
@@ -538,3 +538,18 @@ def test_workflow_is_gated_serialised_and_uses_the_existing_database_secret():
     assert "vars.NBA_LIVE_CYCLE_IMAGE" in workflow and "ghcr.io/srat0029-ui" not in workflow  # the image comes only from the pinned variable
     assert "alembic upgrade" not in workflow  # the job never migrates
     assert "THE_ODDS_API_KEY" not in workflow  # no odds quota can be spent
+
+
+def test_cloudflare_dispatch_is_gated_like_the_schedule():
+    """The Cloudflare cron dispatches with trigger=cloudflare-cron; an
+    automated dispatch must honour NBA_LIVE_CYCLE_ENABLED, while a human
+    dispatch (trigger left at its default) still always runs."""
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    assert 'cron: "11,26,41,56 * * * *"' in workflow  # GitHub schedule kept as the backup trigger
+    assert "trigger:" in workflow and "default: manual" in workflow
+    assert "dispatch_id:" in workflow
+    assert (
+        "(github.event_name == 'workflow_dispatch' && inputs.trigger != 'cloudflare-cron')\n"
+        "      || vars.NBA_LIVE_CYCLE_ENABLED == 'true'"
+    ) in workflow
+    assert "format('NBA Live Cycle [{0}]', inputs.dispatch_id)" in workflow

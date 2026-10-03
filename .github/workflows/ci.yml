@@ -167,6 +167,22 @@ jobs:
       # just be duplicate work.
       - run: npm run build
 
+  cloudflare-trigger-test:
+    # The Worker that dispatches the NBA Live Cycle (no dependencies).
+    name: Cloudflare trigger tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare/nba-live-cycle-trigger
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - run: npm test
+
   docker-build:
     name: Docker image build
     runs-on: ubuntu-latest

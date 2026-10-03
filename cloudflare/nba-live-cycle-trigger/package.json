@@ -1,0 +1,9 @@
+{
+  "name": "nba-live-cycle-trigger",
+  "private": true,
+  "type": "module",
+  "description": "Cloudflare cron that dispatches the NBA Live Cycle GitHub workflow",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  }
+}
