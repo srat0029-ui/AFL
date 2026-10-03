@@ -173,34 +173,53 @@ games near tip-off; ingest box scores for games that have become final.
 
 ### Polling frequency
 
-Set in one place — `Settings` in `app/config.py`, overridable by
-environment variable. Each value is a **minimum interval**; the cycle can
-be run more often than any of them.
+Set in one place — `Settings` in `app/config.py`, each overridable by an
+environment variable of the same name in capitals. Every interval is a
+**minimum**: the cycle can be woken as often as you like and a source that
+is not yet due is skipped without a request.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
 | `NBA_POLL_AVAILABILITY_MINUTES` | 30 | injury feed |
-| `NBA_POLL_SCHEDULE_MINUTES` | 360 | schedule window |
-| `NBA_POLL_TEAM_ROSTERS_MINUTES` | 1440 | rosters and depth charts, all teams |
-| `NBA_POLL_GAME_LINEUP_MINUTES` | 15 | lineup per team per game in the window |
+| `NBA_POLL_SCHEDULE_MINUTES` | 180 | schedule window |
+| `NBA_POLL_TEAM_ROSTERS_MINUTES` | 1440 | team rosters |
+| `NBA_POLL_DEPTH_CHARTS_MINUTES` | 1440 | depth charts |
+| `NBA_POLL_BOX_SCORES_MINUTES` | 60 | box scores for games that finished |
+| `NBA_LINEUP_POLL_TIERS` | `24:60,4:30,1:15` | pregame lineups, by hours before tip-off (below) |
 | `NBA_SCHEDULE_LOOKBACK_DAYS` / `LOOKAHEAD_DAYS` | 3 / 14 | schedule window around today |
-| `NBA_LINEUP_WINDOW_BEFORE_HOURS` / `AFTER_HOURS` | 6 / 1 | which games' lineups are observed |
+| `NBA_LIVE_CYCLE_STALE_AFTER_MINUTES` | 40 | an unfinished run older than this is treated as dead |
+| `NBA_MONITOR_STALE_MULTIPLIER` | 3 | evidence is "stale" after this many missed intervals |
 | `NBA_REQUEST_INTERVAL_SECONDS` | 0.5 | pause between requests |
 
-These are conservative development defaults against an unofficial source.
-A full run when everything is due is about 85 requests and takes roughly
-70 seconds. Polling harder close to tip-off later is a change to these
-values, not to the code.
+**Pregame lineups tighten as tip-off approaches**, to find out when ESPN
+starts publishing starters:
+
+| Time to tip-off | Poll every |
+| --- | --- |
+| more than 24 hours | not polled |
+| 4 to 24 hours | 60 minutes |
+| 1 to 4 hours | 30 minutes |
+| under 1 hour | 15 minutes |
+| after tip-off | not polled |
+
+Each tier is `<hours>:<minutes>`; a game uses the smallest tier its
+time-to-tip falls within. Only games still scheduled are polled, so a
+postponed game drops out automatically.
+
+At these defaults a busy game day is roughly 1,350 requests to ESPN, most
+of them lineups (about 90 per game: 30 polls of one game-level and two
+team-level requests).
 
 ### Scheduling
 
-**Nothing is scheduled.** The cycle runs when someone runs the command.
-It is built to be driven by any scheduler that can run a command every
-15 minutes or so — Windows Task Scheduler locally, or a scheduled workflow
-against a hosted database later. No paid scheduler is needed.
+The hosted schedule is a GitHub Actions workflow
+(`.github/workflows/nba-live-cycle.yml`) that wakes the cycle every 15
+minutes against the persistent hosted database. It is committed but **not
+active**; see [NBA_LIVE_SCHEDULER.md](NBA_LIVE_SCHEDULER.md) for its
+design, the database it would use, and the steps to switch it on.
 
-Until it is scheduled, evidence exists only for the moments it was run by
-hand, and the gaps cannot be filled afterwards.
+Until it is active, evidence exists only for the moments the cycle was run
+by hand, and the gaps cannot be filled afterwards.
 
 ## Collected so far
 

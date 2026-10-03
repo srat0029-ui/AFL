@@ -1,0 +1,113 @@
+name: NBA Live Cycle
+
+# Runs one `python -m app.nba.cli run-live-cycle` per trigger against the
+# persistent hosted PostgreSQL database (the existing DATABASE_URL secret),
+# so NBA pregame evidence keeps accumulating whether or not any personal
+# computer is on. See docs/NBA_LIVE_SCHEDULER.md for the design and the
+# activation steps.
+#
+# Waking every 15 minutes does NOT mean fetching every 15 minutes: the
+# application decides per source whether it is due (injury feed every 30
+# minutes, schedule every 3 hours, rosters and depth charts daily, box
+# scores hourly, pregame lineups hourly from 24h before tip-off tightening
+# to every 15 minutes in the final hour). All of that lives in app/config.py
+# settings, not here.
+#
+# Activation gates - nothing touches the database until all are in place:
+# - A SCHEDULED run does nothing until the repository variable
+#   NBA_LIVE_CYCLE_ENABLED is set to "true". Unset means disabled.
+# - Every run needs the repository variable NBA_LIVE_CYCLE_IMAGE: a pinned
+#   GHCR image (a sha-<commit> tag or @sha256 digest built by CI from a
+#   commit that contains the NBA code). Never a moving tag.
+# - The command itself refuses to run against a database that is not at
+#   the code's migration head. This workflow never runs migrations.
+# - GitHub only runs scheduled workflows from the default branch, so the
+#   schedule cannot fire while this file exists only on a feature branch.
+#
+# A manual workflow_dispatch always runs (it is a deliberate human action)
+# and can also run the two read-only commands, `schema-status` and
+# `evidence-health`, without touching any evidence.
+
+on:
+  schedule:
+    # Offset from the top of the hour (GitHub's own congestion window) and
+    # from the AFL live cycle's minutes (7,22,37,52).
+    - cron: "4,19,34,49 * * * *"
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "What to run"
+        type: choice
+        options:
+          - run-live-cycle
+          - schema-status
+          - evidence-health
+        default: run-live-cycle
+      force:
+        description: "run-live-cycle only: poll every source now, ignoring the minimum intervals"
+        type: boolean
+        default: false
+
+# Never two NBA cycles at once. cancel-in-progress: false means a run that
+# overruns is allowed to finish; GitHub keeps at most one more run pending
+# behind it and drops older pending ones. The application also takes a
+# PostgreSQL advisory lock for the whole run, and every evidence write is
+# idempotent, so an overlap could not duplicate evidence even if it slipped
+# past this.
+concurrency:
+  group: nba-live-cycle
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  nba-live-cycle:
+    name: NBA live evidence cycle
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.NBA_LIVE_CYCLE_ENABLED == 'true' }}
+    # A normal run with everything due is about 85 requests (~1-2 minutes).
+    # The ceiling stops a hung run from blocking the queue; it is kept below
+    # the application's 40-minute "this run died" threshold.
+    timeout-minutes: 20
+    steps:
+      - name: Check configuration
+        env:
+          IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          if [ -z "$IMAGE" ]; then
+            echo "::error::Repository variable NBA_LIVE_CYCLE_IMAGE is not set. Set it to a pinned image, e.g. ghcr.io/<owner>/afl/backend:sha-<commit>."
+            exit 1
+          fi
+          case "$IMAGE" in
+            *@sha256:*|*:sha-*) ;;
+            *) echo "::error::NBA_LIVE_CYCLE_IMAGE must be pinned to a sha-<commit> tag or an @sha256 digest, got '$IMAGE'."; exit 1 ;;
+          esac
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::Repository secret DATABASE_URL is not set."
+            exit 1
+          fi
+
+      - name: Run the NBA command from the pinned image
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+          COMMAND: ${{ github.event_name == 'workflow_dispatch' && inputs.command || 'run-live-cycle' }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force && 'true' || 'false' }}
+        # -e VAR with no value passes the variable through from this shell's
+        # environment, so the secret never appears in the command text.
+        # The container's exit code is the job's result, unmodified:
+        # 0 ran (a transient source failure is a warning, not a failure),
+        # 1 evidence collection has gone stale, 2 internal error,
+        # 3 database not at the migration head (nothing was run).
+        run: |
+          set -- python -m app.nba.cli "$COMMAND"
+          if [ "$COMMAND" = "run-live-cycle" ] && [ "$FORCE" = "true" ]; then
+            set -- "$@" --force
+          fi
+          docker run --rm \
+            -e DATABASE_URL \
+            -e APP_ENV=production \
+            -e GITHUB_ACTIONS \
+            "$IMAGE" "$@"

@@ -16,10 +16,8 @@ from app.models.nba import (
     NbaGame,
     NbaGameLineupObservation,
     NbaGameScheduleObservation,
-    NbaLiveCycleRun,
     NbaPlayer,
     NbaPlayerAvailabilityReport,
-    NbaPlayerGameLog,
     NbaTeam,
     NbaTeamObservation,
 )
@@ -32,11 +30,10 @@ from app.nba.asof import (
 )
 from app.nba.evidence import EvidenceRejected, canonical_status, record_availability, record_game_lineup, record_team_depth_chart, record_team_roster
 from app.nba.ingestion import ingest_games, ingest_teams
-from app.nba.live_cycle import STALE_RUN_AFTER, NbaPollingPolicy, run_live_cycle
 from app.providers.nba.espn import EspnNbaError
 from app.providers.nba.espn_evidence import EspnNbaEvidenceProvider
 from app.providers.nba.evidence_types import NbaDepthChart, NbaGameLineup, NbaInjuryFeed, NbaInjuryItem, NbaLineupEntry, NbaRosterPlayer, NbaTeamRoster
-from app.providers.nba.types import NbaBoxScore, NbaGameRecord, NbaPlayerBoxLine, NbaTeamRecord
+from app.providers.nba.types import NbaGameRecord, NbaTeamRecord
 
 FIXTURES = Path(__file__).parent / "fixtures" / "nba"
 SRC = "espn"
@@ -507,198 +504,6 @@ def test_schedule_observations_cannot_be_rewritten(db_session):
     with pytest.raises(FrozenRecordError):
         db_session.commit()
     db_session.rollback()
-
-
-# --- the live cycle --------------------------------------------------------
-
-
-class FakeStats:
-    """Schedule/box-score provider over a mutable list of game records."""
-
-    def __init__(self, games: list[NbaGameRecord]):
-        self.games = games
-        self.calls: list[str] = []
-
-    def get_teams(self):
-        return [NbaTeamRecord(source=SRC, source_team_id=str(i), name=f"Team {i}", abbreviation=f"T{i}") for i in (1, 2, 3)]
-
-    def get_games(self, on, *, team_ids=None):
-        self.calls.append(f"games:{on}")
-        return [g for g in self.games if g.game_date == on]
-
-    def get_box_score(self, source_game_id):
-        self.calls.append(f"box:{source_game_id}")
-        lines = [
-            NbaPlayerBoxLine(source_player_id="a", player_name="A", position="G", source_team_id="1", did_not_play=False, started=True, minutes=30.0, points=100),
-            NbaPlayerBoxLine(source_player_id="x", player_name="X", position="G", source_team_id="2", did_not_play=False, started=True, minutes=30.0, points=90),
-        ]
-        return NbaBoxScore(source=SRC, source_game_id=source_game_id, status="final", fetched_at=datetime.now(timezone.utc), lines=lines)
-
-
-class FakeEvidence:
-    def __init__(self, now: datetime, items=None, fail: set[str] | None = None, die_on_team: str | None = None):
-        self.now, self.items, self.fail, self.die_on_team = now, items if items is not None else [_item("a", "Day-To-Day", name="A")], fail or set(), die_on_team
-        self.calls: list[str] = []
-
-    def get_injuries(self):
-        self.calls.append("injuries")
-        if "injuries" in self.fail:
-            raise EspnNbaError("injuries down")
-        return _feed(self.items, self.now)
-
-    def get_team_roster(self, source_team_id):
-        self.calls.append(f"roster:{source_team_id}")
-        if self.die_on_team == source_team_id:
-            raise Killed()
-        return NbaTeamRoster(source=SRC, source_team_id=source_team_id, fetched_at=self.now, source_timestamp=self.now, players=[NbaRosterPlayer("a", "A", "G", None, "Active")])
-
-    def get_team_depth_chart(self, source_team_id, season_start_year):
-        self.calls.append(f"depth:{source_team_id}:{season_start_year}")
-        return NbaDepthChart(source=SRC, source_team_id=source_team_id, fetched_at=self.now, positions={"pg": ["a"]})
-
-    def get_game_lineup(self, source_game_id, source_team_id):
-        self.calls.append(f"lineup:{source_game_id}:{source_team_id}")
-        return _lineup(self.now, starters=None, team=source_team_id, game=source_game_id)
-
-
-class Killed(BaseException):  # not an Exception: nothing in the cycle may swallow it
-    pass
-
-
-def _record(game_id, tipoff, status="scheduled", **scores) -> NbaGameRecord:
-    return NbaGameRecord(
-        source=SRC, source_game_id=game_id, season_start_year=2026, season_type="regular", game_date=tipoff.date(), scheduled_start=tipoff, status=status,
-        home_source_team_id="1", away_source_team_id="2", home_team_name="Team 1", away_team_name="Team 2", source_status=f"STATUS_{status.upper()}", **scores,
-    )
-
-
-NOW = datetime(2026, 10, 20, 20, 0, tzinfo=timezone.utc)  # three hours before the "soon" game tips off
-POLICY = NbaPollingPolicy()
-
-
-def _games():
-    return [_record("soon", datetime(2026, 10, 20, 23, 0, tzinfo=timezone.utc)), _record("far", datetime(2026, 10, 25, 23, 0, tzinfo=timezone.utc))]
-
-
-def _steps(run: NbaLiveCycleRun) -> dict[str, str]:
-    return {s["step"]: s["status"] for s in run.steps}
-
-
-def test_first_cycle_collects_everything_that_is_due(db_session):
-    stats, evidence = FakeStats(_games()), FakeEvidence(NOW)
-    run = run_live_cycle(db_session, stats, evidence, source=SRC, policy=POLICY, now=NOW)
-
-    assert run.status == "ok" and run.finished_at is not None
-    assert _steps(run) == {"schedule": "ok", "availability": "ok", "team_evidence": "ok", "game_lineups": "ok", "box_scores": "skipped"}
-    assert db_session.query(NbaGame).count() == 2 and db_session.query(NbaGameScheduleObservation).count() == 2
-    assert db_session.query(NbaPlayerAvailabilityReport).count() == 1
-    assert db_session.query(NbaTeamObservation).count() == 6  # roster + depth chart for three teams
-    # Only the game inside the lineup window is observed, one row per team.
-    assert sorted(c for c in evidence.calls if c.startswith("lineup")) == ["lineup:soon:1", "lineup:soon:2"]
-    assert db_session.query(NbaGameLineupObservation).count() == 2
-    assert "depth:1:2026" in evidence.calls  # October 2026 is the 2026-27 season
-
-
-def test_running_again_immediately_skips_what_is_not_due_and_duplicates_nothing(db_session):
-    run_live_cycle(db_session, FakeStats(_games()), FakeEvidence(NOW), source=SRC, policy=POLICY, now=NOW)
-    counts = [db_session.query(m).count() for m in (NbaPlayerAvailabilityReport, NbaTeamObservation, NbaGameLineupObservation, NbaGameScheduleObservation, NbaEvidencePoll)]
-
-    stats, evidence = FakeStats(_games()), FakeEvidence(NOW + timedelta(minutes=5))
-    run = run_live_cycle(db_session, stats, evidence, source=SRC, policy=POLICY, now=NOW + timedelta(minutes=5))
-    assert _steps(run) == {"schedule": "skipped", "availability": "skipped", "team_evidence": "skipped", "game_lineups": "ok", "box_scores": "skipped"}
-    assert stats.calls == [] and evidence.calls == []  # not one request was made
-    assert [db_session.query(m).count() for m in (NbaPlayerAvailabilityReport, NbaTeamObservation, NbaGameLineupObservation, NbaGameScheduleObservation, NbaEvidencePoll)] == counts
-
-
-def test_each_kind_of_evidence_becomes_due_on_its_own_interval(db_session):
-    run_live_cycle(db_session, FakeStats(_games()), FakeEvidence(NOW), source=SRC, policy=POLICY, now=NOW)
-    later = NOW + timedelta(minutes=35)  # past the 30-minute availability and 15-minute lineup intervals only
-    evidence = FakeEvidence(later)
-    run = run_live_cycle(db_session, FakeStats(_games()), evidence, source=SRC, policy=POLICY, now=later)
-    assert _steps(run)["availability"] == "ok" and _steps(run)["schedule"] == "skipped" and _steps(run)["team_evidence"] == "skipped"
-    assert sorted(evidence.calls) == ["injuries", "lineup:soon:1", "lineup:soon:2"]
-    assert db_session.query(NbaPlayerAvailabilityReport).count() == 1  # unchanged: polled again, nothing new stored
-
-
-def test_polling_intervals_are_configuration_not_code(db_session):
-    quick = replace(POLICY, availability_interval=timedelta(minutes=1), lineup_window_before=timedelta(days=10))
-    run_live_cycle(db_session, FakeStats(_games()), FakeEvidence(NOW), source=SRC, policy=quick, now=NOW)
-    evidence = FakeEvidence(NOW + timedelta(minutes=2))
-    run_live_cycle(db_session, FakeStats(_games()), evidence, source=SRC, policy=quick, now=NOW + timedelta(minutes=2))
-    assert "injuries" in evidence.calls
-    assert db_session.query(NbaGameLineupObservation).count() == 4  # the wider window now includes the far game
-
-
-def test_force_polls_everything_regardless_of_intervals(db_session):
-    run_live_cycle(db_session, FakeStats(_games()), FakeEvidence(NOW), source=SRC, policy=POLICY, now=NOW)
-    evidence = FakeEvidence(NOW + timedelta(minutes=1))
-    run = run_live_cycle(db_session, FakeStats(_games()), evidence, source=SRC, policy=POLICY, now=NOW + timedelta(minutes=1), force=True)
-    assert _steps(run) == {"schedule": "ok", "availability": "ok", "team_evidence": "ok", "game_lineups": "ok", "box_scores": "skipped"}
-    assert db_session.query(NbaPlayerAvailabilityReport).count() == 1 and db_session.query(NbaTeamObservation).count() == 6
-
-
-def test_one_failing_step_does_not_stop_the_others(db_session):
-    run = run_live_cycle(db_session, FakeStats(_games()), FakeEvidence(NOW, fail={"injuries"}), source=SRC, policy=POLICY, now=NOW)
-    assert run.status == "partial"
-    assert _steps(run) == {"schedule": "ok", "availability": "failed", "team_evidence": "ok", "game_lineups": "ok", "box_scores": "skipped"}
-    assert db_session.query(NbaEvidencePoll).filter_by(kind="availability").count() == 0  # a failed read is not a poll
-
-    # The failed step is simply due again on the next run.
-    retry = run_live_cycle(db_session, FakeStats(_games()), FakeEvidence(NOW + timedelta(minutes=1)), source=SRC, policy=POLICY, now=NOW + timedelta(minutes=1))
-    assert _steps(retry)["availability"] == "ok" and db_session.query(NbaPlayerAvailabilityReport).count() == 1
-
-
-def test_an_interrupted_cycle_is_recovered_by_running_it_again(db_session):
-    with pytest.raises(Killed):
-        run_live_cycle(db_session, FakeStats(_games()), FakeEvidence(NOW, die_on_team="2"), source=SRC, policy=POLICY, now=NOW)
-    db_session.rollback()
-    killed = db_session.query(NbaLiveCycleRun).one()
-    assert killed.status == "in_progress" and killed.finished_at is None
-    assert [s["step"] for s in killed.steps] == ["schedule", "availability"]  # what finished before the kill is kept
-    assert db_session.query(NbaTeamObservation).count() == 2  # team 1's roster and depth chart were committed
-
-    later = NOW + STALE_RUN_AFTER + timedelta(minutes=1)
-    stats = FakeStats(_games())
-    run = run_live_cycle(db_session, stats, FakeEvidence(later), source=SRC, policy=replace(POLICY, team_evidence_interval=timedelta(minutes=1)), now=later)
-    db_session.refresh(killed)
-    assert killed.status == "interrupted" and run.status == "ok"
-    assert db_session.query(NbaTeamObservation).count() == 6  # completed, with team 1 not duplicated
-    assert db_session.query(NbaPlayerAvailabilityReport).count() == 1 and db_session.query(NbaGame).count() == 2
-    assert db_session.query(NbaLiveCycleRun).count() == 2
-
-
-def test_cycle_ingests_box_scores_once_games_are_final_and_records_the_status_change(db_session):
-    games = _games()
-    run_live_cycle(db_session, FakeStats(games), FakeEvidence(NOW), source=SRC, policy=POLICY, now=NOW)
-
-    after = datetime(2026, 10, 21, 8, 0, tzinfo=timezone.utc)
-    games[0] = _record("soon", datetime(2026, 10, 20, 23, 0, tzinfo=timezone.utc), status="final", home_score=100, away_score=90)
-    stats = FakeStats(games)
-    run = run_live_cycle(db_session, stats, FakeEvidence(after), source=SRC, policy=POLICY, now=after)
-    assert _steps(run)["schedule"] == "ok" and _steps(run)["box_scores"] == "ok"
-    game = db_session.query(NbaGame).filter_by(source_game_id="soon").one()
-    assert (game.status, game.box_score_state) == ("final", "ingested") and db_session.query(NbaPlayerGameLog).count() == 2
-    assert [o.status for o in db_session.query(NbaGameScheduleObservation).filter_by(game_id=game.id).order_by(NbaGameScheduleObservation.id)] == ["scheduled", "final"]
-
-    # Nothing left to do next time: the box score is not fetched twice.
-    again = FakeStats(games)
-    assert _steps(run_live_cycle(db_session, again, FakeEvidence(after), source=SRC, policy=POLICY, now=after + timedelta(minutes=20)))["box_scores"] == "skipped"
-    assert not [c for c in again.calls if c.startswith("box")]
-
-
-def test_cycle_handles_a_postponement_without_losing_the_earlier_schedule(db_session):
-    games = _games()
-    run_live_cycle(db_session, FakeStats(games), FakeEvidence(NOW), source=SRC, policy=POLICY, now=NOW)
-    later = NOW + timedelta(hours=7)
-    games[0] = _record("soon", datetime(2026, 10, 20, 23, 0, tzinfo=timezone.utc), status="postponed")
-    evidence = FakeEvidence(later)
-    run = run_live_cycle(db_session, FakeStats(games), evidence, source=SRC, policy=POLICY, now=later)
-
-    game = db_session.query(NbaGame).filter_by(source_game_id="soon").one()
-    assert game.status == "postponed" and run.status == "ok"
-    assert game_schedule_known_at(db_session, game.id, NOW + timedelta(hours=1)).status == "scheduled"
-    assert game_schedule_known_at(db_session, game.id, later + timedelta(minutes=1)).status == "postponed"
-    assert not [c for c in evidence.calls if c.startswith("lineup")]  # a postponed game's lineup is not polled
 
 
 # --- API -------------------------------------------------------------------

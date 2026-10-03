@@ -43,6 +43,34 @@ class NbaAvailabilityAsOfRead(BaseModel):
     last_confirmed_at: datetime | None
 
 
+class NbaEvidenceCheckRead(BaseModel):
+    kind: str
+    label: str
+    last_success_at: datetime | None
+    age_minutes: float | None
+    interval_minutes: float
+    stale_after_minutes: float
+    expected: bool
+    stale: bool
+
+
+class NbaLiveEvidenceRead(BaseModel):
+    """Is the live evidence collector still running? `healthy` is false when
+    any expected kind of evidence has not been collected for longer than its
+    tolerance, or the collector has never run against this database."""
+
+    healthy: bool
+    checked_at: datetime
+    latest_run_at: datetime | None
+    latest_run_status: str | None
+    latest_successful_run_at: datetime | None
+    upcoming_games: int
+    games_in_lineup_window: int
+    current_availability_entries: int
+    checks: list[NbaEvidenceCheckRead]
+    problems: list[str]
+
+
 class NbaStatusRead(BaseModel):
     sport: str
     markets: list[str]
@@ -50,3 +78,4 @@ class NbaStatusRead(BaseModel):
     predictions_frozen: int
     predictions_with_closing_line: int
     predictions_settled: int
+    live_evidence: NbaLiveEvidenceRead
