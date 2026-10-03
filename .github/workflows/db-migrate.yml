@@ -1,0 +1,81 @@
+name: Database Migrate
+
+# Applies `alembic upgrade head` to the hosted database - ONLY when a person
+# dispatches it by hand with an explicit confirmation. There is no schedule
+# and no other trigger. See docs/NBA_LIVE_SCHEDULER.md for when to use it.
+#
+# Guards, in order:
+# 1. The `confirm` input must be exactly "migrate".
+# 2. The image must be a pinned CI-built image (NBA_LIVE_CYCLE_IMAGE).
+# 3. The database must be at exactly `expected_current_revision`, or
+#    nothing is changed.
+# 4. Every table's row count is recorded before and after; the job fails if
+#    any table that existed before is missing or changed.
+#
+# Take a backup (backup.yml) before running this.
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_current_revision:
+        description: "The Alembic revision the database must currently be at (nothing happens otherwise)"
+        required: true
+        type: string
+      confirm:
+        description: 'Type "migrate" to apply alembic upgrade head'
+        required: true
+        type: string
+
+# Never alongside an NBA live cycle, and never two migrations at once.
+concurrency:
+  group: nba-live-cycle
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  migrate:
+    name: Guarded alembic upgrade head
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check inputs and configuration
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          EXPECTED: ${{ inputs.expected_current_revision }}
+          IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          if [ "$CONFIRM" != "migrate" ]; then echo "::error::confirm must be exactly 'migrate'"; exit 1; fi
+          case "$EXPECTED" in *[!0-9a-f]*|"") echo "::error::expected_current_revision must be a revision id"; exit 1 ;; esac
+          case "$IMAGE" in
+            *@sha256:*|*:sha-*) ;;
+            *) echo "::error::NBA_LIVE_CYCLE_IMAGE must be a pinned image, got '$IMAGE'"; exit 1 ;;
+          esac
+          if [ "$HAS_DATABASE_URL" != "true" ]; then echo "::error::DATABASE_URL secret is not set"; exit 1; fi
+          mkdir -p snapshots && chmod 777 snapshots
+
+      - name: Row counts before
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+        run: docker run --rm -e DATABASE_URL -v "$PWD/snapshots:/snapshots" "$IMAGE" python -m app.db_maintenance inventory --out /snapshots/before.json
+
+      - name: Upgrade (refuses unless the database is at the expected revision)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+          EXPECTED: ${{ inputs.expected_current_revision }}
+        run: docker run --rm -e DATABASE_URL "$IMAGE" python -m app.db_maintenance upgrade --expect-current "$EXPECTED"
+
+      - name: Row counts after
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+        run: docker run --rm -e DATABASE_URL -v "$PWD/snapshots:/snapshots" "$IMAGE" python -m app.db_maintenance inventory --out /snapshots/after.json
+
+      - name: Prove existing tables are unchanged
+        env:
+          IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+        run: docker run --rm -v "$PWD/snapshots:/snapshots" "$IMAGE" python -m app.db_maintenance compare /snapshots/before.json /snapshots/after.json

@@ -226,9 +226,13 @@ and need your explicit approval.
 5. **Confirm the revision.** Run *NBA Live Cycle* manually with command
    `schema-status`. Expect database revision `75715f635e7a` and the four
    pending migrations above. If it reports anything else, stop and review.
-6. **Migrate (needs approval).** From a machine with the direct connection
-   string, as `docs/DEPLOYMENT.md` describes:
-   `docker run --rm -e DATABASE_URL <pinned image> python -m alembic upgrade head`
+6. **Migrate (needs approval).** Run the *Database Migrate* workflow
+   (`.github/workflows/db-migrate.yml`) by hand with
+   `expected_current_revision = 75715f635e7a` and `confirm = migrate`. It
+   uses the same `DATABASE_URL` secret, refuses unless the database is at
+   exactly that revision, records every table's row count before and after,
+   and fails if any existing table changed. It shares the live cycle's
+   concurrency group, so it can never run alongside a cycle.
 7. **Confirm** with another `schema-status` run: "schema is current".
 8. **First run by hand.** Run *NBA Live Cycle* manually with command
    `run-live-cycle`. Expect exit 0, every step ok, and "evidence health: OK".
