@@ -1,0 +1,31 @@
+# Cloudflare Worker: the PRIMARY trigger for .github/workflows/nba-live-cycle.yml.
+# It only dispatches the GitHub workflow; nothing NBA runs in Cloudflare.
+# See docs/NBA_LIVE_SCHEDULER.md, "Cloudflare trigger".
+
+name = "nba-live-cycle-trigger"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+
+# No public URL: the Worker has no HTTP surface worth exposing.
+workers_dev = false
+preview_urls = false
+
+[triggers]
+# Every 15 minutes, offset from the top of the hour. The GitHub backup
+# schedule runs 7 minutes later (11,26,41,56). Cloudflare crons run in UTC.
+crons = ["4,19,34,49 * * * *"]
+
+# Keep console output so trigger/dispatch outcomes can be read back in
+# the dashboard (Workers > nba-live-cycle-trigger > Logs).
+[observability]
+enabled = true
+
+[vars]
+GITHUB_OWNER = "srat0029-ui"
+GITHUB_REPO = "AFL"
+GITHUB_WORKFLOW = "nba-live-cycle.yml"
+GITHUB_REF = "master"
+
+# Secret (never in this file): GITHUB_DISPATCH_TOKEN, a fine-grained PAT
+# limited to this repository with "Actions: Read and write".
+#   npx wrangler secret put GITHUB_DISPATCH_TOKEN

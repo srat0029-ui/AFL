@@ -27,12 +27,27 @@ name: NBA Live Cycle
 # A manual workflow_dispatch always runs (it is a deliberate human action)
 # and can also run the two read-only commands, `schema-status` and
 # `evidence-health`, without touching any evidence.
+#
+# PRIMARY trigger: a Cloudflare Worker cron (cloudflare/nba-live-cycle-trigger)
+# dispatches this workflow every 15 minutes with trigger=cloudflare-cron,
+# because GitHub's own schedule is best-effort and often late or skipped.
+# Those dispatches are automated, so they are gated by NBA_LIVE_CYCLE_ENABLED
+# exactly like the schedule. The `schedule:` below stays as the BACKUP
+# trigger; if both fire, the concurrency group, the advisory lock and the
+# idempotent writes make the extra run harmless.
+
+run-name: >-
+  ${{ github.event_name == 'workflow_dispatch' && inputs.dispatch_id != ''
+  && format('NBA Live Cycle [{0}]', inputs.dispatch_id)
+  || 'NBA Live Cycle' }}
 
 on:
   schedule:
-    # Offset from the top of the hour (GitHub's own congestion window) and
-    # from the AFL live cycle's minutes (7,22,37,52).
-    - cron: "4,19,34,49 * * * *"
+    # BACKUP only; the Cloudflare cron at 4,19,34,49 is primary. Staggered
+    # 7 minutes after it so a late GitHub tick rarely lands on a Cloudflare
+    # run, and offset from the top of the hour (GitHub's own congestion
+    # window) and from the AFL live cycle's minutes (7,22,37,52).
+    - cron: "11,26,41,56 * * * *"
   workflow_dispatch:
     inputs:
       command:
@@ -47,6 +62,14 @@ on:
         description: "run-live-cycle only: poll every source now, ignoring the minimum intervals"
         type: boolean
         default: false
+      trigger:
+        description: "Who dispatched this run (set by automation; leave as manual)"
+        type: string
+        default: manual
+      dispatch_id:
+        description: "Correlation id from the dispatcher, shown in the run name (automation only)"
+        type: string
+        default: ""
 
 # Never two NBA cycles at once. cancel-in-progress: false means a run that
 # overruns is allowed to finish; GitHub keeps at most one more run pending
@@ -65,12 +88,25 @@ jobs:
   nba-live-cycle:
     name: NBA live evidence cycle
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.NBA_LIVE_CYCLE_ENABLED == 'true' }}
+    # Runs when: a human dispatched it, or an automated trigger (GitHub's
+    # schedule or the Cloudflare cron dispatch) fired while enabled.
+    if: >-
+      ${{ (github.event_name == 'workflow_dispatch' && inputs.trigger != 'cloudflare-cron')
+      || vars.NBA_LIVE_CYCLE_ENABLED == 'true' }}
     # A normal run with everything due is about 85 requests (~1-2 minutes).
     # The ceiling stops a hung run from blocking the queue; it is kept below
     # the application's 40-minute "this run died" threshold.
     timeout-minutes: 20
     steps:
+      - name: Log trigger
+        env:
+          EVENT: ${{ github.event_name }}
+          TRIGGER: ${{ github.event_name == 'workflow_dispatch' && inputs.trigger || 'github-schedule' }}
+          DISPATCH_ID: ${{ inputs.dispatch_id }}
+        run: |
+          echo "event=$EVENT trigger=$TRIGGER dispatch_id=${DISPATCH_ID:-none} run_id=$GITHUB_RUN_ID attempt=$GITHUB_RUN_ATTEMPT"
+          echo "### Trigger: \`$TRIGGER\` (event \`$EVENT\`, dispatch id \`${DISPATCH_ID:-none}\`)" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Check configuration
         env:
           IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}

@@ -19,7 +19,7 @@ first two; none has been merged.
 
 | | |
 | --- | --- |
-| Trigger | `schedule` at `4,19,34,49 * * * *` (every 15 minutes, offset from the top of the hour and from the AFL cycle's minutes), and `workflow_dispatch` |
+| Trigger | **Primary:** a Cloudflare Worker cron at `4,19,34,49 * * * *` that calls `workflow_dispatch` (see [Cloudflare trigger](#cloudflare-trigger)). **Backup:** GitHub's own `schedule` at `11,26,41,56 * * * *`, staggered 7 minutes after it. Plus manual `workflow_dispatch`. |
 | What it runs | `python -m app.nba.cli run-live-cycle` inside a pinned CI-built image, with `DATABASE_URL` from the existing repository secret |
 | Manual options | `run-live-cycle` (with optional `force`), `schema-status` (read-only), `evidence-health` (read-only) |
 | Concurrency | `group: nba-live-cycle`, `cancel-in-progress: false` |
@@ -32,8 +32,9 @@ Nothing touches the database until all of these are in place:
 
 1. **Default branch.** GitHub only runs scheduled workflows from the
    default branch, so the schedule cannot fire from a feature branch.
-2. **`NBA_LIVE_CYCLE_ENABLED`** repository variable. A scheduled run does
-   nothing unless it is `true`. A manual dispatch always runs.
+2. **`NBA_LIVE_CYCLE_ENABLED`** repository variable. A scheduled run, or a
+   Cloudflare cron dispatch (`trigger=cloudflare-cron`), does nothing unless
+   it is `true`. A manual dispatch always runs.
 3. **`NBA_LIVE_CYCLE_IMAGE`** repository variable: the image to run, pinned
    to a `sha-<commit>` tag or an `@sha256:` digest. The job refuses an
    unpinned tag, so production never silently picks up new code.
@@ -71,6 +72,68 @@ Sustained failure turns it red through the staleness check.
 - **Writes:** every evidence write is idempotent and in its own
   transaction, so even an overlap that got past both locks could not
   duplicate a row.
+
+## Cloudflare trigger
+
+GitHub's `schedule:` is best-effort: runs are often late and sometimes
+skipped entirely. The primary trigger is therefore a Cloudflare Worker
+cron, `cloudflare/nba-live-cycle-trigger/`, whose only job is to call
+GitHub's workflow-dispatch API:
+
+```
+Cloudflare cron (4,19,34,49 * * * *, UTC)
+  -> POST /repos/srat0029-ui/AFL/actions/workflows/nba-live-cycle.yml/dispatches
+     ref=master, inputs: command=run-live-cycle, force=false,
+                         trigger=cloudflare-cron, dispatch_id=cf-YYYYMMDDTHHMMZ
+  -> this workflow -> pinned image -> hosted PostgreSQL
+```
+
+- Nothing NBA runs in Cloudflare, and the Worker never touches the database.
+- One cron tick makes exactly one request. No retries: a rejected or failed
+  dispatch is logged and thrown, and GitHub's `schedule:` stays as the
+  backup. If both fire, the concurrency group, the advisory lock and the
+  idempotent writes make the extra run harmless.
+- The Worker has no public URL (`workers_dev = false`), so nobody can
+  trigger a dispatch through HTTP.
+- The `dispatch_id` appears in the GitHub run name (`NBA Live Cycle
+  [cf-20261003T0649Z]`) and in the run's first step, so every Cloudflare
+  tick can be matched to its GitHub run.
+
+**Token.** A fine-grained personal access token, repository access limited
+to `srat0029-ui/AFL`, with the single repository permission **Actions:
+Read and write** (GitHub adds Metadata: Read automatically). Stored only as
+the Cloudflare Worker secret **`GITHUB_DISPATCH_TOKEN`**; never in the
+repository.
+
+**What each signal means** (do not read more into one than it says):
+
+| Signal | Where | Proves |
+| --- | --- | --- |
+| `{"event":"trigger_fired",...}` | Cloudflare Worker logs | The cron fired. |
+| `{"event":"dispatch_accepted",...}` | Cloudflare Worker logs | GitHub accepted the dispatch request (HTTP 200/204). **Not** that a run started or succeeded. Includes `workflow_run_id` when GitHub returns it. |
+| `{"event":"dispatch_rejected","status":...}` / `dispatch_error` | Cloudflare Worker logs | The dispatch did not happen (bad/expired token → 401/403, workflow input mismatch → 422, network/timeout). |
+| A run named `NBA Live Cycle [cf-…]` | GitHub Actions | The workflow ran for that tick. Its "Log trigger" step prints the trigger and dispatch id. |
+| That run's conclusion | GitHub Actions | Whether the cycle itself succeeded (see exit codes above). A skipped job means `NBA_LIVE_CYCLE_ENABLED` is not `true`. |
+
+**Deploying** (needs a Cloudflare account; free plan is enough):
+
+1. Merge the workflow change first. Until `master` has the `trigger` and
+   `dispatch_id` inputs, GitHub rejects the Worker's dispatch with 422.
+2. `cd cloudflare/nba-live-cycle-trigger`, `npx wrangler login`,
+   `npx wrangler deploy`.
+3. `npx wrangler secret put GITHUB_DISPATCH_TOKEN` (or the dashboard:
+   Workers & Pages → nba-live-cycle-trigger → Settings → Variables and
+   Secrets → Add → type *Secret*). Until it is set, each tick logs
+   `dispatch_error: missing GITHUB_DISPATCH_TOKEN` and makes no request.
+4. Test once without waiting for the cron:
+   `npx wrangler dev --remote --test-scheduled`, then in another terminal
+   `curl "http://localhost:8787/__scheduled?cron=4,19,34,49+*+*+*+*"`.
+   This makes one real dispatch. If the remote session does not see the
+   deployed secret, run plain `npx wrangler dev --test-scheduled` with the
+   token in a local `.dev.vars` file (gitignored) instead.
+
+Tests: `cd cloudflare/nba-live-cycle-trigger && npm test` (Node 22, no
+dependencies; also run in CI).
 
 ## Adaptive polling
 
