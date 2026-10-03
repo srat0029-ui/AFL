@@ -1,0 +1,104 @@
+{
+ "events": [
+  {
+   "id": "401224714",
+   "date": "2020-08-01T17:00Z",
+   "name": "Miami Heat at Denver Nuggets",
+   "shortName": "MIA @ DEN",
+   "season": {
+    "year": 2020,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "105",
+       "team": {
+        "id": "7",
+        "abbreviation": "DEN",
+        "displayName": "Denver Nuggets"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "125",
+       "team": {
+        "id": "14",
+        "abbreviation": "MIA",
+        "displayName": "Miami Heat"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401224715",
+   "date": "2020-08-01T19:30Z",
+   "name": "Utah Jazz at Oklahoma City Thunder",
+   "shortName": "UTAH @ OKC",
+   "season": {
+    "year": 2020,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "110",
+       "team": {
+        "id": "25",
+        "abbreviation": "OKC",
+        "displayName": "Oklahoma City Thunder"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "94",
+       "team": {
+        "id": "26",
+        "abbreviation": "UTAH",
+        "displayName": "Utah Jazz"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

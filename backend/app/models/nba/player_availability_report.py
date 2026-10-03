@@ -13,6 +13,13 @@ Two timestamps, deliberately distinct:
 
 `game_id` is NULL for a report not tied to a specific game (e.g. "out for
 the season").
+
+Raw versus canonical status: `source_status` is exactly what the source
+published and is always stored. `status` is this project's canonical value
+and is NULL whenever the source's term has no safe canonical meaning. ESPN's
+"Day-To-Day", for example, is not the league's questionable/doubtful/
+probable scale and is not mapped onto it by assumption — it is stored raw
+with `status` left NULL.
 """
 
 import enum
@@ -43,7 +50,8 @@ class NbaPlayerAvailabilityReport(TimestampMixin, Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("nba_teams.id"), nullable=False, index=True)
     game_id: Mapped[int | None] = mapped_column(ForeignKey("nba_games.id"), nullable=True, index=True)
 
-    status: Mapped[str] = mapped_column(String(16), nullable=False)  # NbaAvailabilityStatus value
+    source_status: Mapped[str] = mapped_column(String(48), nullable=False)  # raw, as published
+    status: Mapped[str | None] = mapped_column(String(16), nullable=True)  # NbaAvailabilityStatus value; NULL = unmapped
     reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     source: Mapped[str] = mapped_column(String(32), nullable=False)
@@ -55,4 +63,4 @@ class NbaPlayerAvailabilityReport(TimestampMixin, Base):
     game: Mapped["NbaGame | None"] = relationship(foreign_keys=[game_id])
 
     def __repr__(self) -> str:
-        return f"<NbaPlayerAvailabilityReport player={self.player_id} {self.status} observed={self.observed_at}>"
+        return f"<NbaPlayerAvailabilityReport player={self.player_id} {self.source_status!r} observed={self.observed_at}>"

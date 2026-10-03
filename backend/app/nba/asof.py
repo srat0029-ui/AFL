@@ -30,7 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.prospective import ensure_utc
-from app.models.nba import NbaGame, NbaGameStatus, NbaPlayerAvailabilityReport, NbaPlayerGameLog, NbaPropQuote
+from app.models.nba import COMPETITIVE_SEASON_TYPES, NbaGame, NbaGameStatus, NbaPlayerAvailabilityReport, NbaPlayerGameLog, NbaPropQuote
 
 # An NBA game runs about 2.5 hours; multiple overtimes can push past 3. Four
 # hours is deliberately conservative — erring late only costs a feature
@@ -38,8 +38,20 @@ from app.models.nba import NbaGame, NbaGameStatus, NbaPlayerAvailabilityReport, 
 GAME_RESULT_AVAILABILITY_LAG = timedelta(hours=4)
 
 
-def game_logs_known_at(db: Session, player_id: int, cutoff: datetime) -> list[NbaPlayerGameLog]:
-    """The player's box scores known at `cutoff`, oldest first."""
+def game_logs_known_at(
+    db: Session, player_id: int, cutoff: datetime, *, season_types: tuple[str, ...] = COMPETITIVE_SEASON_TYPES
+) -> list[NbaPlayerGameLog]:
+    """The player's box scores known at `cutoff`, oldest first.
+
+    Only competitive games (regular season, play-in, playoffs) by default:
+    a preseason box score is exhibition basketball and is left out of the
+    modelling dataset unless a caller deliberately asks for it. A row for a
+    game the player did not play in IS returned (did_not_play=True) - "was
+    on the roster and sat" is information, and dropping it here would hide
+    it from every caller.
+
+    `minutes` is whatever the source published; the current source gives
+    whole minutes, so treat it as a number precise to the minute."""
     latest_tipoff = ensure_utc(cutoff) - GAME_RESULT_AVAILABILITY_LAG
     return list(
         db.scalars(
@@ -49,6 +61,7 @@ def game_logs_known_at(db: Session, player_id: int, cutoff: datetime) -> list[Nb
                 NbaPlayerGameLog.player_id == player_id,
                 NbaGame.status == NbaGameStatus.FINAL.value,
                 NbaGame.scheduled_start <= latest_tipoff,
+                NbaGame.season_type.in_(season_types),
             )
             .order_by(NbaGame.scheduled_start, NbaPlayerGameLog.id)
         ).all()

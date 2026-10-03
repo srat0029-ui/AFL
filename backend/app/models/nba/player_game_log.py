@@ -7,6 +7,11 @@ modelled quantity in its own right, not just another stat column.
 
 `team_id` is the team the player represented IN THIS GAME (see NbaPlayer).
 
+`minutes` holds what the source publishes, as a number. The current source
+(ESPN) publishes WHOLE minutes — 33, not 33:12 — so values are precise to
+the minute only. Nothing downstream may assume second-level precision, and
+no seconds are invented here.
+
 A player who was on the roster but did not play has a row with
 did_not_play=True and NULL stats — distinct from having no row at all,
 which means "box score not ingested yet". Settlement depends on that

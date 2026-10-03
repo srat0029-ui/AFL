@@ -1,0 +1,54 @@
+{
+ "events": [
+  {
+   "id": "401267176",
+   "date": "2020-12-24T01:00Z",
+   "name": "Oklahoma City Thunder at Houston Rockets",
+   "shortName": "OKC @ HOU",
+   "season": {
+    "year": 2021,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "6",
+     "name": "STATUS_POSTPONED",
+     "state": "post",
+     "completed": false,
+     "description": "Postponed",
+     "detail": "Postponed",
+     "shortDetail": "Postponed"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "1",
+      "abbreviation": "STD"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "0",
+       "team": {
+        "id": "10",
+        "abbreviation": "HOU",
+        "displayName": "Houston Rockets"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "0",
+       "team": {
+        "id": "25",
+        "abbreviation": "OKC",
+        "displayName": "Oklahoma City Thunder"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

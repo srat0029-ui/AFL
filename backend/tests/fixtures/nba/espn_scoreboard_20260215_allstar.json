@@ -1,0 +1,205 @@
+{
+ "events": [
+  {
+   "id": "401838140",
+   "date": "2026-02-15T22:00Z",
+   "name": "World World at Team Stars Team Stars",
+   "shortName": "WORLD @ STARS",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final/OT",
+     "shortDetail": "Final/OT",
+     "altDetail": "OT"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "4",
+      "abbreviation": "ALLSTAR"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "37",
+       "team": {
+        "id": "132374",
+        "abbreviation": "STARS",
+        "displayName": "Team Stars"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "35",
+       "team": {
+        "id": "111386",
+        "abbreviation": "WORLD",
+        "displayName": "World"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401838141",
+   "date": "2026-02-15T22:55Z",
+   "name": "Team Stars Team Stars at Team Stripes Team Stripes",
+   "shortName": "STARS @ STRIPES",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "4",
+      "abbreviation": "ALLSTAR"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "42",
+       "team": {
+        "id": "132375",
+        "abbreviation": "STRIPES",
+        "displayName": "Team Stripes"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "40",
+       "team": {
+        "id": "132374",
+        "abbreviation": "STARS",
+        "displayName": "Team Stars"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401838142",
+   "date": "2026-02-15T23:25Z",
+   "name": "World World at Team Stripes Team Stripes",
+   "shortName": "WORLD @ STRIPES",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "4",
+      "abbreviation": "ALLSTAR"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "48",
+       "team": {
+        "id": "132375",
+        "abbreviation": "STRIPES",
+        "displayName": "Team Stripes"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "45",
+       "team": {
+        "id": "111386",
+        "abbreviation": "WORLD",
+        "displayName": "World"
+       }
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "id": "401838143",
+   "date": "2026-02-16T00:10Z",
+   "name": "Team Stars Team Stars at Team Stripes Team Stripes",
+   "shortName": "STARS @ STRIPES",
+   "season": {
+    "year": 2026,
+    "type": 2,
+    "slug": "regular-season"
+   },
+   "status": {
+    "type": {
+     "id": "3",
+     "name": "STATUS_FINAL",
+     "state": "post",
+     "completed": true,
+     "description": "Final",
+     "detail": "Final",
+     "shortDetail": "Final"
+    }
+   },
+   "competitions": [
+    {
+     "type": {
+      "id": "4",
+      "abbreviation": "ALLSTAR"
+     },
+     "competitors": [
+      {
+       "homeAway": "home",
+       "score": "21",
+       "team": {
+        "id": "132375",
+        "abbreviation": "STRIPES",
+        "displayName": "Team Stripes"
+       }
+      },
+      {
+       "homeAway": "away",
+       "score": "47",
+       "team": {
+        "id": "132374",
+        "abbreviation": "STARS",
+        "displayName": "Team Stars"
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

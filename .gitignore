@@ -3,6 +3,8 @@ __pycache__/
 *.pyc
 backend/.venv/
 backend/afl.db
+backend/afl.db-shm
+backend/afl.db-wal
 backend/.pytest_cache/
 backend/.env
 
