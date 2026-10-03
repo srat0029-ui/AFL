@@ -14,6 +14,7 @@ from app.core.prospective import ensure_utc
 from app.database import get_db
 from app.models.nba import NbaPlayer
 from app.nba.asof import availability_known_at
+from app.nba.monitoring import evidence_health
 from app.nba.status import load_nba_status
 
 router = APIRouter(prefix="/api/nba", tags=["nba"])
@@ -21,8 +22,9 @@ router = APIRouter(prefix="/api/nba", tags=["nba"])
 
 @router.get("/status", response_model=NbaStatusRead)
 def get_nba_status(db: Session = Depends(get_db)) -> NbaStatusRead:
-    """What NBA data exists right now: row counts per dataset and how many
-    predictions have been frozen, closed and settled."""
+    """What NBA data exists right now: row counts per dataset, how many
+    predictions have been frozen, closed and settled, and whether the live
+    evidence collector is still running (`live_evidence`)."""
     report = load_nba_status(db)
     return NbaStatusRead(
         sport=report.sport,
@@ -31,7 +33,13 @@ def get_nba_status(db: Session = Depends(get_db)) -> NbaStatusRead:
         predictions_frozen=report.predictions_frozen,
         predictions_with_closing_line=report.predictions_with_closing_line,
         predictions_settled=report.predictions_settled,
+        live_evidence=_live_evidence(db),
     )
+
+
+def _live_evidence(db: Session) -> dict:
+    health = evidence_health(db)
+    return {**health.__dict__, "checks": [check.__dict__ for check in health.checks]}
 
 
 @router.get("/players/{player_id}/availability", response_model=NbaAvailabilityAsOfRead)

@@ -60,23 +60,34 @@ class Settings(BaseSettings):
     # (prop_odds_quota.py) regardless of how often it's called.
     live_cycle_interval_minutes: int = 15
 
-    # NBA live evidence cycle (app/nba/live_cycle.py). Each value is the
-    # MINIMUM time between two polls of that kind: the cycle can be run as
-    # often as you like and a step that is not yet due is skipped. These are
-    # deliberately conservative development defaults against an unofficial
-    # source; they are the only place polling frequency is set, so tightening
-    # them near tip-off later is a configuration change, not a code change.
+    # NBA live evidence cycle (app/nba/live_cycle.py). Each interval is the
+    # MINIMUM time between two polls of that kind: the cycle can be woken as
+    # often as you like (the hosted schedule wakes it every 15 minutes) and a
+    # step that is not yet due is skipped without a request. These settings
+    # are the only place polling frequency is defined; every one can be
+    # overridden by an environment variable of the same name in capitals.
     nba_poll_availability_minutes: int = 30
-    nba_poll_schedule_minutes: int = 360
+    nba_poll_schedule_minutes: int = 180
     nba_poll_team_rosters_minutes: int = 1440
-    nba_poll_game_lineup_minutes: int = 15
+    nba_poll_depth_charts_minutes: int = 1440
+    nba_poll_box_scores_minutes: int = 60
     # Schedule window refreshed each time, in days either side of today.
     nba_schedule_lookback_days: int = 3
     nba_schedule_lookahead_days: int = 14
-    # A game's listed lineup is observed from this long before tip-off until
-    # this long after it.
-    nba_lineup_window_before_hours: float = 6.0
-    nba_lineup_window_after_hours: float = 1.0
+    # Pregame lineup polling tightens as tip-off approaches, to find out when
+    # the source starts publishing starters. Comma-separated
+    # "<hours before tip-off>:<minutes between polls>" tiers: a game is
+    # polled at the interval of the smallest tier its time-to-tip falls
+    # within. Further out than the largest tier: not polled. After tip-off:
+    # not polled. Default: 4-24h hourly, 1-4h every 30 min, under 1h every
+    # 15 min.
+    nba_lineup_poll_tiers: str = "24:60,4:30,1:15"
+    # A live-cycle run still marked in progress after this long is taken to
+    # have died (the hosted job's own timeout is shorter).
+    nba_live_cycle_stale_after_minutes: int = 40
+    # Monitoring: a kind of evidence is reported stale when its last
+    # successful poll is older than this many times its polling interval.
+    nba_monitor_stale_multiplier: float = 3.0
     # Seconds between requests to the NBA stats source.
     nba_request_interval_seconds: float = 0.5
 

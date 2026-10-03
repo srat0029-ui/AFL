@@ -236,8 +236,16 @@ class EspnNbaEvidenceProvider:
     # --- game lineup --------------------------------------------------------
 
     def get_game_lineup(self, source_game_id: str, source_team_id: str) -> NbaGameLineup:
+        return self.get_game_lineups(source_game_id, [source_team_id])[0]
+
+    def get_game_lineups(self, source_game_id: str, source_team_ids: list[str]) -> list[NbaGameLineup]:
+        """Both teams' lineups for one game, sharing one request for the
+        game's own flags."""
         prefix = f"/events/{source_game_id}/competitions/{source_game_id}"
         competition, _ = self._get(self._core, prefix, {"lang": "en"})
+        return [self._team_lineup(prefix, competition, source_game_id, team_id) for team_id in source_team_ids]
+
+    def _team_lineup(self, prefix: str, competition: dict, source_game_id: str, source_team_id: str) -> NbaGameLineup:
         roster, _ = self._get(self._core, f"{prefix}/competitors/{source_team_id}/roster", {"lang": "en"})
         fetched_at = datetime.now(timezone.utc)
         entries: list[NbaLineupEntry] = []

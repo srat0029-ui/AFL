@@ -12,7 +12,13 @@ into the NBA tables, plus a validation report over what is stored.
   run-live-cycle    one pass of the live evidence cycle: schedule changes,
                     injury/availability feed, team rosters and depth charts,
                     lineups for games near tip-off, box scores for games
-                    that have finished (see app/nba/live_cycle.py)
+                    that have finished (see app/nba/live_cycle.py). Refuses
+                    to run against a database not at the migration head.
+                    Exit codes: see app/nba/operations.py
+  evidence-health   when each kind of evidence was last collected and
+                    whether any is stale (exit 1 if so); read-only
+  schema-status     the database's migration revision and any migrations
+                    `alembic upgrade head` would apply; read-only
 
 Usage:
   python -m app.nba.cli sync-teams
@@ -21,6 +27,8 @@ Usage:
   python -m app.nba.cli backfill --from-season 2015 --to-season 2026
   python -m app.nba.cli validate
   python -m app.nba.cli run-live-cycle
+  python -m app.nba.cli evidence-health
+  python -m app.nba.cli schema-status
 
 Every command is idempotent, and `backfill` is resumable: if it is
 interrupted, run the same command again and it continues from where it
@@ -134,6 +142,8 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--request-interval", type=float, default=DEFAULT_REQUEST_INTERVAL_SECONDS, help="seconds to pause between provider requests")
     live = sub.add_parser("run-live-cycle")
     live.add_argument("--force", action="store_true", help="poll everything now, ignoring the minimum intervals")
+    sub.add_parser("evidence-health")
+    sub.add_parser("schema-status")
     validate = sub.add_parser("validate")
     validate.add_argument("--json", action="store_true", help="print the report as JSON")
     args = parser.parse_args(argv)
@@ -148,20 +158,20 @@ def main(argv: list[str] | None = None) -> int:
             print(report.to_json() if args.json else format_report(report))
             return 0
 
-        if args.command == "run-live-cycle":
+        if args.command in ("run-live-cycle", "evidence-health", "schema-status"):
             from app.config import get_settings
-            from app.nba.live_cycle import STEP_FAILED, run_live_cycle
+            from app.nba.operations import evidence_health_command, run_cycle_command, schema_status_command
             from app.providers.nba.espn_evidence import EspnNbaEvidenceProvider
 
+            if args.command == "evidence-health":
+                return evidence_health_command(db)
+            if args.command == "schema-status":
+                return schema_status_command(db)
             interval = get_settings().nba_request_interval_seconds
-            run = run_live_cycle(
+            return run_cycle_command(
                 db, EspnNbaProvider(request_interval_seconds=interval), EspnNbaEvidenceProvider(request_interval_seconds=interval),
                 source=PROVIDER_NAME, force=args.force,
             )
-            print(f"NBA live cycle run {run.id}: {run.status}")
-            for step in run.steps:
-                print(f"  {step['step']:<14} {step['status']:<8} {step['seconds']:>6}s  {step['detail']}")
-            return 1 if any(step["status"] == STEP_FAILED for step in run.steps) else 0
 
         provider = EspnNbaProvider(request_interval_seconds=getattr(args, "request_interval", DEFAULT_REQUEST_INTERVAL_SECONDS))
         if args.command == "sync-teams":

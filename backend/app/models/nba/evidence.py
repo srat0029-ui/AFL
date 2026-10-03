@@ -36,6 +36,7 @@ POLL_TEAM_ROSTER = "team_roster"
 POLL_TEAM_DEPTH_CHART = "team_depth_chart"
 POLL_GAME_LINEUP = "game_lineup"
 POLL_SCHEDULE = "schedule"
+POLL_BOX_SCORES = "box_scores"
 
 TEAM_OBSERVATION_ROSTER = "roster"
 TEAM_OBSERVATION_DEPTH_CHART = "depth_chart"
@@ -167,7 +168,8 @@ class NbaGameScheduleObservation(TimestampMixin, Base):
 
 RUN_IN_PROGRESS = "in_progress"
 RUN_OK = "ok"
-RUN_PARTIAL = "partial"  # at least one step failed; the others ran
+RUN_PARTIAL = "partial"  # a source request failed in at least one step; the others ran
+RUN_FAILED = "failed"  # an internal error, or every step that was due failed
 RUN_INTERRUPTED = "interrupted"  # found still in progress by a later run: the process died
 
 
