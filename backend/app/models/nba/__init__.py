@@ -21,14 +21,23 @@ app/core/prospective.py's protect_frozen_record):
 - Reference/result data, corrected in place: teams, players, games, game logs
   (plus the schedule-sync checkpoint, which is operational bookkeeping).
 - Append-only observations of the outside world, never edited: availability
-  reports, prop quotes. Each carries `observed_at` — when THIS system
-  learned it — which is what the as-of boundary filters on.
+  reports, team roster/depth-chart observations, game lineup and schedule
+  observations, evidence polls, prop quotes. Each carries `observed_at` —
+  when THIS system learned it — which is what the as-of boundary filters on.
+- Operational bookkeeping, updated in place: live-cycle runs.
 - Frozen model output: projections (fully frozen) and predictions (frozen
   at entry; the closing-line group and the settlement group are each
   written exactly once afterwards).
 """
 
 from app.core.prospective import protect_frozen_record
+from app.models.nba.evidence import (
+    NbaEvidencePoll,
+    NbaGameLineupObservation,
+    NbaGameScheduleObservation,
+    NbaLiveCycleRun,
+    NbaTeamObservation,
+)
 from app.models.nba.game import COMPETITIVE_SEASON_TYPES, NbaBoxScoreState, NbaGame, NbaGameStatus, NbaSeasonType
 from app.models.nba.ingestion_checkpoint import NbaScheduleSyncDate
 from app.models.nba.player import NbaPlayer
@@ -40,6 +49,10 @@ from app.models.nba.prop_quote import NbaPropQuote
 from app.models.nba.team import NbaTeam
 
 protect_frozen_record(NbaPlayerAvailabilityReport)
+protect_frozen_record(NbaEvidencePoll)
+protect_frozen_record(NbaTeamObservation)
+protect_frozen_record(NbaGameLineupObservation)
+protect_frozen_record(NbaGameScheduleObservation)
 protect_frozen_record(NbaPropQuote)
 protect_frozen_record(NbaPropProjection)
 protect_frozen_record(
@@ -59,6 +72,11 @@ __all__ = [
     "NbaPlayerGameLog",
     "NbaPlayerAvailabilityReport",
     "NbaAvailabilityStatus",
+    "NbaEvidencePoll",
+    "NbaTeamObservation",
+    "NbaGameLineupObservation",
+    "NbaGameScheduleObservation",
+    "NbaLiveCycleRun",
     "NbaPropQuote",
     "NbaPropProjection",
     "NbaPropPrediction",

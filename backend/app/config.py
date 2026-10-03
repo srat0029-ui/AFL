@@ -60,6 +60,26 @@ class Settings(BaseSettings):
     # (prop_odds_quota.py) regardless of how often it's called.
     live_cycle_interval_minutes: int = 15
 
+    # NBA live evidence cycle (app/nba/live_cycle.py). Each value is the
+    # MINIMUM time between two polls of that kind: the cycle can be run as
+    # often as you like and a step that is not yet due is skipped. These are
+    # deliberately conservative development defaults against an unofficial
+    # source; they are the only place polling frequency is set, so tightening
+    # them near tip-off later is a configuration change, not a code change.
+    nba_poll_availability_minutes: int = 30
+    nba_poll_schedule_minutes: int = 360
+    nba_poll_team_rosters_minutes: int = 1440
+    nba_poll_game_lineup_minutes: int = 15
+    # Schedule window refreshed each time, in days either side of today.
+    nba_schedule_lookback_days: int = 3
+    nba_schedule_lookahead_days: int = 14
+    # A game's listed lineup is observed from this long before tip-off until
+    # this long after it.
+    nba_lineup_window_before_hours: float = 6.0
+    nba_lineup_window_after_hours: float = 1.0
+    # Seconds between requests to the NBA stats source.
+    nba_request_interval_seconds: float = 0.5
+
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]

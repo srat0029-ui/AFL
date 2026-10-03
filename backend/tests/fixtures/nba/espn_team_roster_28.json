@@ -1,0 +1,342 @@
+{
+ "timestamp": "2026-10-02T13:24:10Z",
+ "status": "success",
+ "season": {
+  "year": 2027,
+  "displayName": "2026-27",
+  "type": 1,
+  "name": "Preseason"
+ },
+ "athletes": [
+  {
+   "id": "2993874",
+   "displayName": "Kyle Anderson",
+   "jersey": "12",
+   "position": {
+    "abbreviation": "F"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": [
+    {
+     "status": "Day-To-Day",
+     "date": "2026-10-01T22:56Z"
+    }
+   ]
+  },
+  {
+   "id": "4433134",
+   "displayName": "Scottie Barnes",
+   "jersey": "4",
+   "position": {
+    "abbreviation": "F"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4395625",
+   "displayName": "RJ Barrett",
+   "jersey": "9",
+   "position": {
+    "abbreviation": "F"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4431893",
+   "displayName": "Jamison Battle",
+   "jersey": "77",
+   "position": {
+    "abbreviation": "F"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": [
+    {
+     "status": "Day-To-Day",
+     "date": "2026-10-01T23:00Z"
+    }
+   ]
+  },
+  {
+   "id": "4432586",
+   "displayName": "Nate Bittle",
+   "jersey": null,
+   "position": {
+    "abbreviation": "C"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": [
+    {
+     "status": "Day-To-Day",
+     "date": "2026-09-10T01:30Z"
+    }
+   ]
+  },
+  {
+   "id": "4432737",
+   "displayName": "Jaden Bradley",
+   "jersey": null,
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "5149115",
+   "displayName": "Allen Graves",
+   "jersey": "22",
+   "position": {
+    "abbreviation": "F"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": [
+    {
+     "status": "Day-To-Day",
+     "date": "2026-10-01T22:47Z"
+    }
+   ]
+  },
+  {
+   "id": "4590360",
+   "displayName": "Chucky Hepburn",
+   "jersey": "24",
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": [
+    {
+     "status": "Day-To-Day",
+     "date": "2026-07-19T22:26Z"
+    }
+   ]
+  },
+  {
+   "id": "4432190",
+   "displayName": "Andre Jackson Jr.",
+   "jersey": "44",
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4431684",
+   "displayName": "Trayce Jackson-Davis",
+   "jersey": "32",
+   "position": {
+    "abbreviation": "F"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4395623",
+   "displayName": "Trey Jemison III",
+   "jersey": "50",
+   "position": {
+    "abbreviation": "C"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4279143",
+   "displayName": "Tyreke Key",
+   "jersey": null,
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "6450",
+   "displayName": "Kawhi Leonard",
+   "jersey": "2",
+   "position": {
+    "abbreviation": "F"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4702656",
+   "displayName": "Alijah Martin",
+   "jersey": "55",
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": [
+    {
+     "status": "Day-To-Day",
+     "date": "2026-07-19T22:30Z"
+    }
+   ]
+  },
+  {
+   "id": "5093267",
+   "displayName": "Collin Murray-Boyles",
+   "jersey": "30",
+   "position": {
+    "abbreviation": "F"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "3134908",
+   "displayName": "Jakob Poeltl",
+   "jersey": "19",
+   "position": {
+    "abbreviation": "C"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4395724",
+   "displayName": "Immanuel Quickley",
+   "jersey": "5",
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4432241",
+   "displayName": "Jamal Shead",
+   "jersey": "23",
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4397784",
+   "displayName": "Malachi Smith",
+   "jersey": "18",
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  },
+  {
+   "id": "4684272",
+   "displayName": "Ja'Kobe Walter",
+   "jersey": "14",
+   "position": {
+    "abbreviation": "G"
+   },
+   "status": {
+    "id": "1",
+    "name": "Active",
+    "type": "active",
+    "abbreviation": "Active"
+   },
+   "injuries": []
+  }
+ ]
+}

@@ -58,9 +58,9 @@ def test_availability_known_at_uses_when_we_observed_it_not_when_it_was_publishe
     # Published at T-5h, but we only fetched it at T-1h.
     report(NbaAvailabilityStatus.OUT, TIPOFF - timedelta(hours=1), published_at=TIPOFF - timedelta(hours=5))
 
-    assert availability_known_at(db_session, player.id, TIPOFF - timedelta(hours=9)) is None
-    assert availability_known_at(db_session, player.id, TIPOFF - timedelta(hours=3)).status == "questionable"
-    assert availability_known_at(db_session, player.id, TIPOFF - timedelta(minutes=30), game_id=game.id).status == "out"
+    assert availability_known_at(db_session, player.id, TIPOFF - timedelta(hours=9)).observation is None
+    assert availability_known_at(db_session, player.id, TIPOFF - timedelta(hours=3)).observation.status == "questionable"
+    assert availability_known_at(db_session, player.id, TIPOFF - timedelta(minutes=30)).observation.status == "out"
 
 
 def test_latest_quotes_known_at_returns_one_row_per_bookmaker_line_and_side(db_session):

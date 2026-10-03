@@ -16,12 +16,15 @@ from app.core.prospective import ensure_utc
 from app.models.nba import (
     NbaGame,
     NbaPlayer,
+    NbaGameLineupObservation,
+    NbaGameScheduleObservation,
     NbaPlayerAvailabilityReport,
     NbaPlayerGameLog,
     NbaPropPrediction,
     NbaPropProjection,
     NbaPropQuote,
     NbaTeam,
+    NbaTeamObservation,
 )
 from app.nba import SPORT_CODE
 from app.nba.markets import NbaPropMarket
@@ -51,7 +54,10 @@ _DATASETS = [
     ("players", "Players", NbaPlayer, None),
     ("games", "Games", NbaGame, NbaGame.scheduled_start),
     ("player_game_logs", "Player game logs", NbaPlayerGameLog, NbaPlayerGameLog.recorded_at),
-    ("availability_reports", "Injury / availability reports", NbaPlayerAvailabilityReport, NbaPlayerAvailabilityReport.observed_at),
+    ("availability_reports", "Injury / availability observations", NbaPlayerAvailabilityReport, NbaPlayerAvailabilityReport.observed_at),
+    ("team_observations", "Team roster / depth-chart observations", NbaTeamObservation, NbaTeamObservation.observed_at),
+    ("game_lineup_observations", "Game lineup observations", NbaGameLineupObservation, NbaGameLineupObservation.observed_at),
+    ("game_schedule_observations", "Game schedule observations", NbaGameScheduleObservation, NbaGameScheduleObservation.observed_at),
     ("prop_quotes", "Bookmaker prop quotes", NbaPropQuote, NbaPropQuote.observed_at),
     ("projections", "Model projections", NbaPropProjection, NbaPropProjection.generated_at),
     ("predictions", "Frozen predictions", NbaPropPrediction, NbaPropPrediction.predicted_at),

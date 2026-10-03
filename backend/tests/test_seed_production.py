@@ -127,7 +127,7 @@ def test_check_target_alembic_head_rejects_mismatched_head():
 def test_real_migration_head_matches_known_tip():
     # If this ever fails after a genuine new migration is added, that's
     # expected - update the expected value, don't relax the guard.
-    assert sp._real_migration_head() == "becc7fa40ce6"
+    assert sp._real_migration_head() == "90343a82a7c8"
 
 
 def test_check_tables_empty_passes_on_empty_db(db_session):

@@ -9,6 +9,10 @@ into the NBA tables, plus a validation report over what is stored.
   backfill          sync-teams, then sync-schedule and sync-box-scores across
                     a span of seasons
   validate          data-quality report over everything stored
+  run-live-cycle    one pass of the live evidence cycle: schedule changes,
+                    injury/availability feed, team rosters and depth charts,
+                    lineups for games near tip-off, box scores for games
+                    that have finished (see app/nba/live_cycle.py)
 
 Usage:
   python -m app.nba.cli sync-teams
@@ -16,6 +20,7 @@ Usage:
   python -m app.nba.cli sync-box-scores --from 2026-01-15 --to 2026-01-17
   python -m app.nba.cli backfill --from-season 2015 --to-season 2026
   python -m app.nba.cli validate
+  python -m app.nba.cli run-live-cycle
 
 Every command is idempotent, and `backfill` is resumable: if it is
 interrupted, run the same command again and it continues from where it
@@ -127,6 +132,8 @@ def main(argv: list[str] | None = None) -> int:
     backfill.add_argument("--to-season", type=int, required=True, help="last season's starting year")
     for p in (backfill, *[sub.choices[n] for n in ("sync-schedule", "sync-box-scores")]):
         p.add_argument("--request-interval", type=float, default=DEFAULT_REQUEST_INTERVAL_SECONDS, help="seconds to pause between provider requests")
+    live = sub.add_parser("run-live-cycle")
+    live.add_argument("--force", action="store_true", help="poll everything now, ignoring the minimum intervals")
     validate = sub.add_parser("validate")
     validate.add_argument("--json", action="store_true", help="print the report as JSON")
     args = parser.parse_args(argv)
@@ -140,6 +147,21 @@ def main(argv: list[str] | None = None) -> int:
             report = validate_nba_data(db)
             print(report.to_json() if args.json else format_report(report))
             return 0
+
+        if args.command == "run-live-cycle":
+            from app.config import get_settings
+            from app.nba.live_cycle import STEP_FAILED, run_live_cycle
+            from app.providers.nba.espn_evidence import EspnNbaEvidenceProvider
+
+            interval = get_settings().nba_request_interval_seconds
+            run = run_live_cycle(
+                db, EspnNbaProvider(request_interval_seconds=interval), EspnNbaEvidenceProvider(request_interval_seconds=interval),
+                source=PROVIDER_NAME, force=args.force,
+            )
+            print(f"NBA live cycle run {run.id}: {run.status}")
+            for step in run.steps:
+                print(f"  {step['step']:<14} {step['status']:<8} {step['seconds']:>6}s  {step['detail']}")
+            return 1 if any(step["status"] == STEP_FAILED for step in run.steps) else 0
 
         provider = EspnNbaProvider(request_interval_seconds=getattr(args, "request_interval", DEFAULT_REQUEST_INTERVAL_SECONDS))
         if args.command == "sync-teams":

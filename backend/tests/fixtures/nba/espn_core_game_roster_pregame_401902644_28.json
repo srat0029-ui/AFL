@@ -1,0 +1,130 @@
+{
+ "entries": [
+  {
+   "playerId": 6450,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/6450/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 2993874,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/2993874/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4395625,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4395625/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4431684,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4431684/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4431893,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4431893/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4433134,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4433134/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 5093267,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/5093267/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 5149115,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/5149115/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 3134908,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/3134908/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4395623,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4395623/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4432586,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4432586/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4279143,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4279143/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4395724,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4395724/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4397784,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4397784/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4432190,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4432190/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4432241,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4432241/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4432737,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4432737/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4590360,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4590360/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4684272,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4684272/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4702656,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4702656/projections?lang=en"
+   }
+  },
+  {
+   "playerId": 4433138,
+   "projections": {
+    "$ref": "http://sports.core.api.espn.com/v2/sports/basketball/leagues/nba/events/401902644/competitions/401902644/competitors/28/roster/4433138/projections?lang=en"
+   }
+  }
+ ]
+}

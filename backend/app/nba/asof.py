@@ -10,8 +10,11 @@ call site.
 
 Each kind of information has its own "known at" rule:
 
-- Availability reports and prop quotes carry `observed_at` (when we fetched
-  them). Known iff observed_at <= cutoff.
+- Availability reports, team roster and depth-chart observations, game
+  lineup and schedule observations, and prop quotes all carry `observed_at`
+  (when we fetched them). Known iff observed_at <= cutoff. The source's own
+  date on an injury entry is NOT used for this: a status dated 4:30pm that
+  we fetched at 6pm was not knowledge we held at 5pm.
 - A box score has no trustworthy "learned at" timestamp — a historical
   backfill is recorded years after the game. It is treated as known once
   the game is final AND tip-off was at least GAME_RESULT_AVAILABILITY_LAG
@@ -24,13 +27,26 @@ uses a different, looser read path than production is not evidence about
 production.
 """
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.prospective import ensure_utc
-from app.models.nba import COMPETITIVE_SEASON_TYPES, NbaGame, NbaGameStatus, NbaPlayerAvailabilityReport, NbaPlayerGameLog, NbaPropQuote
+from app.models.nba import (
+    COMPETITIVE_SEASON_TYPES,
+    NbaEvidencePoll,
+    NbaGame,
+    NbaGameLineupObservation,
+    NbaGameScheduleObservation,
+    NbaGameStatus,
+    NbaPlayerAvailabilityReport,
+    NbaPlayerGameLog,
+    NbaPropQuote,
+    NbaTeamObservation,
+)
+from app.models.nba.evidence import POLL_AVAILABILITY
 
 # An NBA game runs about 2.5 hours; multiple overtimes can push past 3. Four
 # hours is deliberately conservative — erring late only costs a feature
@@ -68,15 +84,114 @@ def game_logs_known_at(
     )
 
 
-def availability_known_at(db: Session, player_id: int, cutoff: datetime, *, game_id: int | None = None) -> NbaPlayerAvailabilityReport | None:
-    """The most recent availability report for the player observed at or
-    before `cutoff` — optionally only reports tied to one game."""
-    stmt = select(NbaPlayerAvailabilityReport).where(
-        NbaPlayerAvailabilityReport.player_id == player_id, NbaPlayerAvailabilityReport.observed_at <= ensure_utc(cutoff)
+@dataclass(frozen=True)
+class AvailabilityEvidence:
+    """What the system knew about one player's availability at a cutoff.
+
+    - `observation` is the latest injury-feed observation for the player
+      made at or before the cutoff, or None if the feed had never listed him
+      while we were watching. None means "no evidence", NOT "healthy".
+    - `observation.is_listed` False means the feed had stopped listing him
+      by then; again no status is implied.
+    - `first_observed_at` is when that state was first seen.
+    - `last_confirmed_at` is the latest successful read of the feed at or
+      before the cutoff - how recently the state was known to still hold.
+      None means the feed had not been read at all by then.
+    """
+
+    cutoff: datetime
+    observation: NbaPlayerAvailabilityReport | None
+    first_observed_at: datetime | None
+    last_confirmed_at: datetime | None
+
+    @property
+    def is_listed(self) -> bool:
+        return self.observation is not None and self.observation.is_listed
+
+
+def _last_poll_at(db: Session, kind: str, cutoff: datetime, scope: str | None = None) -> datetime | None:
+    stmt = select(func.max(NbaEvidencePoll.observed_at)).where(NbaEvidencePoll.kind == kind, NbaEvidencePoll.observed_at <= cutoff)
+    if scope is not None:
+        stmt = stmt.where(NbaEvidencePoll.scope == scope)
+    latest = db.scalar(stmt)
+    return ensure_utc(latest) if latest is not None else None
+
+
+def availability_known_at(db: Session, player_id: int, cutoff: datetime) -> AvailabilityEvidence:
+    """What was known about a player's availability at `cutoff`: the latest
+    observation made at or before it. An observation made even one second
+    later is invisible, whatever the source's own date on it says."""
+    cutoff = ensure_utc(cutoff)
+    observation = db.scalar(
+        select(NbaPlayerAvailabilityReport)
+        .where(NbaPlayerAvailabilityReport.player_id == player_id, NbaPlayerAvailabilityReport.observed_at <= cutoff)
+        .order_by(NbaPlayerAvailabilityReport.observed_at.desc(), NbaPlayerAvailabilityReport.id.desc())
+        .limit(1)
     )
-    if game_id is not None:
-        stmt = stmt.where(NbaPlayerAvailabilityReport.game_id == game_id)
-    return db.scalar(stmt.order_by(NbaPlayerAvailabilityReport.observed_at.desc(), NbaPlayerAvailabilityReport.id.desc()).limit(1))
+    return AvailabilityEvidence(
+        cutoff=cutoff,
+        observation=observation,
+        first_observed_at=ensure_utc(observation.observed_at) if observation is not None else None,
+        last_confirmed_at=_last_poll_at(db, POLL_AVAILABILITY, cutoff),
+    )
+
+
+def team_availability_known_at(db: Session, team_id: int, cutoff: datetime) -> list[NbaPlayerAvailabilityReport]:
+    """Every player the injury feed was listing under this team at `cutoff`
+    (each player's latest observation at or before it, kept only if he was
+    still listed then and under this team). The basis for teammate-
+    availability features. A teammate absent from the result was not listed
+    - which is not the same as known to be available."""
+    cutoff = ensure_utc(cutoff)
+    latest_ids = (
+        select(func.max(NbaPlayerAvailabilityReport.id))
+        .where(NbaPlayerAvailabilityReport.observed_at <= cutoff)
+        .group_by(NbaPlayerAvailabilityReport.player_id)
+    )
+    return list(
+        db.scalars(
+            select(NbaPlayerAvailabilityReport)
+            .where(NbaPlayerAvailabilityReport.id.in_(latest_ids), NbaPlayerAvailabilityReport.team_id == team_id, NbaPlayerAvailabilityReport.is_listed.is_(True))
+            .order_by(NbaPlayerAvailabilityReport.player_id)
+        ).all()
+    )
+
+
+def team_observation_known_at(db: Session, team_id: int, kind: str, cutoff: datetime) -> NbaTeamObservation | None:
+    """The team's listed roster (kind="roster") or depth chart
+    (kind="depth_chart") as it was last observed at or before `cutoff`."""
+    return db.scalar(
+        select(NbaTeamObservation)
+        .where(NbaTeamObservation.team_id == team_id, NbaTeamObservation.kind == kind, NbaTeamObservation.observed_at <= ensure_utc(cutoff))
+        .order_by(NbaTeamObservation.observed_at.desc(), NbaTeamObservation.id.desc())
+        .limit(1)
+    )
+
+
+def game_lineup_known_at(db: Session, game_id: int, team_id: int, cutoff: datetime) -> NbaGameLineupObservation | None:
+    """What the source listed for one team in one game, as last observed at
+    or before `cutoff`. Check `has_starter_field` before reading starters:
+    well before tip-off the source lists players with no starter
+    information at all."""
+    return db.scalar(
+        select(NbaGameLineupObservation)
+        .where(NbaGameLineupObservation.game_id == game_id, NbaGameLineupObservation.team_id == team_id, NbaGameLineupObservation.observed_at <= ensure_utc(cutoff))
+        .order_by(NbaGameLineupObservation.observed_at.desc(), NbaGameLineupObservation.id.desc())
+        .limit(1)
+    )
+
+
+def game_schedule_known_at(db: Session, game_id: int, cutoff: datetime) -> NbaGameScheduleObservation | None:
+    """The game's status and tip-off time as last observed at or before
+    `cutoff` - what we believed the schedule to be then, which can differ
+    from `nba_games` now if the game was later moved or postponed. None if
+    the game had not been observed by then."""
+    return db.scalar(
+        select(NbaGameScheduleObservation)
+        .where(NbaGameScheduleObservation.game_id == game_id, NbaGameScheduleObservation.observed_at <= ensure_utc(cutoff))
+        .order_by(NbaGameScheduleObservation.observed_at.desc(), NbaGameScheduleObservation.id.desc())
+        .limit(1)
+    )
 
 
 def latest_quotes_known_at(
