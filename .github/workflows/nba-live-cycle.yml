@@ -43,11 +43,12 @@ run-name: >-
 
 on:
   schedule:
-    # BACKUP only; the Cloudflare cron at 4,19,34,49 is primary. Staggered
-    # 7 minutes after it so a late GitHub tick rarely lands on a Cloudflare
-    # run, and offset from the top of the hour (GitHub's own congestion
-    # window) and from the AFL live cycle's minutes (7,22,37,52).
-    - cron: "11,26,41,56 * * * *"
+    # BACKUP only; the Cloudflare cron at 9,24,39,54 is primary. Staggered
+    # 5 minutes after it so a late GitHub tick rarely lands on a Cloudflare
+    # run, and clear of the AFL live cycle's minutes (7,22,37,52). Moved off
+    # :04 / :11 after two hosted-pooler failures ("pooler is shutting down")
+    # at 05:04Z and 06:04Z on 2026-10-04 - a precaution, not a proven cause.
+    - cron: "14,29,44,59 * * * *"
   workflow_dispatch:
     inputs:
       command:
@@ -147,3 +148,17 @@ jobs:
             -e APP_ENV=production \
             -e GITHUB_ACTIONS \
             "$IMAGE" "$@"
+
+      - name: Freeze due V1.5 outlook snapshots
+        # Only after the evidence step, so a snapshot sees this cycle's fresh
+        # rosters / injury feed. Off until the repository variable
+        # NBA_OUTLOOK_SNAPSHOTS_ENABLED is "true" (hosted history, the
+        # serving bundle and the schema must be in place first - see
+        # docs/NBA_HOSTED_PROSPECTIVE.md). Writes only snapshots whose timing
+        # window is due; frozen snapshots are never redone. Runs even if the
+        # evidence step reported stale evidence (the snapshot records that).
+        if: ${{ !cancelled() && vars.NBA_OUTLOOK_SNAPSHOTS_ENABLED == 'true' && (github.event_name != 'workflow_dispatch' || inputs.command == 'run-live-cycle') }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+        run: docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" python -m app.nba.outlooks.cli snapshot

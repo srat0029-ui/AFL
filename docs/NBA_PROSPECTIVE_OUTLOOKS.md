@@ -34,7 +34,8 @@ tip-off as scheduled at the cutoff). It records:
 | `information_cutoff` | the instant actually used: nothing observed later is read |
 | `box_score_cutoff` | `information_cutoff` − 4h; latest tip-off a feature box score may have |
 | `generated_at` | when the snapshot was written (the prediction timestamp) |
-| `status`, `reason` | `produced` / `partial` / `missing_data` / `missed_window`, with an explanation |
+| `status`, `reason` | `produced` / `stale` / `partial` / `missing_data` / `missed_window`, with an explanation |
+| `evidence_freshness` | per source: age at the cutoff and fresh / stale / unavailable class, plus the limits applied (see docs/NBA_HOSTED_PROSPECTIVE.md section 5) |
 | `roster_evidence` | per team: the roster observation used (id, observed_at, number of players, age in minutes), or null |
 | `availability_feed_last_read_at` | the latest injury-feed read at or before the cutoff |
 | `model_versions` | run id, model name, model version, artifact SHA-256 and code version for minutes, participation, rotation and reconciliation |
@@ -71,7 +72,7 @@ each label:
 | Situation | What happens |
 |---|---|
 | before the target cutoff | nothing |
-| within target + 20 minutes (configurable tolerance) | produced now; `information_cutoff` = now |
+| within target + tolerance (min(30 min, offset / 2): 30 minutes for T-24h, T-4h and T-1h; 15 minutes for T-30m) | produced now; `information_cutoff` = now |
 | later than that | recorded once as `missed_window`, with no player rows: a "T-24h" made 3 hours before tip-off is not a T-24h |
 | already recorded | skipped; frozen, never redone |
 
@@ -90,7 +91,7 @@ pregame information. Players who left are gone, and traded players appear for
 their new team (with `traded = 1` and `games_with_team = 0` in their
 features). A roster observed after the cutoff is invisible.
 
-If a team has no roster observation by the cutoff, it gets **no rows**. The
+If a team has no roster observation by the cutoff, or only one older than 7 days, it gets **no rows**. A roster older than 36 hours is used, but the snapshot is labelled `stale`. The
 snapshot is `partial`, or `missing_data` if neither team has one, with the
 reason; no roster is guessed. Roster players unknown to the database are
 counted, not predicted. Players with no history get `p_play` and

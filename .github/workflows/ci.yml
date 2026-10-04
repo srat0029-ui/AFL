@@ -141,6 +141,7 @@ jobs:
             tests/test_nba_minutes_prospective.py \
             tests/test_nba_rotation_prospective.py \
             tests/test_nba_outlook_snapshots.py \
+            tests/test_nba_hosted_prospective.py \
             tests/test_nba_asof.py \
             tests/test_nba_foundation.py \
             tests/test_nba_ingestion.py \
@@ -235,6 +236,13 @@ jobs:
         # step silently, only discovered against Layerbase. This makes
         # that a build-time failure instead of a runtime one.
         run: docker run --rm afl-backend:ci curl --version
+
+      - name: Verify the canonical NBA serving models are in the built image
+        # The fitted V1 / rotation models are shipped in app/nba/serving_models
+        # (see app/nba/serving_bundle.py). This proves, inside the exact image,
+        # that they are present, unmodified (SHA-256) and reproduce their
+        # golden predictions on Linux - production must never retrain them.
+        run: docker run --rm afl-backend:ci python -m app.nba.outlooks.cli verify-serving-models
 
       - name: Log in to GHCR
         if: github.event_name == 'push' && github.ref == 'refs/heads/master'

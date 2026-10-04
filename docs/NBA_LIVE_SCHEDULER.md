@@ -19,7 +19,7 @@ first two; none has been merged.
 
 | | |
 | --- | --- |
-| Trigger | **Primary:** a Cloudflare Worker cron at `4,19,34,49 * * * *` that calls `workflow_dispatch` (see [Cloudflare trigger](#cloudflare-trigger)). **Backup:** GitHub's own `schedule` at `11,26,41,56 * * * *`, staggered 7 minutes after it. Plus manual `workflow_dispatch`. |
+| Trigger | **Primary:** a Cloudflare Worker cron at `9,24,39,54 * * * *` that calls `workflow_dispatch` (see [Cloudflare trigger](#cloudflare-trigger)). **Backup:** GitHub's own `schedule` at `14,29,44,59 * * * *`, staggered 5 minutes after it. (Moved from 4,19,34,49 / 11,26,41,56 after two hosted-pooler failures at :04 on 2026-10-04 - a precaution; the Worker's new cron takes effect only when it is redeployed.) Plus manual `workflow_dispatch`. |
 | What it runs | `python -m app.nba.cli run-live-cycle` inside a pinned CI-built image, with `DATABASE_URL` from the existing repository secret |
 | Manual options | `run-live-cycle` (with optional `force`), `schema-status` (read-only), `evidence-health` (read-only) |
 | Concurrency | `group: nba-live-cycle`, `cancel-in-progress: false` |
@@ -81,7 +81,7 @@ cron, `cloudflare/nba-live-cycle-trigger/`, whose only job is to call
 GitHub's workflow-dispatch API:
 
 ```
-Cloudflare cron (4,19,34,49 * * * *, UTC)
+Cloudflare cron (9,24,39,54 * * * *, UTC)
   -> POST /repos/srat0029-ui/AFL/actions/workflows/nba-live-cycle.yml/dispatches
      ref=master, inputs: command=run-live-cycle, force=false,
                          trigger=cloudflare-cron, dispatch_id=cf-YYYYMMDDTHHMMZ
@@ -127,7 +127,7 @@ repository.
    `dispatch_error: missing GITHUB_DISPATCH_TOKEN` and makes no request.
 4. Test once without waiting for the cron:
    `npx wrangler dev --remote --test-scheduled`, then in another terminal
-   `curl "http://localhost:8787/__scheduled?cron=4,19,34,49+*+*+*+*"`.
+   `curl "http://localhost:8787/__scheduled?cron=9,24,39,54+*+*+*+*"`.
    This makes one real dispatch. If the remote session does not see the
    deployed secret, run plain `npx wrangler dev --test-scheduled` with the
    token in a local `.dev.vars` file (gitignored) instead.

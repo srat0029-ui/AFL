@@ -12,8 +12,8 @@ preview_urls = false
 
 [triggers]
 # Every 15 minutes, offset from the top of the hour. The GitHub backup
-# schedule runs 7 minutes later (11,26,41,56). Cloudflare crons run in UTC.
-crons = ["4,19,34,49 * * * *"]
+# schedule runs 5 minutes later (14,29,44,59). Cloudflare crons run in UTC.
+crons = ["9,24,39,54 * * * *"]
 
 # Keep console output so trigger/dispatch outcomes can be read back in
 # the dashboard (Workers > nba-live-cycle-trigger > Logs).

@@ -319,10 +319,18 @@ def points_discrepancies(game: NbaGame, box: NbaBoxScore, source_team_id_by_team
     return problems
 
 
-def ingest_box_score(db: Session, game: NbaGame, box: NbaBoxScore, report: BoxScoreIngestionReport | None = None) -> BoxScoreIngestionReport:
+def ingest_box_score(
+    db: Session, game: NbaGame, box: NbaBoxScore, report: BoxScoreIngestionReport | None = None, *, follow_latest: bool = True
+) -> BoxScoreIngestionReport:
     """Write one game's player logs, and record the outcome on the game.
     Stores nothing unless the box score reports the game as final AND its
-    player points add up to each team's score."""
+    player points add up to each team's score.
+
+    follow_latest=False leaves players' display fields (current team, name,
+    position, last_game_at) untouched - used by historical backfills into a
+    database whose player rows already carry CURRENT information from the
+    live evidence feeds, so that an old box score can never move a player
+    back to a former team. New players are still created."""
     report = report or BoxScoreIngestionReport()
     report.games_seen += 1
     report.lines_malformed += box.malformed_rows
@@ -369,7 +377,8 @@ def ingest_box_score(db: Session, game: NbaGame, box: NbaBoxScore, report: BoxSc
             db.flush()
             players[line.source_player_id] = player
             report.players_created += 1
-        _follow_latest_game(player, line, team, game, report)
+        if follow_latest:
+            _follow_latest_game(player, line, team, game, report)
 
         log = logs.get(player.id)
         if log is None:
@@ -493,6 +502,7 @@ def sync_box_scores(
     season_types: tuple[str, ...] = COMPETITIVE_SEASON_TYPES,
     limit: int | None = None,
     on_progress: Callable[[NbaGame, BoxScoreIngestionReport], None] | None = None,
+    follow_latest: bool = True,
 ) -> BoxScoreIngestionReport:
     """Fetch box scores for FINAL games dated in [start, end].
 
@@ -527,7 +537,7 @@ def sync_box_scores(
             db.rollback()
             _set_box_state(db, game, NbaBoxScoreState.FAILED, _utcnow())
         else:
-            ingest_box_score(db, game, box, report)
+            ingest_box_score(db, game, box, report, follow_latest=follow_latest)
         if on_progress is not None:
             on_progress(game, report)
     return report

@@ -474,9 +474,9 @@ def test_a_locked_cycle_exits_zero_without_doing_anything(db_session):
 
 def test_migration_status_reports_pending_revisions_in_order(db_session, monkeypatch):
     status = migration_status(db_session)
-    assert status.code_head == "72256bdebf34"
+    assert status.code_head == "dd83e713f375"
     if status.database_revision is None:  # a create_all test database has no revision at all
-        assert not status.is_current and [rev for rev, _ in status.pending][-7:] == ["04b59a8a329c", "1e453acf52cb", "becc7fa40ce6", "90343a82a7c8", "47742ee9eb7a", "c133d5a7a11e", "72256bdebf34"]
+        assert not status.is_current and [rev for rev, _ in status.pending][-8:] == ["04b59a8a329c", "1e453acf52cb", "becc7fa40ce6", "90343a82a7c8", "47742ee9eb7a", "c133d5a7a11e", "72256bdebf34", "dd83e713f375"]
 
 
 # --- monitoring ------------------------------------------------------------
@@ -530,7 +530,7 @@ def test_status_api_carries_live_evidence_health(client, db_session):
 
 def test_workflow_is_gated_serialised_and_uses_the_existing_database_secret():
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    assert 'cron: "11,26,41,56 * * * *"' in workflow
+    assert 'cron: "14,29,44,59 * * * *"' in workflow
     assert "workflow_dispatch:" in workflow
     assert "group: nba-live-cycle" in workflow and "cancel-in-progress: false" in workflow
     assert "vars.NBA_LIVE_CYCLE_ENABLED == 'true'" in workflow
@@ -545,7 +545,7 @@ def test_cloudflare_dispatch_is_gated_like_the_schedule():
     automated dispatch must honour NBA_LIVE_CYCLE_ENABLED, while a human
     dispatch (trigger left at its default) still always runs."""
     workflow = WORKFLOW.read_text(encoding="utf-8")
-    assert 'cron: "11,26,41,56 * * * *"' in workflow  # GitHub schedule kept as the backup trigger
+    assert 'cron: "14,29,44,59 * * * *"' in workflow  # GitHub schedule kept as the backup trigger
     assert "trigger:" in workflow and "default: manual" in workflow
     assert "dispatch_id:" in workflow
     assert (

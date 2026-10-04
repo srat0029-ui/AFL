@@ -182,7 +182,7 @@ def roster_evidence_for(db: Session, team_id: int, cutoff: datetime) -> dict | N
 
 
 def compute_outlooks(
-    db: Session, serving: ServingModels, games: pd.DataFrame, logs: pd.DataFrame, upcoming: pd.DataFrame, now: datetime, *, require_roster: bool = False
+    db: Session, serving: ServingModels, games: pd.DataFrame, logs: pd.DataFrame, upcoming: pd.DataFrame, now: datetime, *, require_roster: bool = False, allowed_teams: set[int] | None = None
 ) -> tuple[pd.DataFrame, dict, dict]:
     """Learned V1.5 quantities for every candidate in `upcoming` games, as of
     `now`. Returns (rows, skipped counts, roster evidence per team).
@@ -203,6 +203,8 @@ def compute_outlooks(
     cands = candidate_rows(db, upcoming, played, games, now)
     if require_roster:
         cands = cands[cands["team_source"] == TEAM_SOURCE_ROSTER]
+    if allowed_teams is not None:  # e.g. teams whose roster evidence is too old are excluded entirely
+        cands = cands[cands["team_id"].isin(allowed_teams)]
         skipped["teams_without_roster_evidence"] = sorted(t for t, ev in roster_ev.items() if ev is None)
     unknown = cands["player_id"].isna()
     skipped["unknown_player"] = int(unknown.sum())

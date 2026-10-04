@@ -1,0 +1,524 @@
+{
+ "bundle_version": "v1.5-canonical-1",
+ "note": "Canonical fitted serving models exported from the registry rows that produced the published results. Never retrained here.",
+ "models": [
+  {
+   "key": "minutes",
+   "source_local_run_id": 36,
+   "run_key": "minutes-v1.0:hgb:serving:20261003T121144Z",
+   "model_name": "hgb",
+   "model_version": "minutes-v1.0",
+   "purpose": "serving",
+   "code_version": "fad1dc7b47b8abda2f1eacccdb1244e738ce2c39",
+   "artifact_sha256": "cef5829d526f47a66ee5bdb4593cae9228c4109ed4450bcb7a61f3e2c919e0c6",
+   "notes": "Model V1 serving model: fitted on every eligible played row 2018-19..2025-26. Injury/availability evidence deliberately excluded.",
+   "dataset_cutoff": "2026-06-14 00:30:00.000000",
+   "run_at": "2026-10-03 12:18:53.024477",
+   "training_seasons": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "evaluation_seasons": [],
+   "features": [
+    "min_last1",
+    "min_mean3",
+    "min_mean5",
+    "min_mean10",
+    "min_median10",
+    "min_std10",
+    "min_ewm",
+    "min_max5",
+    "min_min5",
+    "career_games",
+    "season_mean",
+    "season_games",
+    "prev_season_mean",
+    "days_since_played",
+    "team_games_missed",
+    "started_last",
+    "start_rate5",
+    "start_rate10",
+    "games_since_start",
+    "dnp_last_listed",
+    "dnp_rate10",
+    "played_streak",
+    "share_mean5",
+    "rank_mean5",
+    "games_with_team",
+    "team_min_mean5",
+    "traded",
+    "team_rotation5",
+    "team_vacated_last",
+    "last_margin",
+    "is_home",
+    "rest_days",
+    "back_to_back",
+    "games_prev_7d",
+    "opp_rest_days",
+    "opp_back_to_back",
+    "is_playoffs",
+    "is_play_in",
+    "season_progress",
+    "team_net",
+    "opp_net",
+    "abs_net_diff"
+   ],
+   "hyperparameters": {
+    "max_leaf_nodes": 31,
+    "max_iter": 500,
+    "learning_rate": 0.05
+   },
+   "metrics": {
+    "selection": {
+     "chosen": "hgb",
+     "ranking_on_selection_folds": [
+      {
+       "model": "lgbm",
+       "pooled_selection_mae": 4.831487059467912
+      },
+      {
+       "model": "hgb",
+       "pooled_selection_mae": 4.839073041083748
+      },
+      {
+       "model": "random_forest",
+       "pooled_selection_mae": 4.881900967927392
+      },
+      {
+       "model": "ridge",
+       "pooled_selection_mae": 4.938703582848892
+      }
+     ]
+    },
+    "walk_forward_pooled_test": {
+     "n": 56494,
+     "mae": 4.742201888895052,
+     "rmse": 6.204549602834525,
+     "bias": 0.10335516699865854,
+     "median_ae": 3.7732467897468114,
+     "within_2": 0.28252557793748007,
+     "within_4": 0.5246043827663115,
+     "within_6": 0.7049598187418132
+    }
+   },
+   "uncertainty": {
+    "bands": [
+     0.0,
+     10.0,
+     18.0,
+     24.0,
+     30.0,
+     34.0,
+     61.0
+    ],
+    "labels": [
+     "<10",
+     "10-18",
+     "18-24",
+     "24-30",
+     "30-34",
+     "34+"
+    ],
+    "table": {
+     "<10": {
+      "p10": -6.261490425129362,
+      "p25": -4.517635904063864,
+      "p50": -1.9963637265001397,
+      "p75": 2.1892728204497094,
+      "p90": 8.086815653191545,
+      "n": 16919,
+      "std": 6.130152147844749
+     },
+     "10-18": {
+      "p10": -9.057198093201452,
+      "p25": -5.273368172845537,
+      "p50": -0.604755989167753,
+      "p75": 4.13142904141208,
+      "p90": 9.21162860446066,
+      "n": 35746,
+      "std": 7.121544777536397
+     },
+     "18-24": {
+      "p10": -8.075374745394917,
+      "p25": -4.099678919533726,
+      "p50": -0.0861640201188294,
+      "p75": 4.207502837937595,
+      "p90": 8.451437684216199,
+      "n": 32591,
+      "std": 6.614905922676722
+     },
+     "24-30": {
+      "p10": -7.622077268453133,
+      "p25": -3.8907306312668304,
+      "p50": 0.17901323849218542,
+      "p75": 3.9488414532446363,
+      "p90": 7.2833425972402885,
+      "n": 35721,
+      "std": 6.102436939181521
+     },
+     "30-34": {
+      "p10": -6.939890115206023,
+      "p25": -3.031892640961461,
+      "p50": 0.6061190097227236,
+      "p75": 3.4959252182743477,
+      "p90": 6.0122838026603045,
+      "n": 27182,
+      "std": 5.487703808861973
+     },
+     "34+": {
+      "p10": -6.275250788022003,
+      "p25": -2.4414950993303606,
+      "p50": 0.6543004044230756,
+      "p75": 2.99018205742345,
+      "p90": 5.116408075746851,
+      "n": 16839,
+      "std": 5.085782920073715
+     }
+    },
+    "kind": "empirical_residual_quantiles_by_predicted_band"
+   },
+   "artifact_file": "minutes-v1.0-hgb-20261003T121144Z.pkl",
+   "golden_outputs": [
+    24.57723941602602,
+    22.857926751265722,
+    23.90918789960286,
+    17.7536176268508,
+    25.592519482565457,
+    9.208324191765882
+   ]
+  },
+  {
+   "key": "participation",
+   "source_local_run_id": 43,
+   "run_key": "rotation-v1.0:participation:hgb:serving:20261004T050400Z",
+   "model_name": "participation_hgb",
+   "model_version": "rotation-v1.0",
+   "purpose": "serving",
+   "code_version": "ed4955ae64ff4964ae526bfd808526204509e0e3",
+   "artifact_sha256": "f5a0fc5f54f886d2921519f954d15988e9ee04a2f0f2a43b0225496ab77ecf89",
+   "notes": "participation classifier (y_play) on the reconstructed-roster universe; historically reconstructable features only",
+   "dataset_cutoff": "2026-06-14 00:30:00.000000",
+   "run_at": "2026-10-04 05:27:49.541821",
+   "training_seasons": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "evaluation_seasons": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "features": [
+    "min_last1",
+    "min_mean3",
+    "min_mean5",
+    "min_mean10",
+    "min_median10",
+    "min_std10",
+    "min_ewm",
+    "min_max5",
+    "min_min5",
+    "career_games",
+    "season_mean",
+    "season_games",
+    "prev_season_mean",
+    "days_since_played",
+    "team_games_missed",
+    "started_last",
+    "start_rate5",
+    "start_rate10",
+    "games_since_start",
+    "dnp_last_listed",
+    "dnp_rate10",
+    "played_streak",
+    "share_mean5",
+    "rank_mean5",
+    "games_with_team",
+    "team_min_mean5",
+    "traded",
+    "team_rotation5",
+    "team_vacated_last",
+    "last_margin",
+    "is_home",
+    "rest_days",
+    "back_to_back",
+    "games_prev_7d",
+    "opp_rest_days",
+    "opp_back_to_back",
+    "is_playoffs",
+    "is_play_in",
+    "season_progress",
+    "team_net",
+    "opp_net",
+    "abs_net_diff",
+    "play_rate5",
+    "min0_mean5",
+    "min0_mean10",
+    "rot_rate10",
+    "listings_known",
+    "team_games_unlisted",
+    "no_history"
+   ],
+   "hyperparameters": {
+    "target": "y_play",
+    "universe": "roster",
+    "max_leaf_nodes": 31,
+    "max_iter": 500
+   },
+   "metrics": {
+    "pooled_test": {
+     "n": 118724,
+     "base_rate": 0.47461338903675754,
+     "mean_p": 0.4755477400594151,
+     "log_loss": 0.29173352957304444,
+     "brier": 0.0900495977595123,
+     "auc": 0.9457189707383638,
+     "ece": 0.005878309529315538
+    },
+    "pooled_selection": {
+     "n": 226945,
+     "base_rate": 0.4765031174954284,
+     "mean_p": 0.47810941142106483,
+     "log_loss": 0.28065536448270434,
+     "brier": 0.08617852866043738,
+     "auc": 0.9494482418457146,
+     "ece": 0.0033340186109696575
+    }
+   },
+   "uncertainty": null,
+   "artifact_file": "rotation-v1.0-participation-hgb-20261004T050400Z.pkl",
+   "golden_outputs": [
+    0.07231547511736687,
+    0.42653197409932964,
+    0.09900151461505724,
+    0.3273574113301958,
+    0.2091859910686087,
+    0.08199450120774524
+   ]
+  },
+  {
+   "key": "rotation_10",
+   "source_local_run_id": 44,
+   "run_key": "rotation-v1.0:rotation_10:hgb:serving:20261004T050400Z",
+   "model_name": "rotation_10_hgb",
+   "model_version": "rotation-v1.0",
+   "purpose": "serving",
+   "code_version": "ed4955ae64ff4964ae526bfd808526204509e0e3",
+   "artifact_sha256": "49afbc2896518cf93c660bb6c2a803936b5188acc6cc1441dd50634e2228e508",
+   "notes": "rotation_10 classifier (y_rot10) on the reconstructed-roster universe; historically reconstructable features only",
+   "dataset_cutoff": "2026-06-14 00:30:00.000000",
+   "run_at": "2026-10-04 05:28:25.864417",
+   "training_seasons": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "evaluation_seasons": [
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "features": [
+    "min_last1",
+    "min_mean3",
+    "min_mean5",
+    "min_mean10",
+    "min_median10",
+    "min_std10",
+    "min_ewm",
+    "min_max5",
+    "min_min5",
+    "career_games",
+    "season_mean",
+    "season_games",
+    "prev_season_mean",
+    "days_since_played",
+    "team_games_missed",
+    "started_last",
+    "start_rate5",
+    "start_rate10",
+    "games_since_start",
+    "dnp_last_listed",
+    "dnp_rate10",
+    "played_streak",
+    "share_mean5",
+    "rank_mean5",
+    "games_with_team",
+    "team_min_mean5",
+    "traded",
+    "team_rotation5",
+    "team_vacated_last",
+    "last_margin",
+    "is_home",
+    "rest_days",
+    "back_to_back",
+    "games_prev_7d",
+    "opp_rest_days",
+    "opp_back_to_back",
+    "is_playoffs",
+    "is_play_in",
+    "season_progress",
+    "team_net",
+    "opp_net",
+    "abs_net_diff",
+    "play_rate5",
+    "min0_mean5",
+    "min0_mean10",
+    "rot_rate10",
+    "listings_known",
+    "team_games_unlisted",
+    "no_history"
+   ],
+   "hyperparameters": {
+    "target": "y_rot10",
+    "universe": "roster",
+    "max_leaf_nodes": 31,
+    "max_iter": 500
+   },
+   "metrics": {
+    "pooled_test": {
+     "n": 118625,
+     "base_rate": 0.4019641728134879,
+     "mean_p": 0.40530264354980994,
+     "log_loss": 0.2627320927280495,
+     "brier": 0.07938351738486425,
+     "auc": 0.954694483618669,
+     "ece": 0.005272621231792743
+    },
+    "pooled_selection": {
+     "n": 226814,
+     "base_rate": 0.4048471434743887,
+     "mean_p": 0.40908029025832787,
+     "log_loss": 0.24996442274344258,
+     "brier": 0.0746219367444652,
+     "auc": 0.9587272586087254,
+     "ece": 0.004276647283050752
+    }
+   },
+   "uncertainty": null,
+   "artifact_file": "rotation-v1.0-rotation_10-hgb-20261004T050400Z.pkl",
+   "golden_outputs": [
+    0.016020062143523642,
+    0.08809321643044946,
+    0.03939401924318308,
+    0.08232889423914933,
+    0.12162701837124204,
+    0.0430176665223086
+   ]
+  },
+  {
+   "key": "reconciliation",
+   "source_local_run_id": 45,
+   "run_key": "rotation-v1.0:reconciliation:serving:20261004T050400Z",
+   "model_name": "reconciliation",
+   "model_version": "rotation-v1.0",
+   "purpose": "serving",
+   "code_version": "ed4955ae64ff4964ae526bfd808526204509e0e3",
+   "artifact_sha256": null,
+   "notes": "Team-minutes reconciliation of V1 conditional minutes over the reconstructed roster. Applied to predictions only if adopted=true.",
+   "dataset_cutoff": "2026-06-14 00:30:00.000000",
+   "run_at": "2026-10-04 05:28:25.983502",
+   "training_seasons": [
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "evaluation_seasons": [
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "features": [],
+   "hyperparameters": {
+    "method": "variance",
+    "budget": "strict_240",
+    "alpha": 0.0,
+    "adopted": false,
+    "universe": "roster",
+    "sigma_by_band": {
+     "<10": 6.130152147844749,
+     "10-18": 7.121544777536397,
+     "18-24": 6.614905922676722,
+     "24-30": 6.102436939181521,
+     "30-34": 5.487703808861973,
+     "34+": 5.085782920073715
+    },
+    "overtime": null
+   },
+   "metrics": {
+    "selection": {
+     "n": 83323,
+     "mae": 4.849381482711755,
+     "rmse": 6.301575049556165,
+     "bias": 0.13080850753359327,
+     "median_ae": 3.917530628565597,
+     "within_2": 0.2703215198684637,
+     "within_4": 0.5088630990242791,
+     "within_6": 0.6945261212390337
+    },
+    "test": {
+     "n": 56249,
+     "mae": 4.735825288959281,
+     "rmse": 6.197709561948264,
+     "bias": 0.10828033220735579,
+     "median_ae": 3.767389639095353,
+     "within_2": 0.2829028071610162,
+     "within_4": 0.5254315632277907,
+     "within_6": 0.7057725470675035
+    },
+    "raw_selection": {
+     "n": 83323,
+     "mae": 4.849381482711755,
+     "rmse": 6.301575049556165,
+     "bias": 0.13080850753359327,
+     "median_ae": 3.917530628565597,
+     "within_2": 0.2703215198684637,
+     "within_4": 0.5088630990242791,
+     "within_6": 0.6945261212390337
+    },
+    "raw_test": {
+     "n": 56249,
+     "mae": 4.735825288959281,
+     "rmse": 6.197709561948264,
+     "bias": 0.10828033220735579,
+     "median_ae": 3.767389639095353,
+     "within_2": 0.2829028071610162,
+     "within_4": 0.5254315632277907,
+     "within_6": 0.7057725470675035
+    }
+   },
+   "uncertainty": null,
+   "artifact_file": null
+  }
+ ]
+}

@@ -138,6 +138,13 @@ def main(argv: list[str] | None = None) -> int:
     backfill = sub.add_parser("backfill")
     backfill.add_argument("--from-season", type=int, required=True, help="first season's starting year, e.g. 2015 for 2015-16")
     backfill.add_argument("--to-season", type=int, required=True, help="last season's starting year")
+    backfill.add_argument(
+        "--keep-player-display", action="store_true",
+        help="do not let historical box scores change players' current team / name / position (hosted backfills)",
+    )
+    coverage = sub.add_parser("season-coverage")
+    coverage.add_argument("--season", type=int, required=True, help="season starting year, e.g. 2018 for 2018-19")
+    coverage.add_argument("--min-box-coverage", type=float, default=0.95, help="exit 1 if fewer competitive final games than this have a stored box score")
     for p in (backfill, *[sub.choices[n] for n in ("sync-schedule", "sync-box-scores")]):
         p.add_argument("--request-interval", type=float, default=DEFAULT_REQUEST_INTERVAL_SECONDS, help="seconds to pause between provider requests")
     live = sub.add_parser("run-live-cycle")
@@ -157,6 +164,16 @@ def main(argv: list[str] | None = None) -> int:
             report = validate_nba_data(db)
             print(report.to_json() if args.json else format_report(report))
             return 0
+
+        if args.command == "season-coverage":
+            from app.nba.validation import season_coverage
+
+            report = season_coverage(db, args.season)
+            for line in report["lines"]:
+                print(line)
+            ok = report["box_score_coverage"] >= args.min_box_coverage
+            print(f"box-score coverage {report['box_score_coverage']:.4f} (minimum {args.min_box_coverage}): {'OK' if ok else 'BELOW MINIMUM'}")
+            return 0 if ok else 1
 
         if args.command in ("run-live-cycle", "evidence-health", "schema-status"):
             from app.config import get_settings
@@ -204,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
             boxes = sync_box_scores(
                 db, provider, start, box_end, source=PROVIDER_NAME, refresh=getattr(args, "refresh", False),
                 retry_empty=getattr(args, "retry_empty", False), season_types=season_types, limit=getattr(args, "limit", None), on_progress=_box_progress,
+                follow_latest=not getattr(args, "keep_player_display", False),
             )
             _print_box_scores(boxes)
             failed = failed or bool(boxes.games_failed)
