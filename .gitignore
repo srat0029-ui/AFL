@@ -21,3 +21,6 @@ frontend/.env
 
 # Claude Code local settings (machine/session-specific)
 .claude/settings.local.json
+
+# NBA minutes-model files and row-level predictions (large; reproducible via app.nba.minutes.cli evaluate)
+backend/model_artifacts/

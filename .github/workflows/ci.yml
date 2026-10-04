@@ -138,6 +138,7 @@ jobs:
             tests/test_market_monitor_prospective_operation.py \
             tests/test_market_monitor_prospective_validation.py \
             tests/test_nba_prospective.py \
+            tests/test_nba_minutes_prospective.py \
             tests/test_nba_asof.py \
             tests/test_nba_foundation.py \
             tests/test_nba_ingestion.py \
