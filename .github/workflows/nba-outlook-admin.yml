@@ -9,7 +9,10 @@ name: NBA Outlook Admin
 # - import-serving-models: writes the four canonical serving runs into the
 #   hosted registry (append-only, idempotent). Never trains anything.
 # - snapshot-dry-run: computes the snapshots that would be due now and
-#   prints them; writes nothing.
+#   prints them with timing / rows read / peak memory; writes nothing.
+#   Optional custom labels (dry runs only), e.g. T-372h.
+# - registry: lists the serving runs in the hosted registry (read-only).
+# - db-size: pg_database_size and the largest tables (read-only).
 #
 # Manual dispatch only. Shares the live cycle's concurrency group so it never
 # runs at the same moment as an evidence cycle (each is a minute or two).
@@ -20,8 +23,12 @@ on:
       command:
         description: "What to run"
         type: choice
-        options: [verify-serving-models, import-serving-models, snapshot-dry-run]
+        options: [verify-serving-models, import-serving-models, snapshot-dry-run, registry, db-size]
         default: verify-serving-models
+      labels:
+        description: "snapshot-dry-run only: comma-separated labels (default T-24h,T-4h,T-1h,T-30m)"
+        type: string
+        default: ""
 
 concurrency:
   group: nba-live-cycle
@@ -38,6 +45,7 @@ jobs:
     env:
       IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
       COMMAND: ${{ inputs.command }}
+      LABELS: ${{ inputs.labels }}
     steps:
       - name: Check configuration
         run: |
@@ -53,7 +61,14 @@ jobs:
           case "$COMMAND" in
             verify-serving-models) set -- python -m app.nba.outlooks.cli verify-serving-models ;;
             import-serving-models) set -- python -m app.nba.outlooks.cli import-serving-models ;;
-            snapshot-dry-run) set -- python -m app.nba.outlooks.cli snapshot --dry-run ;;
+            snapshot-dry-run)
+              set -- python -m app.nba.outlooks.cli snapshot --dry-run
+              if [ -n "$LABELS" ]; then
+                case "$LABELS" in *[!T0-9hm,.-]*) echo "::error::labels may contain only T, digits, h, m, '.', '-' and ','"; exit 1 ;; esac
+                set -- "$@" --labels "$LABELS"
+              fi ;;
+            registry) set -- python -m app.nba.outlooks.cli registry ;;
+            db-size) set -- python -m app.nba.outlooks.cli db-size ;;
             *) echo "::error::unknown command '$COMMAND'"; exit 1 ;;
           esac
           docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" "$@"

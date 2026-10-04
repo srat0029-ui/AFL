@@ -116,9 +116,12 @@ class SnapshotRunResult:
     produced: list[dict] = field(default_factory=list)
     recorded_without_rows: list[dict] = field(default_factory=list)
     skipped_existing: int = 0
+    stats: dict = field(default_factory=dict)  # rows read, games / players processed
 
     def summary(self) -> str:
         lines = [f"now {self.now.isoformat()}  with rows {len(self.produced)}  recorded without rows {len(self.recorded_without_rows)}  already frozen {self.skipped_existing}"]
+        if self.stats:
+            lines.append(f"  read/processed: {self.stats}")
         for s in self.produced + self.recorded_without_rows:
             lines.append(f"  game {s['game_id']} {s['label']}: {s['status']} rows={s.get('rows', 0)} {s.get('reason') or ''}")
         return "\n".join(lines)
@@ -193,6 +196,7 @@ def run_due_snapshots(
     now = ensure_utc(now) if now is not None else datetime.now(timezone.utc)
     result = SnapshotRunResult(now=now)
     games = load_games(db)
+    result.stats["schedule_rows_read"] = int(len(games))
     horizon_h = max(s.offset for s in specs).total_seconds() / 3600.0 + 0.01
     upcoming = upcoming_games(games, now, horizon_h)
     if upcoming.empty:
@@ -239,6 +243,7 @@ def run_due_snapshots(
         usable = {int(t) for t, r in fresh["roster"].items() if r["class"] != UNAVAILABLE}
         if logs is None:
             logs = history_for(db, games, upcoming)
+            result.stats["history_rows_read"] = int(len(logs))
         one = upcoming[upcoming["game_id"] == gid]
         feats, skipped, roster_ev = compute_outlooks(db, serving, games, logs, one, now, require_roster=True, allowed_teams=usable)
 
@@ -259,6 +264,8 @@ def run_due_snapshots(
         reason = "; ".join(problems + stale_notes) or None
         counts = {k: v for k, v in skipped.items() if k != "teams_without_roster_evidence"} | {"rows": int(len(feats))}
         info.update(status=status, reason=reason, rows=int(len(feats)))
+        result.stats["games_processed"] = result.stats.get("games_processed", 0) + 1
+        result.stats["players_predicted"] = result.stats.get("players_predicted", 0) + int(len(feats))
         if dry_run:
             info["rows_preview"] = [outlook_record(db, r, now) for _, r in feats.iterrows()]
             info["evidence_freshness"] = fresh

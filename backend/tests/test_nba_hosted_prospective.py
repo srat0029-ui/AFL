@@ -153,5 +153,22 @@ def test_cloudflare_primary_cron_moved_off_04():
 def test_outlook_admin_workflow_is_manual_and_limited():
     wf = (WORKFLOWS / "nba-outlook-admin.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in wf and "schedule:" not in wf
-    assert "options: [verify-serving-models, import-serving-models, snapshot-dry-run]" in wf
+    assert "options: [verify-serving-models, import-serving-models, snapshot-dry-run, registry, db-size]" in wf
     assert "snapshot --dry-run" in wf and "alembic" not in wf and "backfill" not in wf
+
+
+def test_custom_snapshot_labels_are_refused_outside_dry_run():
+    from app.nba.outlooks.cli import main
+
+    with pytest.raises(SystemExit):
+        main(["snapshot", "--labels", "T-372h"])
+
+
+def test_db_size_is_read_only_and_postgres_only(db_session):
+    from app.nba.outlooks.ops import database_size
+
+    lines = database_size(db_session)
+    if db_session.get_bind().dialect.name == "postgresql":
+        assert lines[0].startswith("pg_database_size:") and "headroom" in lines[1]
+    else:
+        assert lines == ["database size is only measured on PostgreSQL"]
