@@ -93,7 +93,7 @@ test("scheduled handler logs trigger_fired, then dispatches", async () => {
   const original = globalThis.fetch;
   globalThis.fetch = f.impl;
   try {
-    await worker.scheduled({ cron: "4,19,34,49 * * * *", scheduledTime: Date.parse("2026-10-03T06:49:00Z") }, ENV, {});
+    await worker.scheduled({ cron: "9,24,39,54 * * * *", scheduledTime: Date.parse("2026-10-03T06:49:00Z") }, ENV, {});
   } finally {
     globalThis.fetch = original;
   }
@@ -109,7 +109,7 @@ test("the HTTP endpoint cannot trigger a dispatch", async () => {
 
 test("wrangler config: cron, no committed secret", () => {
   const toml = readFileSync(new URL("../wrangler.toml", import.meta.url), "utf8");
-  assert.match(toml, /crons = \["4,19,34,49 \* \* \* \*"\]/);
+  assert.match(toml, /crons = \["9,24,39,54 \* \* \* \*"\]/);
   assert.doesNotMatch(toml, /^\s*GITHUB_DISPATCH_TOKEN\s*=/m);
   assert.doesNotMatch(toml, /gh[ps]_|github_pat_/);
 });

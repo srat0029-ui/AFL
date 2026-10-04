@@ -1,0 +1,2 @@
+# Canonical fitted NBA serving models: byte-exact, never line-ending converted (SHA-256 checked).
+backend/app/nba/serving_models/*.pkl binary

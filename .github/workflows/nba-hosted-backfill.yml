@@ -1,0 +1,98 @@
+name: NBA Hosted Backfill
+
+# Rebuilds ONE historical NBA season in the hosted PostgreSQL database
+# (the existing DATABASE_URL secret) with the existing, idempotent ESPN
+# ingestion - so the hosted V1.5 outlooks have the box-score history their
+# features need. See docs/NBA_HOSTED_PROSPECTIVE.md.
+#
+# Safeguards:
+# - Manual dispatch only; no schedule.
+# - One season per run, chosen from 2018-19..2025-26 only (the modelling
+#   window). 2015-16..2017-18 and the live 2026-27 season cannot be chosen.
+# - The run must be confirmed by typing "backfill-<season>".
+# - Runs only `python -m app.nba.cli backfill` for that season's date range,
+#   then the read-only `season-coverage` check. No AFL command, no restore,
+#   no delete: ingestion only inserts/updates NBA schedule, box-score and
+#   player rows, and is resumable - rerunning continues where it stopped.
+# - --keep-player-display: historical box scores never change a player's
+#   current team / name (those come from the live feeds).
+# - Uses the same pinned image as the live cycle (NBA_LIVE_CYCLE_IMAGE); an
+#   image without hosted-backfill support is refused before anything runs.
+# - Its own concurrency group: at most one backfill at a time, and it never
+#   queues behind or blocks the 15-minute live evidence cycle.
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Season to backfill (starting year: 2018 = 2018-19)"
+        type: choice
+        options: ["2018", "2019", "2020", "2021", "2022", "2023", "2024", "2025"]
+      confirm:
+        description: 'Type exactly "backfill-<season>", e.g. backfill-2018'
+        type: string
+        required: true
+
+concurrency:
+  group: nba-hosted-backfill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: Backfill one NBA season
+    runs-on: ubuntu-latest
+    # ~1,600 provider requests at 0.5 s spacing, plus database writes.
+    timeout-minutes: 120
+    env:
+      IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+      SEASON: ${{ inputs.season }}
+    steps:
+      - name: Check inputs and configuration
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          case "$SEASON" in
+            2018|2019|2020|2021|2022|2023|2024|2025) ;;
+            *) echo "::error::season must be one of 2018..2025, got '$SEASON'"; exit 1 ;;
+          esac
+          if [ "$CONFIRM" != "backfill-$SEASON" ]; then
+            echo "::error::confirmation must be exactly 'backfill-$SEASON'"; exit 1
+          fi
+          case "$IMAGE" in
+            *@sha256:*|*:sha-*) ;;
+            *) echo "::error::NBA_LIVE_CYCLE_IMAGE must be a pinned image, got '$IMAGE'"; exit 1 ;;
+          esac
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::Repository secret DATABASE_URL is not set."; exit 1
+          fi
+
+      - name: Refuse an image without hosted-backfill support
+        run: |
+          docker pull --quiet "$IMAGE"
+          if ! docker run --rm "$IMAGE" python -m app.nba.cli backfill --help | grep -q -- "--keep-player-display"; then
+            echo "::error::$IMAGE predates hosted backfill support; complete the cutover first (docs/NBA_HOSTED_PROSPECTIVE.md)"; exit 1
+          fi
+
+      - name: Coverage before
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" python -m app.nba.cli season-coverage --season "$SEASON" --min-box-coverage 0 || true
+
+      - name: Backfill the season (resumable, idempotent)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" \
+            python -m app.nba.cli backfill --from-season "$SEASON" --to-season "$SEASON" --keep-player-display
+
+      - name: Verify coverage after
+        if: ${{ !cancelled() }}
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # Exit 1 if fewer than 95% of the season's competitive final games
+        # have a stored box score. Rerun the workflow to resume.
+        run: docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" python -m app.nba.cli season-coverage --season "$SEASON"

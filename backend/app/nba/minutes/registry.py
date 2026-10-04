@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.models.nba import NbaMinutesModelRun
 
-MODEL_ARTIFACT_DIR = Path(__file__).resolve().parents[3] / "model_artifacts" / "nba_minutes"
+BACKEND_ROOT = Path(__file__).resolve().parents[3]
+MODEL_ARTIFACT_DIR = BACKEND_ROOT / "model_artifacts" / "nba_minutes"
 
 
 def code_version() -> str | None:
@@ -41,7 +42,10 @@ def save_model(model, name: str) -> tuple[str, str]:
 def load_model(run: NbaMinutesModelRun):
     if not run.artifact_path:
         raise ValueError(f"run {run.run_key} has no model file")
-    blob = Path(run.artifact_path).read_bytes()
+    path = Path(run.artifact_path)
+    if not path.is_absolute():  # serving-bundle paths are relative to the backend root (works inside the image too)
+        path = BACKEND_ROOT / path
+    blob = path.read_bytes()
     digest = hashlib.sha256(blob).hexdigest()
     if digest != run.artifact_sha256:
         raise ValueError(f"model file {run.artifact_path} does not match the recorded SHA-256 for run {run.run_key}")

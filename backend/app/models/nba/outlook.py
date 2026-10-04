@@ -23,7 +23,8 @@ from app.database import Base
 from app.models.base import TimestampMixin
 
 SNAPSHOT_PRODUCED = "produced"
-SNAPSHOT_PARTIAL = "partial"  # produced for some teams; others lacked required evidence
+SNAPSHOT_STALE = "stale"  # rows written, but some required evidence was stale - not a normal success
+SNAPSHOT_PARTIAL = "partial"  # produced for some teams; others lacked a usable roster
 SNAPSHOT_MISSING_DATA = "missing_data"  # nothing produced: required evidence absent at the cutoff
 SNAPSHOT_MISSED_WINDOW = "missed_window"  # the runner reached the game too late for this label
 
@@ -49,6 +50,8 @@ class NbaOutlookSnapshot(TimestampMixin, Base):
     # {"minutes": {"run_id", "model_version", "model_name", "artifact_sha256"}, "participation": {...}, "rotation": {...}}
     model_versions: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     counts: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    # Per source: age at the cutoff and fresh / stale / unavailable class, plus the limits applied.
+    evidence_freshness: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     def __repr__(self) -> str:
         return f"<NbaOutlookSnapshot game={self.game_id} {self.snapshot_label} {self.status}>"

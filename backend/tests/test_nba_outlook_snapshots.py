@@ -6,8 +6,8 @@ from datetime import timedelta
 import pytest
 
 from app.core.prospective import FrozenRecordError, ensure_utc
-from app.models.nba import NbaOutlookSnapshot, NbaPlayer, NbaRotationPrediction
-from app.models.nba.outlook import SNAPSHOT_MISSED_WINDOW, SNAPSHOT_MISSING_DATA, SNAPSHOT_PARTIAL, SNAPSHOT_PRODUCED
+from app.models.nba import NbaGame, NbaGameScheduleObservation, NbaOutlookSnapshot, NbaPlayer, NbaRotationPrediction
+from app.models.nba.outlook import SNAPSHOT_MISSED_WINDOW, SNAPSHOT_MISSING_DATA, SNAPSHOT_PARTIAL, SNAPSHOT_PRODUCED, SNAPSHOT_STALE
 from app.nba.outlooks.snapshots import DEFAULT_SNAPSHOTS, SnapshotSpec, parse_specs, run_due_snapshots
 from tests.test_nba_minutes_prospective import NOW, _roster, _serving_run, _world, artifact_dir  # noqa: F401  (fixture)
 from tests.test_nba_rotation_prospective import _report, _rotation_runs
@@ -15,8 +15,18 @@ from tests.test_nba_rotation_prospective import _report, _rotation_runs
 TIP = NOW + timedelta(hours=10)  # the upcoming game in _world
 
 
-def _setup(db, *, rosters_at=None, home_ids=("1001", "1002"), away_ids=()):
+SCHEDULE_OBSERVED = (timedelta(hours=25), timedelta(hours=5), timedelta(hours=2), timedelta(minutes=40))
+
+
+def _schedule_obs(db, game, before_tip):
+    for delta in before_tip:
+        db.add(NbaGameScheduleObservation(game_id=game.id, source="espn", observed_at=TIP - delta, status="scheduled", scheduled_start=TIP, game_date=TIP.date()))
+    db.commit()
+
+
+def _setup(db, *, rosters_at=None, home_ids=("1001", "1002"), away_ids=(), schedule=SCHEDULE_OBSERVED):
     home, away, vet, rookie, game = _world(db)
+    _schedule_obs(db, game, schedule)
     _serving_run(db)
     runs = _rotation_runs(db, adopted=False)  # as served: reconciliation not adopted
     if rosters_at is not None:
@@ -119,12 +129,13 @@ def test_roster_observed_after_cutoff_is_not_used(db_session, artifact_dir):  # 
     _setup(db_session, rosters_at=TIP - timedelta(hours=3))  # observed after the T-4h cutoff
     run_due_snapshots(db_session, now=TIP - timedelta(hours=4), specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
     snap = _snap(db_session, "T-4h")
-    assert snap.status == SNAPSHOT_MISSING_DATA and "no roster observation" in snap.reason
+    assert snap.status == SNAPSHOT_MISSING_DATA and "roster unavailable" in snap.reason
     assert _rows(db_session, snap) == [] and all(v is None for v in snap.roster_evidence.values())
 
 
 def test_partial_snapshot_when_one_team_has_no_roster_evidence(db_session, artifact_dir):  # noqa: F811
-    home, away, *_ = _world(db_session)
+    home, away, _, _, game = _world(db_session)
+    _schedule_obs(db_session, game, SCHEDULE_OBSERVED)
     _serving_run(db_session)
     _rotation_runs(db_session)
     _roster(db_session, home, TIP - timedelta(hours=30), ["1001"])
@@ -164,3 +175,64 @@ def test_dry_run_writes_nothing(db_session, artifact_dir):  # noqa: F811
     _setup(db_session, rosters_at=TIP - timedelta(hours=30))
     r = run_due_snapshots(db_session, now=TIP - timedelta(hours=4), specs=(SnapshotSpec("T-4h", timedelta(hours=4)),), dry_run=True)
     assert r.produced and r.produced[0]["rows_preview"] and db_session.query(NbaOutlookSnapshot).count() == 0
+
+
+# --- evidence freshness ------------------------------------------------------
+
+
+def test_a_stale_roster_produces_rows_but_is_not_labelled_a_success(db_session, artifact_dir):  # noqa: F811
+    _setup(db_session, rosters_at=TIP - timedelta(days=3))  # 3 days: older than 36 h, within 7 days
+    run_due_snapshots(db_session, now=TIP - timedelta(hours=4), specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    snap = _snap(db_session, "T-4h")
+    assert snap.status == SNAPSHOT_STALE and "roster stale" in snap.reason and _rows(db_session, snap)
+    ages = {r["class"] for r in snap.evidence_freshness["roster"].values()}
+    assert ages == {"stale"}
+    assert all(r["age_minutes"] == pytest.approx((timedelta(days=3) - timedelta(hours=4)).total_seconds() / 60) for r in snap.evidence_freshness["roster"].values())
+
+
+def test_a_seventeen_day_old_roster_is_unavailable_and_never_used(db_session, artifact_dir):  # noqa: F811
+    _setup(db_session, rosters_at=TIP - timedelta(days=17))
+    run_due_snapshots(db_session, now=TIP - timedelta(hours=4), specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    snap = _snap(db_session, "T-4h")
+    assert snap.status == SNAPSHOT_MISSING_DATA and _rows(db_session, snap) == []
+    assert {r["class"] for r in snap.evidence_freshness["roster"].values()} == {"unavailable"}
+
+
+def test_missing_schedule_evidence_marks_the_snapshot_stale(db_session, artifact_dir):  # noqa: F811
+    _setup(db_session, rosters_at=TIP - timedelta(hours=30), schedule=())
+    run_due_snapshots(db_session, now=TIP - timedelta(hours=1), specs=(SnapshotSpec("T-1h", timedelta(hours=1)),))
+    snap = _snap(db_session, "T-1h")
+    assert snap.status == SNAPSHOT_STALE and snap.evidence_freshness["schedule"]["class"] == "unavailable"
+
+
+def test_a_recent_game_without_its_box_score_marks_the_snapshot_stale(db_session, artifact_dir):  # noqa: F811
+    home, away, *_ = _setup(db_session, rosters_at=TIP - timedelta(hours=30))
+    recent = NbaGame(season_start_year=2026, game_date=(TIP - timedelta(days=2)).date(), scheduled_start=TIP - timedelta(days=2), status="final",
+                     home_team_id=home.id, away_team_id=away.id, home_score=100, away_score=99, source="test", source_game_id="recent-no-box")
+    db_session.add(recent)
+    db_session.commit()
+    run_due_snapshots(db_session, now=TIP - timedelta(hours=4), specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    snap = _snap(db_session, "T-4h")
+    assert snap.status == SNAPSHOT_STALE and recent.id in snap.evidence_freshness["box_scores"]["missing_box_scores"]
+
+
+def test_injury_feed_age_is_recorded_but_never_changes_status(db_session, artifact_dir):  # noqa: F811
+    home, _, vet, *_ = _setup(db_session, rosters_at=TIP - timedelta(hours=30))
+    _report(db_session, vet, home, TIP - timedelta(hours=20), "questionable")  # feed last read 20 h before tip
+    run_due_snapshots(db_session, now=TIP - timedelta(hours=1), specs=(SnapshotSpec("T-1h", timedelta(hours=1)),))
+    snap = _snap(db_session, "T-1h")
+    feed = snap.evidence_freshness["injury_feed"]
+    assert feed["class"] == "stale" and feed["used_by_model"] is False and feed["age_minutes"] == pytest.approx(19 * 60)
+    assert snap.status == SNAPSHOT_PRODUCED
+
+
+def test_per_label_tolerance():
+    by = {s.label: s.tolerance for s in DEFAULT_SNAPSHOTS}
+    assert by == {"T-24h": timedelta(minutes=30), "T-4h": timedelta(minutes=30), "T-1h": timedelta(minutes=30), "T-30m": timedelta(minutes=15)}
+
+
+def test_t30m_is_not_taken_inside_the_last_quarter_hour(db_session, artifact_dir):  # noqa: F811
+    _setup(db_session, rosters_at=TIP - timedelta(hours=30))
+    run_due_snapshots(db_session, now=TIP - timedelta(minutes=12), specs=(SnapshotSpec("T-30m", timedelta(minutes=30)),))
+    snap = _snap(db_session, "T-30m")
+    assert snap.status == SNAPSHOT_MISSED_WINDOW and _rows(db_session, snap) == []

@@ -388,3 +388,43 @@ def format_report(report: ValidationReport) -> str:
     ]
     lines += [f"  - {flag}" for flag in report.flags]
     return "\n".join(lines)
+
+
+STORED_BOX_SCORE_STATES = (NbaBoxScoreState.INGESTED.value, NbaBoxScoreState.INGESTED_PARTIAL.value)
+
+
+def season_coverage(db: Session, season_start_year: int) -> dict:
+    """Read-only counts for one season, used to verify a backfill: games by
+    type and status, box-score states of competitive final games, stored
+    player logs and distinct players. `box_score_coverage` is the share of
+    competitive final games with a stored box score."""
+    games = db.execute(
+        select(NbaGame.season_type, NbaGame.status, NbaGame.box_score_state, func.count())
+        .where(NbaGame.season_start_year == season_start_year)
+        .group_by(NbaGame.season_type, NbaGame.status, NbaGame.box_score_state)
+    ).all()
+    by_type: dict[str, int] = {}
+    final_competitive = 0
+    stored = 0
+    states: dict[str, int] = {}
+    for season_type, status, box_state, n in games:
+        by_type[f"{season_type}/{status}"] = by_type.get(f"{season_type}/{status}", 0) + n
+        if season_type in COMPETITIVE_SEASON_TYPES and status == NbaGameStatus.FINAL.value:
+            final_competitive += n
+            states[str(box_state)] = states.get(str(box_state), 0) + n
+            if box_state in STORED_BOX_SCORE_STATES:
+                stored += n
+    logs, players = db.execute(
+        select(func.count(NbaPlayerGameLog.id), func.count(func.distinct(NbaPlayerGameLog.player_id)))
+        .join(NbaGame, NbaGame.id == NbaPlayerGameLog.game_id)
+        .where(NbaGame.season_start_year == season_start_year)
+    ).one()
+    coverage = stored / final_competitive if final_competitive else 0.0
+    lines = [
+        f"season {season_label(season_start_year)}",
+        f"  games by type/status: {dict(sorted(by_type.items()))}",
+        f"  competitive final games: {final_competitive}  box-score states: {dict(sorted(states.items()))}",
+        f"  player logs: {logs}  distinct players: {players}",
+    ]
+    return {"season": season_start_year, "games": by_type, "competitive_final_games": final_competitive, "box_score_states": states,
+            "stored_box_scores": stored, "player_logs": int(logs), "players": int(players), "box_score_coverage": coverage, "lines": lines}
