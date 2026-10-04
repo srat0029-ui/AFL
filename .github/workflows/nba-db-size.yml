@@ -1,0 +1,31 @@
+name: NBA DB Size (read-only)
+
+# Reports the hosted database's size and its largest tables. Strictly
+# read-only: the session is opened with default_transaction_read_only=on, so
+# the database itself rejects any write. Uses PostgreSQL's own psql client
+# image, independent of the application image. Manual dispatch only.
+# See docs/NBA_HOSTED_PROSPECTIVE.md (storage headroom before backfills).
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  size:
+    name: Database size (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Query sizes
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # The app's URL may carry a SQLAlchemy driver suffix; psql needs plain postgresql://
+          export PGURL="$(printf '%s' "$DATABASE_URL" | sed -e 's#^postgresql+psycopg://#postgresql://#' -e 's#^postgres+psycopg://#postgresql://#')"
+          docker run --rm -e PGURL -e PGOPTIONS='-c default_transaction_read_only=on' postgres:18-alpine sh -c '
+            psql "$PGURL" -v ON_ERROR_STOP=1 -X -q -c "show default_transaction_read_only" \
+              -c "select pg_database_size(current_database()) as bytes, round(pg_database_size(current_database())/1024.0/1024.0, 1) as mb, round(5120 - pg_database_size(current_database())/1024.0/1024.0, 1) as headroom_mb_vs_5gb" \
+              -c "select relname, round(pg_total_relation_size(relid)/1024.0/1024.0, 2) as total_mb, n_live_tup as approx_rows from pg_stat_user_tables order by pg_total_relation_size(relid) desc limit 25"
+          '
