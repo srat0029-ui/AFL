@@ -180,3 +180,10 @@ def test_db_size_workflow_is_manual_and_read_only():
     assert "default_transaction_read_only=on" in wf and "pg_database_size" in wf
     for forbidden in ("INSERT", "UPDATE ", "DELETE", "DROP", "TRUNCATE", "ALTER", "pg_restore", "alembic"):
         assert forbidden not in wf.upper(), forbidden
+
+
+def test_admin_image_override_is_limited_to_verification():
+    wf = (WORKFLOWS / "nba-outlook-admin.yml").read_text(encoding="utf-8")
+    assert "image_override is allowed only with verify-serving-models" in wf
+    verify_block = wf[wf.index("verify-serving-models)"): wf.index("import-serving-models)")]
+    assert "DATABASE_URL" not in verify_block  # verification never touches the database

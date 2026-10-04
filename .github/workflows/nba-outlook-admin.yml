@@ -6,6 +6,8 @@ name: NBA Outlook Admin
 #
 # - verify-serving-models: the canonical model bundle is present in the image,
 #   unmodified, and reproduces its golden predictions (no database access).
+#   May target a different pinned image via image_override (e.g. a new
+#   sha-<commit>@sha256:<digest> before it is pinned for production).
 # - import-serving-models: writes the four canonical serving runs into the
 #   hosted registry (append-only, idempotent). Never trains anything.
 # - snapshot-dry-run: computes the snapshots that would be due now and
@@ -29,6 +31,10 @@ on:
         description: "snapshot-dry-run only: comma-separated labels (default T-24h,T-4h,T-1h,T-30m)"
         type: string
         default: ""
+      image_override:
+        description: "verify-serving-models only: a pinned image to verify instead of NBA_LIVE_CYCLE_IMAGE (no database access)"
+        type: string
+        default: ""
 
 concurrency:
   group: nba-live-cycle
@@ -43,12 +49,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+      IMAGE: ${{ inputs.image_override != '' && inputs.image_override || vars.NBA_LIVE_CYCLE_IMAGE }}
+      OVERRIDE: ${{ inputs.image_override }}
       COMMAND: ${{ inputs.command }}
       LABELS: ${{ inputs.labels }}
     steps:
       - name: Check configuration
         run: |
+          if [ -n "$OVERRIDE" ] && [ "$COMMAND" != "verify-serving-models" ]; then
+            echo "::error::image_override is allowed only with verify-serving-models"; exit 1
+          fi
           case "$IMAGE" in
             *@sha256:*|*:sha-*) ;;
             *) echo "::error::NBA_LIVE_CYCLE_IMAGE must be a pinned image, got '$IMAGE'"; exit 1 ;;
@@ -59,7 +69,10 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
           case "$COMMAND" in
-            verify-serving-models) set -- python -m app.nba.outlooks.cli verify-serving-models ;;
+            verify-serving-models)
+              # No database access: verify the bundle inside the image itself.
+              docker run --rm "$IMAGE" python -m app.nba.outlooks.cli verify-serving-models
+              exit $? ;;
             import-serving-models) set -- python -m app.nba.outlooks.cli import-serving-models ;;
             snapshot-dry-run)
               set -- python -m app.nba.outlooks.cli snapshot --dry-run
