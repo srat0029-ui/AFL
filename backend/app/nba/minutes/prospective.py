@@ -71,7 +71,14 @@ class PredictUpcomingResult:
 
 
 def latest_serving_run(db: Session) -> NbaMinutesModelRun | None:
-    return db.scalar(select(NbaMinutesModelRun).where(NbaMinutesModelRun.purpose == "serving").order_by(NbaMinutesModelRun.id.desc()).limit(1))
+    """The latest serving run of the expected-minutes model itself (the run
+    table also holds other models' runs, e.g. the rotation layer's)."""
+    return db.scalar(
+        select(NbaMinutesModelRun)
+        .where(NbaMinutesModelRun.purpose == "serving", NbaMinutesModelRun.model_version.startswith("minutes-v"))
+        .order_by(NbaMinutesModelRun.id.desc())
+        .limit(1)
+    )
 
 
 def candidate_rows(db: Session, upcoming: pd.DataFrame, played_history: pd.DataFrame, games: pd.DataFrame, cutoff: datetime) -> pd.DataFrame:

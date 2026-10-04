@@ -36,7 +36,7 @@ def _serving_run(db):
     pred = rng.uniform(1, 45, 6000)
     table = fit_uncertainty_table(pred, pred + rng.normal(0, 4, len(pred)))
     run = registry.record_run(
-        db, run_key="minutes-test:serving", model_name="ridge", model_version="minutes-test", purpose="serving",
+        db, run_key="minutes-v1-test:serving", model_name="ridge", model_version="minutes-v1-test", purpose="serving",
         dataset_cutoff=NOW - timedelta(days=150), training_seasons=[2018, 2025], evaluation_seasons=[], features=ALL_FEATURES,
         hyperparameters={"alpha": 1.0}, metrics={}, uncertainty=table, artifact_path=path, artifact_sha256=sha, code_version="test",
     )
