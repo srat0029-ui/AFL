@@ -474,9 +474,9 @@ def test_a_locked_cycle_exits_zero_without_doing_anything(db_session):
 
 def test_migration_status_reports_pending_revisions_in_order(db_session, monkeypatch):
     status = migration_status(db_session)
-    assert status.code_head == "c133d5a7a11e"
+    assert status.code_head == "72256bdebf34"
     if status.database_revision is None:  # a create_all test database has no revision at all
-        assert not status.is_current and [rev for rev, _ in status.pending][-6:] == ["04b59a8a329c", "1e453acf52cb", "becc7fa40ce6", "90343a82a7c8", "47742ee9eb7a", "c133d5a7a11e"]
+        assert not status.is_current and [rev for rev, _ in status.pending][-7:] == ["04b59a8a329c", "1e453acf52cb", "becc7fa40ce6", "90343a82a7c8", "47742ee9eb7a", "c133d5a7a11e", "72256bdebf34"]
 
 
 # --- monitoring ------------------------------------------------------------

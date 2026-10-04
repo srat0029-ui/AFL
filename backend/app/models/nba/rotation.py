@@ -32,6 +32,8 @@ class NbaRotationPrediction(TimestampMixin, Base):
     team_id: Mapped[int] = mapped_column(ForeignKey("nba_teams.id"), nullable=False, index=True)
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     information_cutoff: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    # The frozen snapshot this row belongs to (e.g. the game's T-4h snapshot); NULL for ad hoc runs.
+    snapshot_id: Mapped[int | None] = mapped_column(ForeignKey("nba_outlook_snapshots.id"), nullable=True, index=True)
 
     minutes_model_run_id: Mapped[int] = mapped_column(ForeignKey("nba_minutes_model_runs.id"), nullable=False)
     participation_model_run_id: Mapped[int] = mapped_column(ForeignKey("nba_minutes_model_runs.id"), nullable=False, index=True)

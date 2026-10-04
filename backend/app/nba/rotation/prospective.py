@@ -40,7 +40,8 @@ from sqlalchemy.orm import Session
 
 from app.core.prospective import InformationLeakError, ensure_utc
 from app.models.nba import COMPETITIVE_SEASON_TYPES, NbaGame, NbaGameStatus, NbaMinutesModelRun, NbaRotationPrediction
-from app.nba.asof import availability_known_at
+from app.models.nba.evidence import TEAM_OBSERVATION_ROSTER
+from app.nba.asof import availability_known_at, team_observation_known_at
 from app.nba.minutes.data import load_games, load_logs
 from app.nba.minutes.dataset import DEFAULT_FIRST_SEASON, history_logs
 from app.nba.minutes.features import build_features
@@ -131,37 +132,84 @@ def _latest_run(db: Session, *, model_version_prefix: str, model_name_prefix: st
     return db.scalar(stmt.order_by(NbaMinutesModelRun.id.desc()).limit(1))
 
 
-def predict_rotation_upcoming(db: Session, *, hours_ahead: float = 36.0, dry_run: bool = False, now: datetime | None = None) -> RotationOutlookResult:
-    now = ensure_utc(now) if now is not None else datetime.now(timezone.utc)
-    minutes_run = _latest_run(db, model_version_prefix=MINUTES_MODEL_PREFIX)
-    play_run = _latest_run(db, model_version_prefix=ROTATION_MODEL_VERSION, model_name_prefix="participation_")
-    rot_run = _latest_run(db, model_version_prefix=ROTATION_MODEL_VERSION, model_name_prefix="rotation_10_")
-    recon_run = _latest_run(db, model_version_prefix=ROTATION_MODEL_VERSION, model_name_prefix="reconciliation")
-    if None in (minutes_run, play_run, rot_run, recon_run):
-        raise ValueError("missing serving runs - run the minutes and rotation experiments first")
-    result = RotationOutlookResult(cutoff=now, run_ids={"minutes": minutes_run.id, "participation": play_run.id, "rotation": rot_run.id, "reconciliation": recon_run.id})
-    v1, play_model, rot_model = load_model(minutes_run), load_model(play_run), load_model(rot_run)
-    recon_cfg = recon_run.hyperparameters
+@dataclass
+class ServingModels:
+    """The serving runs (and loaded, hash-verified models) an outlook is made with."""
 
-    games = load_games(db)
+    minutes_run: NbaMinutesModelRun
+    play_run: NbaMinutesModelRun
+    rot_run: NbaMinutesModelRun
+    recon_run: NbaMinutesModelRun
+    v1: object = None
+    play_model: object = None
+    rot_model: object = None
+
+    def run_ids(self) -> dict:
+        return {"minutes": self.minutes_run.id, "participation": self.play_run.id, "rotation": self.rot_run.id, "reconciliation": self.recon_run.id}
+
+    def versions(self) -> dict:
+        def v(run):
+            return {"run_id": run.id, "model_name": run.model_name, "model_version": run.model_version, "artifact_sha256": run.artifact_sha256, "code_version": run.code_version}
+
+        return {"minutes": v(self.minutes_run), "participation": v(self.play_run), "rotation": v(self.rot_run), "reconciliation": v(self.recon_run)}
+
+
+def load_serving(db: Session) -> ServingModels:
+    runs = (
+        _latest_run(db, model_version_prefix=MINUTES_MODEL_PREFIX),
+        _latest_run(db, model_version_prefix=ROTATION_MODEL_VERSION, model_name_prefix="participation_"),
+        _latest_run(db, model_version_prefix=ROTATION_MODEL_VERSION, model_name_prefix="rotation_10_"),
+        _latest_run(db, model_version_prefix=ROTATION_MODEL_VERSION, model_name_prefix="reconciliation"),
+    )
+    if None in runs:
+        raise ValueError("missing serving runs - run the minutes and rotation experiments first")
+    s = ServingModels(*runs)
+    s.v1, s.play_model, s.rot_model = load_model(s.minutes_run), load_model(s.play_run), load_model(s.rot_run)
+    return s
+
+
+def roster_evidence_for(db: Session, team_id: int, cutoff: datetime) -> dict | None:
+    obs = team_observation_known_at(db, team_id, TEAM_OBSERVATION_ROSTER, cutoff)
+    if obs is None:
+        return None
+    observed = ensure_utc(obs.observed_at)
+    return {
+        "observation_id": obs.id,
+        "roster_observed_at": observed.isoformat(),
+        "players": len(obs.payload.get("players", [])),
+        "age_minutes": round((ensure_utc(cutoff) - observed).total_seconds() / 60.0, 1),
+    }
+
+
+def compute_outlooks(
+    db: Session, serving: ServingModels, games: pd.DataFrame, logs: pd.DataFrame, upcoming: pd.DataFrame, now: datetime, *, require_roster: bool = False
+) -> tuple[pd.DataFrame, dict, dict]:
+    """Learned V1.5 quantities for every candidate in `upcoming` games, as of
+    `now`. Returns (rows, skipped counts, roster evidence per team).
+
+    With require_roster=True (frozen snapshots) the candidates are exactly the
+    roster observed at or before `now`; a team without one gets no rows and is
+    reported. Otherwise teams without a roster observation fall back to the
+    last-box-score team (ad hoc runs).
+
+    Nothing here reads availability evidence: P(play), P(10+) and the
+    conditional minutes are computed from historically reconstructable
+    features only."""
     now_naive = pd.Timestamp(now).tz_localize(None)
-    upcoming = games[
-        (games["status"] == NbaGameStatus.SCHEDULED.value) & games["season_type"].isin(COMPETITIVE_SEASON_TYPES)
-        & (games["scheduled_start"] > now_naive) & (games["scheduled_start"] <= now_naive + pd.Timedelta(hours=hours_ahead))
-    ]
-    result.games = len(upcoming)
-    if upcoming.empty:
-        return result
-    season = int(upcoming["season_start_year"].max())
-    logs = history_logs(load_logs(db, min_season=DEFAULT_FIRST_SEASON), games, DEFAULT_FIRST_SEASON, season)
+    skipped: dict = {}
+    teams = pd.unique(upcoming[["home_team_id", "away_team_id"]].to_numpy().ravel())
+    roster_ev = {int(t): roster_evidence_for(db, int(t), now) for t in teams}
     played = logs[(~logs["did_not_play"]) & logs["minutes"].notna()]
     cands = candidate_rows(db, upcoming, played, games, now)
-    result.candidates = len(cands)
+    if require_roster:
+        cands = cands[cands["team_source"] == TEAM_SOURCE_ROSTER]
+        skipped["teams_without_roster_evidence"] = sorted(t for t, ev in roster_ev.items() if ev is None)
     unknown = cands["player_id"].isna()
-    result.skipped["unknown_player"] = int(unknown.sum())
+    skipped["unknown_player"] = int(unknown.sum())
+    skipped["candidates"] = int(len(cands))
     cands = cands[~unknown].astype({"player_id": int}).drop_duplicates(["player_id", "game_id"]).reset_index(drop=True)
     if cands.empty:
-        return result
+        return pd.DataFrame(), skipped, roster_ev
 
     feats = build_features(games, logs, cands[["player_id", "game_id", "team_id"]], cutoff=now_naive)
     feats = add_participation_features(feats, games, logs)
@@ -169,58 +217,110 @@ def predict_rotation_upcoming(db: Session, *, hours_ahead: float = 36.0, dry_run
         raise InformationLeakError("a feature used a box score not yet known at the cutoff")
     feats["team_source"] = cands["team_source"].to_numpy()
     X = feats[PARTICIPATION_FEATURES].to_numpy(dtype=float)
-    feats["p_play"] = play_model.predict_proba(X)[:, 1]
+    feats["p_play"] = serving.play_model.predict_proba(X)[:, 1]
     # Two separately trained classifiers can disagree slightly; "plays 10+
     # minutes" implies "plays", so P(rotation) is capped at P(play). On the
     # 2025-26 walk-forward fold 14.5% of rows needed the cap (mean excess
     # 0.016) and it improved rotation log loss very slightly (0.27407 -> 0.27403).
-    feats["p_rotation"] = np.minimum(rot_model.predict_proba(X)[:, 1], feats["p_play"].to_numpy())
+    feats["p_rotation"] = np.minimum(serving.rot_model.predict_proba(X)[:, 1], feats["p_play"].to_numpy())
     elig = feats["eligible"].astype(bool).to_numpy()
     feats["m_cond"] = np.nan
     if elig.any():
-        feats.loc[elig, "m_cond"] = np.clip(v1.predict(feats.loc[elig, minutes_run.features].to_numpy(dtype=float)), 0.0, 60.0)
-    result.skipped["no_history_minutes_not_estimated"] = int((~elig).sum())
+        feats.loc[elig, "m_cond"] = np.clip(serving.v1.predict(feats.loc[elig, serving.minutes_run.features].to_numpy(dtype=float)), 0.0, 60.0)
+    skipped["no_history_minutes_not_estimated"] = int((~elig).sum())
 
-    feats["m_alloc"] = feats["m_cond"].fillna(NO_HISTORY_ALLOCATION_MINUTES)
+    recon_cfg = serving.recon_run.hyperparameters
     feats["m_recon"] = np.nan
-    if recon_cfg.get("adopted"):
+    if recon_cfg.get("adopted"):  # not adopted in rotation-v1.0: stays null
+        feats["m_alloc"] = feats["m_cond"].fillna(NO_HISTORY_ALLOCATION_MINUTES)
         feats["sigma"] = band_sigma(feats["m_alloc"], recon_cfg["sigma_by_band"])
         ot = recon_cfg.get("overtime")
         budget = 240.0 + (25.0 * ot["periods_if_ot"] * ot["rate"] if ot else 0.0)
         for _, g in feats.groupby(["game_id", "team_id"]):
             adj = reconcile_team(g["m_alloc"], g["p_play"], g["sigma"], budget, recon_cfg["alpha"], recon_cfg["method"])
             feats.loc[g.index, "m_recon"] = np.where(g["eligible"].astype(bool), adj, np.nan)
-    quant = apply_uncertainty(feats["m_cond"].fillna(0.0), minutes_run.uncertainty)
+    quant = apply_uncertainty(feats["m_cond"].fillna(0.0), serving.minutes_run.uncertainty)
+    for k in quant.columns:
+        feats[f"q_{k}"] = np.where(feats["m_cond"].isna(), np.nan, quant[k].to_numpy())
+    return feats, skipped, roster_ev
 
+
+def outlook_record(db: Session, row: pd.Series, now: datetime) -> dict:
+    """The learned fields (untouched by evidence) plus the evidence stored beside them."""
+    evidence = availability_payload(db, int(row["player_id"]), now)
+    qcols = [c for c in row.index if c.startswith("q_p")]
+    return {
+        "game_id": int(row["game_id"]),
+        "player_id": int(row["player_id"]),
+        "team_id": int(row["team_id"]),
+        "p_play": float(row["p_play"]),
+        "p_rotation": float(row["p_rotation"]),
+        "expected_minutes_if_plays": None if pd.isna(row["m_cond"]) else float(row["m_cond"]),
+        "reconciled_minutes_if_plays": None if pd.isna(row["m_recon"]) else float(row["m_recon"]),
+        "quantiles": None if pd.isna(row["m_cond"]) else {c[2:]: float(row[c]) for c in qcols},
+        "tier": tier_for(float(row["p_play"]), float(row["p_rotation"])),
+        "team_source": row["team_source"],
+        "roster_listed": row["team_source"] == TEAM_SOURCE_ROSTER,
+        "history_games": int(row["career_games"]),
+        "availability_evidence": evidence,
+        "experimental_rules": experimental_rules(evidence),
+        "inputs": {f: (None if pd.isna(row[f]) else float(row[f])) for f in PARTICIPATION_FEATURES},
+    }
+
+
+def write_outlook(db: Session, serving: ServingModels, record: dict, now: datetime, *, snapshot_id: int | None = None) -> NbaRotationPrediction:
+    game = db.get(NbaGame, record["game_id"])
+    if game.status != NbaGameStatus.SCHEDULED.value or now >= ensure_utc(game.scheduled_start):
+        raise InformationLeakError(f"game {game.id} is not an upcoming game at {now.isoformat()}")
+    row = NbaRotationPrediction(
+        game_id=record["game_id"], player_id=record["player_id"], team_id=record["team_id"], generated_at=now, information_cutoff=now,
+        snapshot_id=snapshot_id, minutes_model_run_id=serving.minutes_run.id, participation_model_run_id=serving.play_run.id,
+        rotation_model_run_id=serving.rot_run.id, reconciliation_model_run_id=serving.recon_run.id,
+        p_play=record["p_play"], p_rotation=record["p_rotation"], expected_minutes_if_plays=record["expected_minutes_if_plays"],
+        reconciled_minutes_if_plays=record["reconciled_minutes_if_plays"], quantiles=record["quantiles"], tier=record["tier"],
+        team_source=record["team_source"], roster_listed=record["roster_listed"], history_games=record["history_games"],
+        availability_evidence=record["availability_evidence"], experimental_rules=record["experimental_rules"], inputs=record["inputs"],
+    )
+    db.add(row)
+    return row
+
+
+def upcoming_games(games: pd.DataFrame, now: datetime, hours_ahead: float) -> pd.DataFrame:
+    now_naive = pd.Timestamp(ensure_utc(now)).tz_localize(None)
+    return games[
+        (games["status"] == NbaGameStatus.SCHEDULED.value)
+        & games["season_type"].isin(COMPETITIVE_SEASON_TYPES)
+        & (games["scheduled_start"] > now_naive)
+        & (games["scheduled_start"] <= now_naive + pd.Timedelta(hours=hours_ahead))
+    ]
+
+
+def history_for(db: Session, games: pd.DataFrame, upcoming: pd.DataFrame) -> pd.DataFrame:
+    # Prospective history includes the current season's completed games - prior information here.
+    season = int(upcoming["season_start_year"].max())
+    return history_logs(load_logs(db, min_season=DEFAULT_FIRST_SEASON), games, DEFAULT_FIRST_SEASON, season)
+
+
+def predict_rotation_upcoming(db: Session, *, hours_ahead: float = 36.0, dry_run: bool = False, now: datetime | None = None) -> RotationOutlookResult:
+    """Ad hoc outlooks for every upcoming game (not tied to a snapshot label)."""
+    now = ensure_utc(now) if now is not None else datetime.now(timezone.utc)
+    serving = load_serving(db)
+    result = RotationOutlookResult(cutoff=now, run_ids=serving.run_ids())
+    games = load_games(db)
+    upcoming = upcoming_games(games, now, hours_ahead)
+    result.games = len(upcoming)
+    if upcoming.empty:
+        return result
+    feats, skipped, _ = compute_outlooks(db, serving, games, history_for(db, games, upcoming), upcoming, now)
+    result.candidates = skipped.pop("candidates", 0)
+    result.skipped = skipped
     result.predicted = len(feats)
-    for i, row in feats.iterrows():
-        evidence = availability_payload(db, int(row["player_id"]), now)
-        record = {
-            "game_id": int(row["game_id"]), "player_id": int(row["player_id"]), "team_id": int(row["team_id"]),
-            "p_play": float(row["p_play"]), "p_rotation": float(row["p_rotation"]),
-            "expected_minutes_if_plays": None if pd.isna(row["m_cond"]) else float(row["m_cond"]),
-            "reconciled_minutes_if_plays": None if pd.isna(row["m_recon"]) else float(row["m_recon"]),
-            "quantiles": None if pd.isna(row["m_cond"]) else {k: float(quant.loc[i, k]) for k in quant.columns},
-            "tier": tier_for(float(row["p_play"]), float(row["p_rotation"])),
-            "team_source": row["team_source"], "roster_listed": row["team_source"] == TEAM_SOURCE_ROSTER,
-            "availability_evidence": evidence, "experimental_rules": experimental_rules(evidence),
-        }
+    for _, row in feats.iterrows():
+        record = outlook_record(db, row, now)
         result.rows.append(record)
-        if dry_run:
-            continue
-        game = db.get(NbaGame, record["game_id"])
-        if game.status != NbaGameStatus.SCHEDULED.value or now >= ensure_utc(game.scheduled_start):
-            raise InformationLeakError(f"game {game.id} is not an upcoming game at {now.isoformat()}")
-        db.add(NbaRotationPrediction(
-            game_id=record["game_id"], player_id=record["player_id"], team_id=record["team_id"], generated_at=now, information_cutoff=now,
-            minutes_model_run_id=minutes_run.id, participation_model_run_id=play_run.id, rotation_model_run_id=rot_run.id, reconciliation_model_run_id=recon_run.id,
-            p_play=record["p_play"], p_rotation=record["p_rotation"], expected_minutes_if_plays=record["expected_minutes_if_plays"],
-            reconciled_minutes_if_plays=record["reconciled_minutes_if_plays"], quantiles=record["quantiles"], tier=record["tier"],
-            team_source=record["team_source"], roster_listed=record["roster_listed"], history_games=int(row["career_games"]),
-            availability_evidence=evidence, experimental_rules=record["experimental_rules"],
-            inputs={f: (None if pd.isna(row[f]) else float(row[f])) for f in PARTICIPATION_FEATURES},
-        ))
-        result.written += 1
+        if not dry_run:
+            write_outlook(db, serving, record, now)
+            result.written += 1
     if not dry_run:
         db.commit()
     return result
