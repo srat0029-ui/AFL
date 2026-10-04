@@ -172,3 +172,18 @@ def test_db_size_is_read_only_and_postgres_only(db_session):
         assert lines[0].startswith("pg_database_size:") and "headroom" in lines[1]
     else:
         assert lines == ["database size is only measured on PostgreSQL"]
+
+
+def test_db_size_workflow_is_manual_and_read_only():
+    wf = (WORKFLOWS / "nba-db-size.yml").read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in wf and "schedule:" not in wf
+    assert "default_transaction_read_only=on" in wf and "pg_database_size" in wf
+    for forbidden in ("INSERT", "UPDATE ", "DELETE", "DROP", "TRUNCATE", "ALTER", "pg_restore", "alembic"):
+        assert forbidden not in wf.upper(), forbidden
+
+
+def test_admin_image_override_is_limited_to_verification():
+    wf = (WORKFLOWS / "nba-outlook-admin.yml").read_text(encoding="utf-8")
+    assert "image_override is allowed only with verify-serving-models" in wf
+    verify_block = wf[wf.index("verify-serving-models)"): wf.index("import-serving-models)")]
+    assert "DATABASE_URL" not in verify_block  # verification never touches the database
