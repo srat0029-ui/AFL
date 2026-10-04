@@ -28,7 +28,7 @@ app/core/prospective.py's protect_frozen_record):
 - Frozen model output: projections (fully frozen) and predictions (frozen
   at entry; the closing-line group and the settlement group are each
   written exactly once afterwards); expected-minutes model runs and
-  expected-minutes predictions (fully frozen).
+  expected-minutes predictions and rotation outlooks (fully frozen).
 """
 
 from app.core.prospective import protect_frozen_record
@@ -42,6 +42,7 @@ from app.models.nba.evidence import (
 from app.models.nba.game import COMPETITIVE_SEASON_TYPES, NbaBoxScoreState, NbaGame, NbaGameStatus, NbaSeasonType
 from app.models.nba.ingestion_checkpoint import NbaScheduleSyncDate
 from app.models.nba.minutes import NbaMinutesModelRun, NbaMinutesPrediction
+from app.models.nba.rotation import NbaRotationPrediction
 from app.models.nba.player import NbaPlayer
 from app.models.nba.player_availability_report import NbaAvailabilityStatus, NbaPlayerAvailabilityReport
 from app.models.nba.player_game_log import NbaPlayerGameLog
@@ -59,6 +60,7 @@ protect_frozen_record(NbaPropQuote)
 protect_frozen_record(NbaPropProjection)
 protect_frozen_record(NbaMinutesModelRun)
 protect_frozen_record(NbaMinutesPrediction)
+protect_frozen_record(NbaRotationPrediction)
 protect_frozen_record(
     NbaPropPrediction,
     write_once_groups={"closing_captured_at": CLOSING_FIELDS, "settled_at": SETTLEMENT_FIELDS},
@@ -86,4 +88,5 @@ __all__ = [
     "NbaPropPrediction",
     "NbaMinutesModelRun",
     "NbaMinutesPrediction",
+    "NbaRotationPrediction",
 ]
