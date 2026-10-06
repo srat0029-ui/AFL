@@ -21,7 +21,9 @@ classified fresh / stale / unavailable at the cutoff and the actual ages are
 frozen with the snapshot:
 
 - roster (REQUIRED): the team's latest roster observation at or before the
-  cutoff. Rosters are polled daily: fresh <= 36 h, stale <= 7 days; older or
+  cutoff, aged from the last poll at or before the cutoff that still showed it
+  (observations are written only on change; an unchanged roster is
+  re-confirmed by each poll). Rosters are polled daily: fresh <= 36 h, stale <= 7 days; older or
   absent is unavailable - that team gets NO rows (no fallback to a
   reconstructed roster).
 - recent box scores (REQUIRED for complete features): every final game of

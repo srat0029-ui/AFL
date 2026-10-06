@@ -44,7 +44,7 @@ class NbaOutlookSnapshot(TimestampMixin, Base):
     generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # {team_id: {"roster_observed_at", "observation_id", "players", "age_minutes"} or null}
+    # {team_id: {"roster_observed_at", "roster_confirmed_at", "observation_id", "players", "age_minutes"} or null}
     roster_evidence: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     availability_feed_last_read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # {"minutes": {"run_id", "model_version", "model_name", "artifact_sha256"}, "participation": {...}, "rotation": {...}}

@@ -168,6 +168,30 @@ def team_observation_known_at(db: Session, team_id: int, kind: str, cutoff: date
     )
 
 
+def team_observation_confirmed_at(db: Session, obs: NbaTeamObservation, cutoff: datetime) -> datetime:
+    """When the source last showed `obs`'s content, at or before `cutoff`.
+
+    A team observation is written only when its content changes, but every
+    poll is recorded with its payload hash. A later poll of the same team with
+    the same hash re-confirms the observation, so the evidence is as old as
+    that poll, not as old as the last change. Falls back to the observation's
+    own time when no confirming poll is recorded."""
+    first = db.get(NbaEvidencePoll, obs.poll_id)
+    confirmed = None
+    if first is not None and first.scope is not None:
+        confirmed = db.scalar(
+            select(func.max(NbaEvidencePoll.observed_at)).where(
+                NbaEvidencePoll.kind == first.kind,
+                NbaEvidencePoll.scope == first.scope,
+                NbaEvidencePoll.source == first.source,
+                NbaEvidencePoll.payload_sha256 == obs.content_hash,
+                NbaEvidencePoll.observed_at <= ensure_utc(cutoff),
+            )
+        )
+    observed = ensure_utc(obs.observed_at)
+    return observed if confirmed is None else max(observed, ensure_utc(confirmed))
+
+
 def game_lineup_known_at(db: Session, game_id: int, team_id: int, cutoff: datetime) -> NbaGameLineupObservation | None:
     """What the source listed for one team in one game, as last observed at
     or before `cutoff`. Check `has_starter_field` before reading starters:

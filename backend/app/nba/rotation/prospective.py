@@ -41,7 +41,7 @@ from sqlalchemy.orm import Session
 from app.core.prospective import InformationLeakError, ensure_utc
 from app.models.nba import COMPETITIVE_SEASON_TYPES, NbaGame, NbaGameStatus, NbaMinutesModelRun, NbaRotationPrediction
 from app.models.nba.evidence import TEAM_OBSERVATION_ROSTER
-from app.nba.asof import availability_known_at, team_observation_known_at
+from app.nba.asof import availability_known_at, team_observation_confirmed_at, team_observation_known_at
 from app.nba.minutes.data import load_games, load_logs
 from app.nba.minutes.dataset import DEFAULT_FIRST_SEASON, history_logs
 from app.nba.minutes.features import build_features
@@ -173,11 +173,14 @@ def roster_evidence_for(db: Session, team_id: int, cutoff: datetime) -> dict | N
     if obs is None:
         return None
     observed = ensure_utc(obs.observed_at)
+    # Age from the last poll that still showed this roster, not from when it last changed.
+    confirmed = team_observation_confirmed_at(db, obs, cutoff)
     return {
         "observation_id": obs.id,
         "roster_observed_at": observed.isoformat(),
+        "roster_confirmed_at": confirmed.isoformat(),
         "players": len(obs.payload.get("players", [])),
-        "age_minutes": round((ensure_utc(cutoff) - observed).total_seconds() / 60.0, 1),
+        "age_minutes": round((ensure_utc(cutoff) - confirmed).total_seconds() / 60.0, 1),
     }
 
 

@@ -1,14 +1,16 @@
 """Frozen V1.5 outlook snapshots (T-24h / T-4h / T-1h / T-30m) against a real
 database session (also run against PostgreSQL in CI)."""
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import pytest
 
 from app.core.prospective import FrozenRecordError, ensure_utc
-from app.models.nba import NbaGame, NbaGameScheduleObservation, NbaOutlookSnapshot, NbaPlayer, NbaRotationPrediction
+from app.models.nba import NbaGame, NbaGameScheduleObservation, NbaOutlookSnapshot, NbaPlayer, NbaRotationPrediction, NbaTeamObservation
 from app.models.nba.outlook import SNAPSHOT_MISSED_WINDOW, SNAPSHOT_MISSING_DATA, SNAPSHOT_PARTIAL, SNAPSHOT_PRODUCED, SNAPSHOT_STALE
+from app.nba.evidence import record_team_roster
 from app.nba.outlooks.snapshots import DEFAULT_SNAPSHOTS, SnapshotSpec, parse_specs, run_due_snapshots
+from app.providers.nba.evidence_types import NbaRosterPlayer, NbaTeamRoster
 from tests.test_nba_minutes_prospective import NOW, _roster, _serving_run, _world, artifact_dir  # noqa: F401  (fixture)
 from tests.test_nba_rotation_prospective import _report, _rotation_runs
 
@@ -236,3 +238,58 @@ def test_t30m_is_not_taken_inside_the_last_quarter_hour(db_session, artifact_dir
     run_due_snapshots(db_session, now=TIP - timedelta(minutes=12), specs=(SnapshotSpec("T-30m", timedelta(minutes=30)),))
     snap = _snap(db_session, "T-30m")
     assert snap.status == SNAPSHOT_MISSED_WINDOW and _rows(db_session, snap) == []
+
+
+def _polled_rosters(db, team, source_team_id, ids, times):
+    """Rosters recorded through the real live-cycle path: the first poll writes
+    an observation, later polls with the same content only record the poll."""
+    team.external_ids = {"espn": source_team_id}
+    db.commit()
+    for t in times:
+        record_team_roster(db, NbaTeamRoster(
+            source="espn", source_team_id=source_team_id, fetched_at=t, source_timestamp=None,
+            players=[NbaRosterPlayer(source_player_id=i, name=i, position=None, jersey=None, status="Active") for i in ids],
+        ))
+
+
+def test_an_unchanged_roster_is_as_fresh_as_its_last_confirming_poll(db_session, artifact_dir):  # noqa: F811
+    home, away, *_ = _setup(db_session)
+    cutoff = TIP - timedelta(hours=4)
+    daily = [cutoff - timedelta(days=8) + timedelta(days=d) for d in range(8)]  # last poll 1 day before the cutoff
+    _polled_rosters(db_session, home, "10", ["1001", "1002"], daily)
+    _polled_rosters(db_session, away, "20", [], daily)
+    assert db_session.query(NbaTeamObservation).filter_by(kind="roster").count() == 2  # one per team: content never changed
+    run_due_snapshots(db_session, now=cutoff, specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    snap = _snap(db_session, "T-4h")
+    assert snap.status == SNAPSHOT_PRODUCED and _rows(db_session, snap)
+    assert {r["class"] for r in snap.evidence_freshness["roster"].values()} == {"fresh"}
+    assert all(r["age_minutes"] == pytest.approx(24 * 60) for r in snap.evidence_freshness["roster"].values())
+    ev = snap.roster_evidence[str(home.id)]
+    assert ensure_utc(datetime.fromisoformat(ev["roster_observed_at"])) == daily[0]
+    assert ensure_utc(datetime.fromisoformat(ev["roster_confirmed_at"])) == daily[-1]
+
+
+def test_a_confirming_poll_after_the_cutoff_is_not_used(db_session, artifact_dir):  # noqa: F811
+    home, away, *_ = _setup(db_session)
+    cutoff = TIP - timedelta(hours=4)
+    polls = [cutoff - timedelta(days=3), cutoff + timedelta(hours=1)]
+    _polled_rosters(db_session, home, "10", ["1001", "1002"], polls)
+    _polled_rosters(db_session, away, "20", [], polls)
+    run_due_snapshots(db_session, now=cutoff, specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    snap = _snap(db_session, "T-4h")
+    assert snap.status == SNAPSHOT_STALE
+    assert all(r["age_minutes"] == pytest.approx(3 * 24 * 60) for r in snap.evidence_freshness["roster"].values())
+
+
+def test_a_changed_roster_is_aged_from_the_polls_that_showed_the_new_content(db_session, artifact_dir):  # noqa: F811
+    home, away, *_ = _setup(db_session)
+    cutoff = TIP - timedelta(hours=4)
+    old = [cutoff - timedelta(days=6) + timedelta(days=d) for d in range(5)]  # old roster re-confirmed until 1 day before
+    _polled_rosters(db_session, home, "10", ["1001"], old)
+    _polled_rosters(db_session, home, "10", ["1001", "1002"], [cutoff - timedelta(hours=50)])  # the roster changed once
+    _polled_rosters(db_session, away, "20", [], old)
+    run_due_snapshots(db_session, now=cutoff, specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    snap = _snap(db_session, "T-4h")
+    home_ev = snap.evidence_freshness["roster"][str(home.id)]
+    assert home_ev["class"] == "stale" and home_ev["age_minutes"] == pytest.approx(50 * 60)  # not the old roster's later polls
+    assert snap.roster_evidence[str(home.id)]["players"] == 2
