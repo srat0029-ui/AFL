@@ -157,6 +157,13 @@ Snapshot status, most severe first:
 | `produced` | all required evidence fresh |
 | `missed_window` | the runner arrived too late for this label |
 
+A roster's age is measured from the last poll at or before the cutoff that
+still showed the same content (`roster_confirmed_at`), not from when it last
+changed. Observations are written only on change, so an unchanged roster
+would otherwise look older every day, and after 7 days its team would get no
+rows. The first hosted dry run (2026-10-06, run 37406099955) showed every
+roster as about 68 hours old for this reason.
+
 Actual ages and classes are stored in `evidence_freshness`. A 17-day-old
 roster is unavailable: no rows, `missing_data`. The snapshot never falls back
 to a reconstructed historical roster, and never uses evidence observed after
