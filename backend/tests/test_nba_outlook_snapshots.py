@@ -293,3 +293,16 @@ def test_a_changed_roster_is_aged_from_the_polls_that_showed_the_new_content(db_
     home_ev = snap.evidence_freshness["roster"][str(home.id)]
     assert home_ev["class"] == "stale" and home_ev["age_minutes"] == pytest.approx(50 * 60)  # not the old roster's later polls
     assert snap.roster_evidence[str(home.id)]["players"] == 2
+
+
+def test_a_recent_preseason_game_without_a_box_score_does_not_mark_the_snapshot_stale(db_session, artifact_dir):  # noqa: F811
+    # Preseason box scores are never ingested and never feed the features, so their absence is not missing evidence.
+    home, away, *_ = _setup(db_session, rosters_at=TIP - timedelta(hours=30))
+    preseason = NbaGame(season_start_year=2026, season_type="preseason", game_date=(TIP - timedelta(days=2)).date(), scheduled_start=TIP - timedelta(days=2),
+                        status="final", home_team_id=home.id, away_team_id=away.id, home_score=100, away_score=99, source="test", source_game_id="pre-no-box")
+    db_session.add(preseason)
+    db_session.commit()
+    run_due_snapshots(db_session, now=TIP - timedelta(hours=4), specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    snap = _snap(db_session, "T-4h")
+    assert snap.status == SNAPSHOT_PRODUCED
+    assert snap.evidence_freshness["box_scores"] == {"recent_final_games": 0, "missing_box_scores": [], "class": "fresh"}

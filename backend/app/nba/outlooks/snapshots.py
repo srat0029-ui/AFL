@@ -26,9 +26,11 @@ frozen with the snapshot:
   re-confirmed by each poll). Rosters are polled daily: fresh <= 36 h, stale <= 7 days; older or
   absent is unavailable - that team gets NO rows (no fallback to a
   reconstructed roster).
-- recent box scores (REQUIRED for complete features): every final game of
-  either team in the 7 days before the box-score cutoff must have its box
-  score stored; otherwise stale (features would miss that game).
+- recent box scores (REQUIRED for complete features): every final
+  competitive (regular season, play-in, playoffs) game of either team in the
+  7 days before the box-score cutoff must have its box score stored; otherwise
+  stale (features would miss that game). Preseason games are excluded: their
+  box scores are never ingested and never feed the features.
 - schedule: the game's latest schedule observation (polled every 3 h): fresh
   <= 6 h, stale <= 48 h, else unavailable. Recorded; a stale schedule makes the
   snapshot stale.
@@ -53,7 +55,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.prospective import ensure_utc
-from app.models.nba import NbaOutlookSnapshot
+from app.models.nba import COMPETITIVE_SEASON_TYPES, NbaOutlookSnapshot
 from app.models.nba.evidence import POLL_AVAILABILITY
 from app.models.nba.outlook import SNAPSHOT_MISSED_WINDOW, SNAPSHOT_MISSING_DATA, SNAPSHOT_PARTIAL, SNAPSHOT_PRODUCED, SNAPSHOT_STALE
 from app.nba.asof import GAME_RESULT_AVAILABILITY_LAG, _last_poll_at, game_schedule_known_at
@@ -157,8 +159,10 @@ def evidence_freshness(db: Session, games: pd.DataFrame, game, now: datetime) ->
 
     box_cutoff = pd.Timestamp(ensure_utc(now) - GAME_RESULT_AVAILABILITY_LAG).tz_localize(None)
     teams = {int(game.home_team_id), int(game.away_team_id)}
+    # Competitive games only: preseason box scores are never ingested and never feed the features.
     recent = games[
         (games["status"] == "final")
+        & games["season_type"].isin(COMPETITIVE_SEASON_TYPES)
         & (games["scheduled_start"] <= box_cutoff)
         & (games["scheduled_start"] >= box_cutoff - pd.Timedelta(BOX_SCORE_LOOKBACK))
         & (games["home_team_id"].isin(teams) | games["away_team_id"].isin(teams))
