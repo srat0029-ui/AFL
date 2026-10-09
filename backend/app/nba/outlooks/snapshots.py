@@ -31,8 +31,11 @@ frozen with the snapshot:
   7 days before the box-score cutoff must have its box score stored; otherwise
   stale (features would miss that game). Preseason games are excluded: their
   box scores are never ingested and never feed the features.
-- schedule: the game's latest schedule observation (polled every 3 h): fresh
-  <= 6 h, stale <= 48 h, else unavailable. Recorded; a stale schedule makes the
+- schedule: the game's latest schedule observation at or before the cutoff,
+  aged from the last per-game confirmation poll at or before the cutoff that
+  re-listed the same status / date / tip-off (polled every 3 h; only games a
+  successful fetch actually returned are confirmed): fresh <= 6 h, stale <=
+  48 h, else unavailable. Recorded; a stale schedule makes the
   snapshot stale.
 - injury feed: latest read (polled every 30 min): fresh <= 90 min, stale <=
   24 h. Recorded only - V1.5 never uses it.
@@ -58,7 +61,7 @@ from app.core.prospective import ensure_utc
 from app.models.nba import COMPETITIVE_SEASON_TYPES, NbaOutlookSnapshot
 from app.models.nba.evidence import POLL_AVAILABILITY
 from app.models.nba.outlook import SNAPSHOT_MISSED_WINDOW, SNAPSHOT_MISSING_DATA, SNAPSHOT_PARTIAL, SNAPSHOT_PRODUCED, SNAPSHOT_STALE
-from app.nba.asof import GAME_RESULT_AVAILABILITY_LAG, _last_poll_at, game_schedule_known_at
+from app.nba.asof import GAME_RESULT_AVAILABILITY_LAG, _last_poll_at, game_schedule_confirmed_at, game_schedule_known_at
 from app.nba.minutes.data import load_games
 from app.nba.rotation.prospective import ServingModels, compute_outlooks, history_for, load_serving, outlook_record, roster_evidence_for, upcoming_games, write_outlook
 
@@ -154,7 +157,10 @@ def evidence_freshness(db: Session, games: pd.DataFrame, game, now: datetime) ->
     for team in (int(game.home_team_id), int(game.away_team_id)):
         ev = roster_evidence_for(db, team, now)
         age = None if ev is None else timedelta(minutes=ev["age_minutes"])
-        rosters[str(team)] = {"age_minutes": _minutes(age), "class": EVIDENCE_LIMITS["roster"].classify(age), "observation_id": None if ev is None else ev["observation_id"]}
+        rosters[str(team)] = {
+            "age_minutes": _minutes(age), "class": EVIDENCE_LIMITS["roster"].classify(age), "observation_id": None if ev is None else ev["observation_id"],
+            "observed_at": None if ev is None else ev["roster_observed_at"], "confirmed_at": None if ev is None else ev["roster_confirmed_at"],
+        }
     out["roster"] = rosters
 
     box_cutoff = pd.Timestamp(ensure_utc(now) - GAME_RESULT_AVAILABILITY_LAG).tz_localize(None)
@@ -171,8 +177,13 @@ def evidence_freshness(db: Session, games: pd.DataFrame, game, now: datetime) ->
     out["box_scores"] = {"recent_final_games": int(len(recent)), "missing_box_scores": missing, "class": STALE if missing else FRESH}
 
     sched = game_schedule_known_at(db, int(game.game_id), now)
-    s_age = None if sched is None else _age(now, sched.observed_at)
-    out["schedule"] = {"age_minutes": _minutes(s_age), "class": EVIDENCE_LIMITS["schedule"].classify(s_age)}
+    # Aged from the last poll that actually re-listed this schedule, not from its last change.
+    s_confirmed = None if sched is None else game_schedule_confirmed_at(db, sched, now)
+    s_age = _age(now, s_confirmed)
+    out["schedule"] = {
+        "age_minutes": _minutes(s_age), "class": EVIDENCE_LIMITS["schedule"].classify(s_age),
+        "observed_at": None if sched is None else ensure_utc(sched.observed_at).isoformat(), "confirmed_at": None if s_confirmed is None else s_confirmed.isoformat(),
+    }
 
     f_age = _age(now, _last_poll_at(db, POLL_AVAILABILITY, now))
     out["injury_feed"] = {"age_minutes": _minutes(f_age), "class": EVIDENCE_LIMITS["injury_feed"].classify(f_age), "used_by_model": False}

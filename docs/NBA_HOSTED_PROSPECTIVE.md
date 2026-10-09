@@ -144,7 +144,7 @@ matter most for 2026-27 features.
 |---|---|---|---|---|
 | Roster observation (polled daily) | required: defines the candidates | ≤ 36 h | ≤ 7 days | older or none: that team gets no rows |
 | Box scores of either team's final competitive games (not preseason) in the last 7 days | required for complete features | all stored | any missing | — |
-| Schedule observation of the game (polled every 3 h) | timing | ≤ 6 h | ≤ 48 h | older or none (counts as stale) |
+| Schedule observation of the game, aged from its last per-game confirmation (polled every 3 h) | timing | ≤ 6 h | ≤ 48 h | older or none (counts as stale) |
 | Injury feed (polled every 30 min) | stored beside predictions only; never used by V1.5 | ≤ 90 min | ≤ 24 h | older or none |
 
 Snapshot status, most severe first:
@@ -163,6 +163,19 @@ changed. Observations are written only on change, so an unchanged roster
 would otherwise look older every day, and after 7 days its team would get no
 rows. The first hosted dry run (2026-10-06, run 37406099955) showed every
 roster as about 68 hours old for this reason.
+
+Schedule age works the same way as roster age. A schedule observation is
+written only when a game's status, date or tip-off changes. The live cycle
+also records a per-game confirmation poll (`kind = schedule_game`,
+`scope = source game id`, hash of status / date / tip-off). It records one for
+each unsettled game that a successfully fetched date actually returned. A
+failed date, or a response that omits the game, confirms nothing. The
+date-range schedule log never counts as confirmation, and backfills record
+none. Freshness uses the latest matching confirmation at or before the
+cutoff. The second hosted opening-night dry run (2026-10-09, run 37884333783)
+showed every schedule "unavailable" at ~76 h for this reason. Confirmations
+exist only from deployment onward; none were back-filled. Volume is about 840
+rows a day in season (~125 MB a year).
 
 Preseason games are excluded from the box-score check. Their box scores are
 never ingested and the features use competitive games only, so counting them

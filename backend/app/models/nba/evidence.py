@@ -36,6 +36,9 @@ POLL_TEAM_ROSTER = "team_roster"
 POLL_TEAM_DEPTH_CHART = "team_depth_chart"
 POLL_GAME_LINEUP = "game_lineup"
 POLL_SCHEDULE = "schedule"
+# One per upcoming game returned by a successful live schedule fetch; scope is
+# the game's source id and payload_sha256 its schedule_content_hash.
+POLL_SCHEDULE_GAME = "schedule_game"
 POLL_BOX_SCORES = "box_scores"
 
 TEAM_OBSERVATION_ROSTER = "roster"

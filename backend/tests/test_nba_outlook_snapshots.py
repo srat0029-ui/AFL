@@ -6,11 +6,15 @@ from datetime import datetime, timedelta
 import pytest
 
 from app.core.prospective import FrozenRecordError, ensure_utc
-from app.models.nba import NbaGame, NbaGameScheduleObservation, NbaOutlookSnapshot, NbaPlayer, NbaRotationPrediction, NbaTeamObservation
+from app.models.nba import NbaEvidencePoll, NbaGame, NbaGameScheduleObservation, NbaOutlookSnapshot, NbaPlayer, NbaRotationPrediction, NbaTeamObservation
+from app.models.nba.evidence import POLL_SCHEDULE, POLL_SCHEDULE_GAME
 from app.models.nba.outlook import SNAPSHOT_MISSED_WINDOW, SNAPSHOT_MISSING_DATA, SNAPSHOT_PARTIAL, SNAPSHOT_PRODUCED, SNAPSHOT_STALE
+from app.nba.asof import schedule_content_hash
 from app.nba.evidence import record_team_roster
+from app.nba.ingestion import sync_schedule
 from app.nba.outlooks.snapshots import DEFAULT_SNAPSHOTS, SnapshotSpec, parse_specs, run_due_snapshots
 from app.providers.nba.evidence_types import NbaRosterPlayer, NbaTeamRoster
+from app.providers.nba.types import NbaGameRecord
 from tests.test_nba_minutes_prospective import NOW, _roster, _serving_run, _world, artifact_dir  # noqa: F401  (fixture)
 from tests.test_nba_rotation_prospective import _report, _rotation_runs
 
@@ -306,3 +310,137 @@ def test_a_recent_preseason_game_without_a_box_score_does_not_mark_the_snapshot_
     snap = _snap(db_session, "T-4h")
     assert snap.status == SNAPSHOT_PRODUCED
     assert snap.evidence_freshness["box_scores"] == {"recent_final_games": 0, "missing_box_scores": [], "class": "fresh"}
+
+
+# --- schedule freshness: per-game confirmations from the live schedule sync --
+
+
+class _ScheduleSource:
+    """A schedule provider whose answer for the next fetch is set per call:
+    a list of NbaGameRecord, or an exception to raise (a failed date)."""
+
+    def __init__(self):
+        self.answer = []
+
+    def get_games(self, on, *, team_ids=None):
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return list(self.answer)
+
+
+def _listing(home, away, *, game_id="u1", game_date=None, start=TIP, status="scheduled"):
+    return NbaGameRecord(
+        source="test", source_game_id=game_id, season_start_year=2026, season_type="regular", game_date=game_date or TIP.date(),
+        scheduled_start=start, status=status, home_source_team_id="10", away_source_team_id="20", home_team_name=home.name, away_team_name=away.name,
+    )
+
+
+def _live_sync(db, source, at):
+    """One live-cycle schedule fetch of a single date, as the live cycle runs it."""
+    return sync_schedule(db, source, TIP.date(), TIP.date(), source="test", today=at.date(), now=at, record_confirmations=True, refresh=True)
+
+
+def _schedule_world(db):
+    home, away, *_ = _setup(db, rosters_at=TIP - timedelta(hours=30), schedule=())  # no pre-made schedule observations
+    home.external_ids, away.external_ids = {"test": "10"}, {"test": "20"}
+    db.commit()
+    return home, away
+
+
+def _schedule_polls(db):
+    return db.query(NbaEvidencePoll).filter_by(kind=POLL_SCHEDULE_GAME, scope="u1").count()
+
+
+def test_an_unchanged_schedule_is_as_fresh_as_its_last_confirming_listing(db_session, artifact_dir):  # noqa: F811
+    home, away = _schedule_world(db_session)
+    cutoff = TIP - timedelta(hours=4)
+    src = _ScheduleSource()
+    src.answer = [_listing(home, away)]
+    syncs = [cutoff - timedelta(days=8) + timedelta(days=d) for d in range(8)] + [cutoff - timedelta(hours=2)]
+    for at in syncs:
+        _live_sync(db_session, src, at)
+    assert db_session.query(NbaGameScheduleObservation).count() == 1  # the schedule never changed
+    assert _schedule_polls(db_session) == len(syncs)
+    run_due_snapshots(db_session, now=cutoff, specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    snap = _snap(db_session, "T-4h")
+    sched = snap.evidence_freshness["schedule"]
+    assert snap.status == SNAPSHOT_PRODUCED and _rows(db_session, snap)
+    assert sched["class"] == "fresh" and sched["age_minutes"] == pytest.approx(120)
+    assert ensure_utc(datetime.fromisoformat(sched["observed_at"])) == syncs[0]
+    assert ensure_utc(datetime.fromisoformat(sched["confirmed_at"])) == syncs[-1]
+
+
+def test_a_schedule_confirmation_after_the_cutoff_is_not_used(db_session, artifact_dir):  # noqa: F811
+    home, away = _schedule_world(db_session)
+    cutoff = TIP - timedelta(hours=4)
+    src = _ScheduleSource()
+    src.answer = [_listing(home, away)]
+    for at in (cutoff - timedelta(hours=30), cutoff + timedelta(hours=1)):
+        _live_sync(db_session, src, at)
+    run_due_snapshots(db_session, now=cutoff, specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    sched = _snap(db_session, "T-4h").evidence_freshness["schedule"]
+    assert sched["class"] == "stale" and sched["age_minutes"] == pytest.approx(30 * 60)
+    assert ensure_utc(datetime.fromisoformat(sched["confirmed_at"])) == cutoff - timedelta(hours=30)
+
+
+def test_confirmations_of_an_old_schedule_do_not_freshen_a_changed_one(db_session, artifact_dir):  # noqa: F811
+    home, away = _schedule_world(db_session)
+    cutoff = TIP - timedelta(hours=4)
+    src = _ScheduleSource()
+    src.answer = [_listing(home, away, game_date=TIP.date() - timedelta(days=1))]  # first listed on the wrong date
+    for d in range(6, 3, -1):
+        _live_sync(db_session, src, cutoff - timedelta(days=d))
+    old = db_session.query(NbaGameScheduleObservation).one()
+    src.answer = [_listing(home, away)]  # the source corrects the date: a new schedule version
+    _live_sync(db_session, src, cutoff - timedelta(hours=30))
+    # Even an old-version confirmation recorded later must not count for the new version.
+    db_session.add(NbaEvidencePoll(kind=POLL_SCHEDULE_GAME, scope="u1", source="test", observed_at=cutoff - timedelta(hours=1), items_seen=1,
+                                   observations_added=0, payload_sha256=schedule_content_hash(old.status, old.game_date, old.scheduled_start)))
+    db_session.commit()
+    run_due_snapshots(db_session, now=cutoff, specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    sched = _snap(db_session, "T-4h").evidence_freshness["schedule"]
+    assert db_session.query(NbaGameScheduleObservation).count() == 2
+    assert sched["class"] == "stale" and sched["age_minutes"] == pytest.approx(30 * 60)
+
+
+def test_failed_partial_or_date_range_fetches_do_not_confirm_a_game(db_session, artifact_dir):  # noqa: F811
+    home, away = _schedule_world(db_session)
+    cutoff = TIP - timedelta(hours=4)
+    src = _ScheduleSource()
+    src.answer = [_listing(home, away)]
+    _live_sync(db_session, src, cutoff - timedelta(hours=30))
+    src.answer = RuntimeError("source timed out")  # the date's request fails
+    failed = _live_sync(db_session, src, cutoff - timedelta(hours=3))
+    src.answer = [_listing(home, away, game_id="other", start=TIP + timedelta(hours=3))]  # a response that omits this game
+    _live_sync(db_session, src, cutoff - timedelta(hours=2))
+    # A date-range sync log (what the live cycle writes per run) is never a per-game confirmation.
+    db_session.add(NbaEvidencePoll(kind=POLL_SCHEDULE, scope=f"{TIP.date()}..{TIP.date()}", source="test", observed_at=cutoff - timedelta(hours=1),
+                                   items_seen=1, observations_added=0))
+    db_session.commit()
+    assert failed.dates_failed and _schedule_polls(db_session) == 1
+    run_due_snapshots(db_session, now=cutoff, specs=(SnapshotSpec("T-4h", timedelta(hours=4)),))
+    sched = _snap(db_session, "T-4h").evidence_freshness["schedule"]
+    assert sched["class"] == "stale" and sched["age_minutes"] == pytest.approx(30 * 60)
+
+
+def test_backfill_syncs_record_no_schedule_confirmations(db_session, artifact_dir):  # noqa: F811
+    home, away = _schedule_world(db_session)
+    src = _ScheduleSource()
+    src.answer = [_listing(home, away)]
+    sync_schedule(db_session, src, TIP.date(), TIP.date(), source="test", today=NOW.date(), now=NOW, refresh=True)  # record_confirmations defaults off
+    assert db_session.query(NbaGameScheduleObservation).count() == 1 and _schedule_polls(db_session) == 0
+
+
+def test_dry_run_with_schedule_confirmations_writes_nothing(db_session, artifact_dir):  # noqa: F811
+    home, away = _schedule_world(db_session)
+    cutoff = TIP - timedelta(hours=4)
+    src = _ScheduleSource()
+    src.answer = [_listing(home, away)]
+    for at in (cutoff - timedelta(hours=26), cutoff - timedelta(hours=2)):
+        _live_sync(db_session, src, at)
+    tables = (NbaOutlookSnapshot, NbaRotationPrediction, NbaEvidencePoll, NbaGameScheduleObservation, NbaTeamObservation)
+    before = {t: db_session.query(t).count() for t in tables}
+    r = run_due_snapshots(db_session, now=cutoff, specs=(SnapshotSpec("T-4h", timedelta(hours=4)),), dry_run=True)
+    db_session.rollback()  # anything flushed but uncommitted vanishes here; anything committed would still be counted
+    assert r.produced and r.produced[0]["evidence_freshness"]["schedule"]["class"] == "fresh"
+    assert {t: db_session.query(t).count() for t in tables} == before
