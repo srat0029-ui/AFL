@@ -27,8 +27,10 @@ uses a different, looser read path than production is not evidence about
 production.
 """
 
+import hashlib
+import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -46,7 +48,7 @@ from app.models.nba import (
     NbaPropQuote,
     NbaTeamObservation,
 )
-from app.models.nba.evidence import POLL_AVAILABILITY
+from app.models.nba.evidence import POLL_AVAILABILITY, POLL_SCHEDULE_GAME
 
 # An NBA game runs about 2.5 hours; multiple overtimes can push past 3. Four
 # hours is deliberately conservative — erring late only costs a feature
@@ -185,6 +187,40 @@ def team_observation_confirmed_at(db: Session, obs: NbaTeamObservation, cutoff: 
                 NbaEvidencePoll.scope == first.scope,
                 NbaEvidencePoll.source == first.source,
                 NbaEvidencePoll.payload_sha256 == obs.content_hash,
+                NbaEvidencePoll.observed_at <= ensure_utc(cutoff),
+            )
+        )
+    observed = ensure_utc(obs.observed_at)
+    return observed if confirmed is None else max(observed, ensure_utc(confirmed))
+
+
+def schedule_content_hash(status: str, game_date: date, scheduled_start: datetime) -> str:
+    """Hash of exactly the fields that decide whether a schedule observation
+    changed (status, listed date, tip-off), so a confirming poll can be matched
+    to the observation it re-confirms."""
+    payload = {"status": status, "game_date": game_date.isoformat(), "scheduled_start": ensure_utc(scheduled_start).isoformat()}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def game_schedule_confirmed_at(db: Session, obs: NbaGameScheduleObservation, cutoff: datetime) -> datetime:
+    """When the source last listed `obs`'s schedule, at or before `cutoff`.
+
+    A schedule observation is written only when the game's status, date or
+    tip-off changes. The live cycle also records a poll for every upcoming
+    game that a successful fetch actually returned, hashed with
+    schedule_content_hash. The latest such poll at or before the cutoff whose
+    hash matches this observation re-confirms it. Date-range sync logs never
+    count. Falls back to the observation's own time when no confirming poll
+    is recorded."""
+    source_game_id = db.scalar(select(NbaGame.source_game_id).where(NbaGame.id == obs.game_id))
+    confirmed = None
+    if source_game_id is not None:
+        confirmed = db.scalar(
+            select(func.max(NbaEvidencePoll.observed_at)).where(
+                NbaEvidencePoll.kind == POLL_SCHEDULE_GAME,
+                NbaEvidencePoll.scope == source_game_id,
+                NbaEvidencePoll.source == obs.source,
+                NbaEvidencePoll.payload_sha256 == schedule_content_hash(obs.status, obs.game_date, obs.scheduled_start),
                 NbaEvidencePoll.observed_at <= ensure_utc(cutoff),
             )
         )

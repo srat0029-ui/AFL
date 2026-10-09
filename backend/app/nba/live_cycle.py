@@ -230,7 +230,7 @@ def _step_schedule(db: Session, stats: NbaStatsProvider, source: str, policy: Nb
         sync_teams(db, stats)
     start = now.date() - timedelta(days=policy.schedule_lookback_days)
     end = now.date() + timedelta(days=policy.schedule_lookahead_days)
-    report = sync_schedule(db, stats, start, end, source=source, today=now.date(), now=now)
+    report = sync_schedule(db, stats, start, end, source=source, today=now.date(), now=now, record_confirmations=True)
     if report.dates_failed and len(report.dates_failed) == report.dates_requested:
         raise _SourceFailure(f"all {report.dates_requested} schedule dates failed: {report.dates_failed[0]}")
     db.add(
@@ -241,7 +241,7 @@ def _step_schedule(db: Session, stats: NbaStatsProvider, source: str, policy: Nb
     )
     db.commit()
     g = report.games
-    detail = f"{report.dates_requested} dates; games seen {g.seen}, new {g.created}, changed {g.updated}; schedule observations added {g.schedule_observations_added}"
+    detail = f"{report.dates_requested} dates; games seen {g.seen}, new {g.created}, changed {g.updated}; schedule observations added {g.schedule_observations_added}, confirmations {g.schedule_confirmations_added}"
     return detail + (f"; {len(report.dates_failed)} date(s) failed, e.g. {report.dates_failed[0]}" if report.dates_failed else "")
 
 

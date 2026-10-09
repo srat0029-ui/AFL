@@ -69,6 +69,7 @@ from app.core.prospective import ensure_utc
 from app.models.nba import (
     COMPETITIVE_SEASON_TYPES,
     NbaBoxScoreState,
+    NbaEvidencePoll,
     NbaGame,
     NbaGameScheduleObservation,
     NbaGameStatus,
@@ -77,6 +78,8 @@ from app.models.nba import (
     NbaScheduleSyncDate,
     NbaTeam,
 )
+from app.models.nba.evidence import POLL_SCHEDULE_GAME
+from app.nba.asof import schedule_content_hash
 from app.providers.nba.types import NbaBoxScore, NbaGameRecord, NbaPlayerBoxLine, NbaTeamRecord
 
 logger = logging.getLogger(__name__)
@@ -160,18 +163,40 @@ class GameIngestionReport:
     unchanged: int = 0
     skipped_unknown_team: list[str] = field(default_factory=list)
     schedule_observations_added: int = 0
+    schedule_confirmations_added: int = 0
 
 
-def record_schedule_observations(db: Session, games: list[NbaGame], *, source: str, now: datetime) -> int:
+def record_schedule_observations(
+    db: Session, games: list[NbaGame], *, source: str, now: datetime, record_confirmations: bool = False, report: GameIngestionReport | None = None
+) -> int:
     """Append a schedule observation for each game seen for the first time,
     or whose status, tip-off time or listed date differs from its latest
     observation. `nba_games` itself is corrected in place and so only holds
     the current schedule; these rows keep every earlier version, which is
     what makes a postponement or a moved tip-off history rather than an
-    overwrite. Does not commit."""
+    overwrite.
+
+    With `record_confirmations` (the live cycle only, never backfills), also
+    record a POLL_SCHEDULE_GAME poll for every game in `games` that is not
+    yet settled. `games` are only ever games the source actually returned in a
+    successful response, so each poll is a genuine re-listing of that game's
+    schedule at `now`; it lets freshness age an unchanged schedule from its
+    last confirmation rather than its last change. Does not commit."""
     games = [g for g in games if g.id is not None]
     if not games:
         return 0
+    if record_confirmations:
+        for game in games:
+            if game.status in _SETTLED_STATUSES:
+                continue
+            db.add(
+                NbaEvidencePoll(
+                    kind=POLL_SCHEDULE_GAME, scope=game.source_game_id, source=source, observed_at=now, items_seen=1, observations_added=0,
+                    payload_sha256=schedule_content_hash(game.status, game.game_date, game.scheduled_start),
+                )
+            )
+            if report is not None:
+                report.schedule_confirmations_added += 1
     latest_ids = select(func.max(NbaGameScheduleObservation.id)).where(NbaGameScheduleObservation.game_id.in_([g.id for g in games])).group_by(NbaGameScheduleObservation.game_id)
     latest = {o.game_id: o for o in db.scalars(select(NbaGameScheduleObservation).where(NbaGameScheduleObservation.id.in_(latest_ids))).all()}
     added = 0
@@ -192,7 +217,9 @@ def record_schedule_observations(db: Session, games: list[NbaGame], *, source: s
 _GAME_FIELDS = ("season_start_year", "season_type", "game_date", "scheduled_start", "status", "home_score", "away_score", "source_status", "source_season_type")
 
 
-def ingest_games(db: Session, records: list[NbaGameRecord], report: GameIngestionReport | None = None, *, now: datetime | None = None) -> GameIngestionReport:
+def ingest_games(
+    db: Session, records: list[NbaGameRecord], report: GameIngestionReport | None = None, *, now: datetime | None = None, record_confirmations: bool = False
+) -> GameIngestionReport:
     report = report or GameIngestionReport()
     if not records:
         return report
@@ -237,7 +264,9 @@ def ingest_games(db: Session, records: list[NbaGameRecord], report: GameIngestio
         else:
             report.unchanged += 1
     db.flush()
-    report.schedule_observations_added += record_schedule_observations(db, list(touched.values()), source=source, now=now)
+    report.schedule_observations_added += record_schedule_observations(
+        db, list(touched.values()), source=source, now=now, record_confirmations=record_confirmations, report=report
+    )
     db.commit()
     return report
 
@@ -445,6 +474,7 @@ def sync_schedule(
     today: date | None = None,
     now: datetime | None = None,
     on_progress: Callable[[date, ScheduleSyncReport], None] | None = None,
+    record_confirmations: bool = False,
 ) -> ScheduleSyncReport:
     """Fetch and upsert every game listed on each date in [start, end] —
     past results and future fixtures alike. Only games between two known
@@ -455,7 +485,11 @@ def sync_schedule(
     resume where it stopped.
 
     `now` is the observation time stamped on schedule observations; it
-    defaults to the wall clock at the moment each date's response arrives."""
+    defaults to the wall clock at the moment each date's response arrives.
+
+    `record_confirmations` (live cycle only): record a per-game confirmation
+    poll for every unsettled game returned by a date that was fetched
+    successfully. A failed date returns no games, so it confirms nothing."""
     report = ScheduleSyncReport()
     team_ids = set(teams_by_source_id(db, source))
     if not team_ids:
@@ -478,7 +512,7 @@ def sync_schedule(
             report.dates_failed.append(f"{day.isoformat()}: {str(exc)[:120]}")
             continue
         observed_at = now or _utcnow()
-        ingest_games(db, records, report.games, now=observed_at)
+        ingest_games(db, records, report.games, now=observed_at, record_confirmations=record_confirmations)
         settled = day <= today - timedelta(days=SETTLED_AFTER_DAYS) and all(r.status in _SETTLED_STATUSES for r in records)
         if checkpoint is None:
             db.add(NbaScheduleSyncDate(source=source, game_date=day, synced_at=observed_at, games_kept=len(records), is_settled=settled))
