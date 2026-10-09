@@ -143,7 +143,7 @@ matter most for 2026-27 features.
 | Source | Role | Fresh | Stale | Unavailable |
 |---|---|---|---|---|
 | Roster observation (polled daily) | required: defines the candidates | ≤ 36 h | ≤ 7 days | older or none: that team gets no rows |
-| Box scores of either team's final games in the last 7 days | required for complete features | all stored | any missing | — |
+| Box scores of either team's final competitive games (not preseason) in the last 7 days | required for complete features | all stored | any missing | — |
 | Schedule observation of the game (polled every 3 h) | timing | ≤ 6 h | ≤ 48 h | older or none (counts as stale) |
 | Injury feed (polled every 30 min) | stored beside predictions only; never used by V1.5 | ≤ 90 min | ≤ 24 h | older or none |
 
@@ -163,6 +163,11 @@ changed. Observations are written only on change, so an unchanged roster
 would otherwise look older every day, and after 7 days its team would get no
 rows. The first hosted dry run (2026-10-06, run 37406099955) showed every
 roster as about 68 hours old for this reason.
+
+Preseason games are excluded from the box-score check. Their box scores are
+never ingested and the features use competitive games only, so counting them
+marked opening-week snapshots stale for no reason (the second hosted dry run,
+2026-10-06, run 37415795341).
 
 Actual ages and classes are stored in `evidence_freshness`. A 17-day-old
 roster is unavailable: no rows, `missing_data`. The snapshot never falls back
