@@ -1,0 +1,108 @@
+name: NBA Current-Season Catch-up
+
+# Fetches missed CURRENT-season NBA results (schedule + box scores) for a
+# short window of past dates that the live cycle no longer reaches - it only
+# looks back nba_schedule_lookback_days (3). Written for the 2026-27 gap left
+# by the Layerbase outage. See docs/NBA_HOSTED_PROSPECTIVE.md, "Current-season
+# catch-up", and app/nba/catch_up.py.
+#
+# Safeguards:
+# - Manual dispatch only; no schedule.
+# - The run must be confirmed by typing "catch-up-<from>-<to>".
+# - The window is validated in Python before any request: inside the current
+#   season, ending before the live cycle's lookback window (the two never
+#   write the same games), at most 31 dates. Anything else exits 2.
+# - Runs only `python -m app.nba.cli catch-up`: the existing idempotent
+#   schedule and box-score ingestion. No AFL command, no restore, no delete,
+#   no migration, no snapshot. Stored box scores are never rewritten, and
+#   every observation is stamped with the time it is actually made.
+# - Refuses unless the database is at the image's migration head.
+# - Uses the pinned live-cycle image (NBA_LIVE_CYCLE_IMAGE) unless
+#   image_override names another sha-pinned image of THIS repository; the
+#   override applies to this run only and changes no repository setting.
+# - Its own concurrency group: never queues behind or blocks the 15-minute
+#   live evidence cycle.
+
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: "First date (YYYY-MM-DD)"
+        type: string
+        required: true
+      to:
+        description: "Last date (YYYY-MM-DD); must be before the live cycle's 3-day lookback"
+        type: string
+        required: true
+      confirm:
+        description: 'Type exactly "catch-up-<from>-<to>", e.g. catch-up-2026-10-20-2026-10-24'
+        type: string
+        required: true
+      image_override:
+        description: "Optional: ghcr.io/srat0029-ui/afl/backend:sha-<commit>[@sha256:...] for this run only (default: NBA_LIVE_CYCLE_IMAGE)"
+        type: string
+        required: false
+        default: ""
+
+concurrency:
+  group: nba-current-season-catch-up
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  catch-up:
+    name: Catch up current-season results
+    runs-on: ubuntu-latest
+    # A 5-date window is ~5 schedule requests and ~50 box scores at 0.5 s.
+    timeout-minutes: 30
+    env:
+      IMAGE: ${{ inputs.image_override != '' && inputs.image_override || vars.NBA_LIVE_CYCLE_IMAGE }}
+      FROM: ${{ inputs.from }}
+      TO: ${{ inputs.to }}
+    steps:
+      - name: Check inputs and configuration
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+          HAS_DATABASE_URL: ${{ secrets.DATABASE_URL != '' }}
+        run: |
+          for d in "$FROM" "$TO"; do
+            echo "$d" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || { echo "::error::dates must be YYYY-MM-DD, got '$d'"; exit 1; }
+          done
+          if [ "$CONFIRM" != "catch-up-$FROM-$TO" ]; then
+            echo "::error::confirmation must be exactly 'catch-up-$FROM-$TO'"; exit 1
+          fi
+          case "$IMAGE" in
+            ghcr.io/srat0029-ui/afl/backend:sha-*) ;;
+            *) echo "::error::image must be a sha-pinned ghcr.io/srat0029-ui/afl/backend image, got '$IMAGE'"; exit 1 ;;
+          esac
+          if [ "$HAS_DATABASE_URL" != "true" ]; then
+            echo "::error::Repository secret DATABASE_URL is not set."; exit 1
+          fi
+          echo "image: $IMAGE"
+
+      - name: Refuse an image without catch-up support
+        run: |
+          docker pull --quiet "$IMAGE"
+          if ! docker run --rm "$IMAGE" python -m app.nba.cli catch-up --help > /dev/null 2>&1; then
+            echo "::error::$IMAGE has no catch-up command; use an image built from a commit that includes it"; exit 1
+          fi
+
+      - name: Refuse unless the database is at this image's migration head
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" python -m app.nba.cli schema-status
+
+      - name: Coverage before (read-only)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # Exit 1 here only means the window is incomplete, which is why this runs.
+        run: docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" python -m app.nba.cli catch-up --from "$FROM" --to "$TO" --dry-run || [ $? -eq 1 ]
+
+      - name: Catch up and verify coverage
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # Exit 1 if any competitive game in the window is still not final
+        # with a stored box score. Rerunning resumes; nothing stored is redone.
+        run: docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" python -m app.nba.cli catch-up --from "$FROM" --to "$TO"

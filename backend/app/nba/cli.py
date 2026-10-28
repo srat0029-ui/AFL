@@ -8,6 +8,11 @@ into the NBA tables, plus a validation report over what is stored.
                     successfully fetched
   backfill          sync-teams, then sync-schedule and sync-box-scores across
                     a span of seasons
+  catch-up          missed CURRENT-season results for a short window of past
+                    dates the live cycle no longer reaches; bounded and
+                    verified (see app/nba/catch_up.py). --dry-run only prints
+                    the window's coverage. Exit 1 if the window is still
+                    incomplete afterwards, 2 if the window is refused
   validate          data-quality report over everything stored
   run-live-cycle    one pass of the live evidence cycle: schedule changes,
                     injury/availability feed, team rosters and depth charts,
@@ -25,6 +30,7 @@ Usage:
   python -m app.nba.cli sync-schedule --from 2026-10-20 --to 2026-10-31
   python -m app.nba.cli sync-box-scores --from 2026-01-15 --to 2026-01-17
   python -m app.nba.cli backfill --from-season 2015 --to-season 2026
+  python -m app.nba.cli catch-up --from 2026-10-20 --to 2026-10-24 [--dry-run]
   python -m app.nba.cli validate
   python -m app.nba.cli run-live-cycle
   python -m app.nba.cli evidence-health
@@ -122,6 +128,30 @@ def _box_progress(game, report: BoxScoreIngestionReport) -> None:
         )
 
 
+def _catch_up(db, args, *, provider=None, today: date | None = None) -> int:
+    from app.config import get_settings
+    from app.nba.catch_up import CatchUpWindowError, run_catch_up, validate_window, window_coverage
+
+    lookback = get_settings().nba_schedule_lookback_days
+    today = today or datetime.now(timezone.utc).date()
+    try:
+        validate_window(args.start, args.end, today=today, lookback_days=lookback)
+    except CatchUpWindowError as exc:
+        print(f"refused: {exc}")
+        return 2
+    if args.dry_run:
+        coverage = window_coverage(db, args.start, args.end, source=PROVIDER_NAME)
+    else:
+        provider = provider or EspnNbaProvider(request_interval_seconds=get_settings().nba_request_interval_seconds)
+        result = run_catch_up(db, provider, args.start, args.end, source=PROVIDER_NAME, lookback_days=lookback, today=today)
+        _print_schedule(result.schedule)
+        _print_box_scores(result.box_scores)
+        coverage = result.coverage
+    for line in coverage.lines:
+        print(line)
+    return 0 if coverage.complete else 1
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m app.nba.cli", description="NBA data ingestion and validation")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -147,6 +177,10 @@ def main(argv: list[str] | None = None) -> int:
     coverage.add_argument("--min-box-coverage", type=float, default=0.95, help="exit 1 if fewer competitive final games than this have a stored box score")
     for p in (backfill, *[sub.choices[n] for n in ("sync-schedule", "sync-box-scores")]):
         p.add_argument("--request-interval", type=float, default=DEFAULT_REQUEST_INTERVAL_SECONDS, help="seconds to pause between provider requests")
+    catch_up = sub.add_parser("catch-up")
+    catch_up.add_argument("--from", dest="start", type=date.fromisoformat, required=True, help="YYYY-MM-DD")
+    catch_up.add_argument("--to", dest="end", type=date.fromisoformat, required=True, help="YYYY-MM-DD")
+    catch_up.add_argument("--dry-run", action="store_true", help="only print the window's coverage; no request, no write")
     live = sub.add_parser("run-live-cycle")
     live.add_argument("--force", action="store_true", help="poll everything now, ignoring the minimum intervals")
     sub.add_parser("evidence-health")
@@ -174,6 +208,9 @@ def main(argv: list[str] | None = None) -> int:
             ok = report["box_score_coverage"] >= args.min_box_coverage
             print(f"box-score coverage {report['box_score_coverage']:.4f} (minimum {args.min_box_coverage}): {'OK' if ok else 'BELOW MINIMUM'}")
             return 0 if ok else 1
+
+        if args.command == "catch-up":
+            return _catch_up(db, args)
 
         if args.command in ("run-live-cycle", "evidence-health", "schema-status"):
             from app.config import get_settings
