@@ -265,6 +265,65 @@ fails after migrating, keep the new image: it matches the migrated schema.
 
 The 2026-27 regular season starts 20 October 2026.
 
+## 8a. Current-season catch-up (2026-27 outage gap)
+
+**What happened.** From 2026-10-09 08:09Z the hosted database refused every
+connection ("held asleep under the Free-plan sleep requirement"; Layerbase
+Free sleeps idle databases, and a 15-minute cycle never let it idle).
+Automated cycles were then paused. Production collection resumed on
+2026-10-28 after the database was moved to a paid always-on plan (manual
+cycle run 578, health OK). Nothing was collected 9–28 October, and **no
+outlook snapshots exist for any 2026-27 game before snapshots are
+enabled.** That gap is permanent and is not filled.
+
+**The box-score gap.** The live cycle's schedule and box-score steps only
+look back `nba_schedule_lookback_days` (3). On 28 October it fetched 25–27
+October. Games from 20–24 October were still held as "scheduled" (last
+listed 9 October), or never listed, and had no box scores. Missing results
+would leave every snapshot's box-score freshness `stale` for a week and
+remove the season's first games from the features.
+
+**The fix: `python -m app.nba.cli catch-up --from D1 --to D2 [--dry-run]`**
+(`app/nba/catch_up.py`). It is the existing idempotent ingestion only:
+- `sync_schedule` for the window, then `sync_box_scores` for competitive
+  final games not yet stored.
+- **Point-in-time:**
+  - schedule observations and `recorded_at` are the real fetch time, never
+    back-dated;
+  - the 9 October "scheduled" observations stay as they were;
+  - no per-game schedule confirmations are recorded, because a result
+    fetched days later is not a pregame re-listing;
+  - stored box scores are never re-fetched (no `refresh`);
+  - players' display fields follow the most recent game, as in the live
+    cycle, so an older game cannot move a player back.
+- **Never touches** snapshots, predictions, evidence polls, rosters, the
+  injury feed or AFL tables. A test asserts that only `nba_games`, schedule
+  observations, schedule sync dates, `nba_players` and
+  `nba_player_game_logs` change.
+- **Window refused before any request** (exit 2) unless:
+  - it lies in the current season;
+  - it ends before the live cycle's lookback (on 28 October, no later than
+    24 October), so the two never write the same games;
+  - it is at most 31 dates.
+- **Verified:** it prints per-date coverage before and after. Exit 1 unless
+  every date was fetched and every competitive game in the window is final
+  with a stored box score; postponed and cancelled games are listed and
+  excluded. `--dry-run` prints coverage only and is read-only.
+- **Workflow** `nba-current-season-catch-up.yml`:
+  - manual only, confirmed by typing `catch-up-<from>-<to>`;
+  - its own concurrency group;
+  - refuses an image without `catch-up` or a database not at the image's
+    head;
+  - `image_override` runs a newer sha-pinned image of this repository for
+    that run only, without re-pinning the live cycle.
+
+Approval step:
+
+1. Merge the PR (CI builds `ghcr.io/srat0029-ui/afl/backend:sha-<merge>`).
+2. Dispatch **NBA Current-Season Catch-up** with `from=2026-10-20`,
+   `to=2026-10-24`, `confirm=catch-up-2026-10-20-2026-10-24` and
+   `image_override=ghcr.io/srat0029-ui/afl/backend:sha-<merge>`.
+
 ## 9. Season-opener finding (unchanged, not patched)
 
 - Reconstructed historical universes contain departed players early in a
