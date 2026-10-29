@@ -4,6 +4,7 @@ database session (also run against PostgreSQL in CI)."""
 from datetime import datetime, timedelta
 
 import pytest
+from sqlalchemy import text
 
 from app.core.prospective import FrozenRecordError, ensure_utc
 from app.models.nba import NbaEvidencePoll, NbaGame, NbaGameScheduleObservation, NbaOutlookSnapshot, NbaPlayer, NbaRotationPrediction, NbaTeamObservation
@@ -181,6 +182,28 @@ def test_dry_run_writes_nothing(db_session, artifact_dir):  # noqa: F811
     _setup(db_session, rosters_at=TIP - timedelta(hours=30))
     r = run_due_snapshots(db_session, now=TIP - timedelta(hours=4), specs=(SnapshotSpec("T-4h", timedelta(hours=4)),), dry_run=True)
     assert r.produced and r.produced[0]["rows_preview"] and db_session.query(NbaOutlookSnapshot).count() == 0
+
+
+def test_dry_run_succeeds_on_a_database_session_that_rejects_writes(db_session, artifact_dir):  # noqa: F811
+    """The NBA Outlook Admin dry run runs with PGOPTIONS
+    default_transaction_read_only=on; it must still produce full predictions."""
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    bind = db_session.get_bind()
+    if bind.dialect.name != "postgresql":
+        pytest.skip("read-only transactions are a PostgreSQL feature")
+    _setup(db_session, rosters_at=TIP - timedelta(hours=30))
+    db_session.commit()
+    engine = create_engine(bind.url, connect_args={"options": "-c default_transaction_read_only=on"})
+    try:
+        with Session(engine) as readonly:
+            assert readonly.execute(text("show default_transaction_read_only")).scalar_one() == "on"
+            r = run_due_snapshots(readonly, now=TIP - timedelta(hours=4), specs=(SnapshotSpec("T-4h", timedelta(hours=4)),), dry_run=True)
+    finally:
+        engine.dispose()
+    assert r.produced and len(r.produced[0]["rows_preview"]) == r.produced[0]["rows"] > 0
+    assert db_session.query(NbaOutlookSnapshot).count() == 0 and db_session.query(NbaRotationPrediction).count() == 0
 
 
 # --- evidence freshness ------------------------------------------------------
