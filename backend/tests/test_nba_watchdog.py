@@ -396,9 +396,12 @@ def test_the_workflows_psql_command_runs_the_sql_with_set_local_in_one_transacti
         assert done.returncode == 0, done.stderr
         assert done.stdout.splitlines()[0] == header, done.stdout
         assert not re.search(r"^(BEGIN|SET|COMMIT)$", done.stdout, re.M)
-        # Without the single transaction the SET LOCALs do nothing and the query fails.
-        args.remove("--single-transaction")
-        assert subprocess.run(args, env=env, capture_output=True, text=True, timeout=60).returncode != 0
+        assert "transaction blocks" not in done.stderr  # "SET LOCAL can only be used in transaction blocks"
+        if check == "expected_snapshots":  # the SQL that reads the settings (box_scores.sql needs none)
+            # Without the single transaction the SET LOCALs do nothing and the query fails.
+            args.remove("--single-transaction")
+            bare = subprocess.run(args, env=env, capture_output=True, text=True, timeout=60)
+            assert bare.returncode != 0 and "transaction blocks" in bare.stderr, bare.stderr
 
 
 def test_watchdog_issue_deduplicates_on_the_evaluator_fingerprint_and_never_claims_a_repair():
