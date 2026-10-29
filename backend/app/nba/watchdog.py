@@ -70,6 +70,7 @@ class Report:
     problems: list[str] = field(default_factory=list)
     health_lines: list[str] = field(default_factory=list)
     coverage: list[dict] = field(default_factory=list)  # one row per game: game, tipoff, matchup, {label: cell}
+    coverage_checked: bool = True  # False when the coverage query failed: nothing is known about the snapshots
     latest_backup: str = "unknown"
 
 
@@ -95,7 +96,10 @@ def check_snapshots(rows: list[dict] | None, exit_code: int, report: Report) -> 
     """rows: one per (game, label) from expected_snapshots.sql, with columns
     game_id, tipoff, matchup, label, due (t/f), status ('' when none)."""
     if rows is None or exit_code != 0:
-        report.problems.append(f"snapshot coverage query failed (exit {exit_code})")
+        # Deliberately not prefixed SNAPSHOT_PROBLEM_PREFIX: a query that
+        # could not run is not a missing snapshot.
+        report.problems.append(f"coverage query failed: snapshots (exit {exit_code})")
+        report.coverage_checked = False
         return
     games: dict[str, dict] = {}
     for row in rows:
@@ -118,7 +122,7 @@ def check_box_scores(rows: list[dict] | None, exit_code: int, report: Report) ->
     """rows from box_scores.sql: competitive games 6 h - 3 days past tip-off
     that are not final with a stored box score."""
     if rows is None or exit_code != 0:
-        report.problems.append(f"box-score coverage query failed (exit {exit_code})")
+        report.problems.append(f"coverage query failed: box scores (exit {exit_code})")
         return
     for row in rows:
         report.problems.append(f"box score {row['matchup']} {row['tipoff']}: game {row['status']}, box score {row['box_score_state'] or 'never fetched'}")
@@ -140,6 +144,7 @@ def check_backups(runs: list[dict] | None, exit_code: int, now: datetime, max_ag
         report.problems.append(f"latest successful database backup is {age_days:.1f} days old (limit {max_age_days:g})")
 
 
+COVERAGE_UNAVAILABLE = "Snapshot coverage unavailable"
 PERMANENT_GAPS_NOTE = (
     "Snapshot gaps are permanent: frozen snapshots are never redone. Each is reported while its game is inside the "
     "rolling monitoring window and then ages out - leaving the window is not a recovery."
@@ -161,7 +166,9 @@ def render_summary(report: Report, now: datetime, since: str, window_hours: int)
         "switched on), and only a snapshot taken for the game's current tip-off covers them. Gaps outside this window are not shown.",
         "",
     ]
-    if report.coverage:
+    if not report.coverage_checked:
+        out.append(f"**{COVERAGE_UNAVAILABLE}**: the coverage query failed, so no snapshot window was checked.")
+    elif report.coverage:
         out += ["| Game | Tip-off (UTC) | " + " | ".join(LABELS) + " |", "|---|---|" + "---|" * len(LABELS)]
         for game in report.coverage:
             out.append(f"| {game['matchup']} ({game['game_id']}) | {game['tipoff']} | " + " | ".join(game["cells"].get(label, "-") for label in LABELS) + " |")

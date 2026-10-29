@@ -358,7 +358,17 @@ asked whether collection was actually happening.
 
 **How it runs safely:**
 - Every database session is opened with
-  `default_transaction_read_only=on`.
+  `default_transaction_read_only=on`. That is the only startup option.
+  Production connects through Layerbase's pooler, which refuses custom
+  settings at startup (`unsupported startup parameter in options:
+  watchdog.since`; the first manual run, 29 Oct, failed on this).
+- The SQL's settings (`watchdog.since`, `watchdog.window_hours`) are
+  `SET LOCAL` in one transaction with the query (`psql --single-transaction`).
+  A transaction pooler keeps a transaction on one server connection, and
+  `SET LOCAL` ends at `COMMIT`, so nothing leaks into the pool.
+- A coverage query that fails is reported as "coverage query failed", never
+  as a missing snapshot, and the summary shows "Snapshot coverage
+  unavailable" instead of a coverage table.
 - The evaluation (`backend/app/nba/watchdog.py`) uses only the standard
   library and runs in the runner's Python.
 - It never repairs, re-runs or back-fills anything.

@@ -87,10 +87,20 @@ jobs:
 
           # psql needs plain postgresql://, not the SQLAlchemy driver suffix
           export PGURL="$(printf '%s' "$DATABASE_URL" | sed -e 's#^postgresql+psycopg://#postgresql://#' -e 's#^postgres+psycopg://#postgresql://#')"
+          # Production connects through Layerbase's pooler, which rejects custom
+          # settings in the startup options ("unsupported startup parameter in
+          # options: watchdog.since"), so only the read-only setting goes there.
+          # The watchdog settings are SET LOCAL inside ONE transaction with the
+          # query (--single-transaction wraps every -c and -f in BEGIN/COMMIT):
+          # a transaction pooler keeps a transaction on one server connection,
+          # and SET LOCAL ends at COMMIT, so nothing leaks into the pool.
           for check in expected_snapshots box_scores; do
-            docker run --rm -e PGURL -e PGOPTIONS="$READONLY -c watchdog.since=$SNAPSHOTS_SINCE -c watchdog.window_hours=$WINDOW_HOURS" \
+            docker run --rm -e PGURL -e PGOPTIONS="$READONLY" \
               -v "$PWD/backend/app/nba/watchdog_sql:/sql:ro" postgres:18-alpine \
-              psql "$PGURL" -v ON_ERROR_STOP=1 -X -q --csv -f "/sql/$check.sql" > "out/$check.csv" 2> "out/$check.err"
+              psql "$PGURL" -v ON_ERROR_STOP=1 -X -q --csv --single-transaction \
+                -c "set local watchdog.since = '$SNAPSHOTS_SINCE'" \
+                -c "set local watchdog.window_hours = '$WINDOW_HOURS'" \
+                -f "/sql/$check.sql" > "out/$check.csv" 2> "out/$check.err"
             echo $? > "out/$check.exit"
           done
 
