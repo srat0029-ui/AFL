@@ -1,0 +1,149 @@
+name: NBA Watchdog
+
+# Read-only production watchdog for the NBA live cycle and V1.5 snapshots.
+# Every 30 minutes it checks, from outside the live cycle:
+# - evidence-health (the live cycle's own monitor) - also catches a stopped,
+#   paused or unreachable cycle: the injury feed is stale after 90 minutes;
+# - every snapshot window due since snapshots were switched on was frozen as
+#   "produced" (backend/app/nba/watchdog_sql/expected_snapshots.sql);
+# - recent competitive games have stored box scores (box_scores.sql);
+# - a successful database Backup run within the last 8 days.
+# Problems open (or update) ONE GitHub issue labelled nba-alert, mentioning
+# the repository owner, so GitHub notifies them; it is closed on recovery.
+# The run is also marked failed. The job summary always shows snapshot
+# coverage for games within 24 hours either side, evidence ages and the
+# latest backup.
+#
+# Safety:
+# - Strictly read-only: every database session is opened with
+#   default_transaction_read_only=on, so PostgreSQL itself rejects writes.
+#   Nothing is re-run, back-filled or repaired; it only reports.
+# - Uses the pinned live-cycle image only to run the read-only
+#   evidence-health command; the SQL runs in PostgreSQL's own psql image and
+#   the evaluation (backend/app/nba/watchdog.py) in the runner's Python.
+# - Scheduled runs do nothing until the repository variable
+#   NBA_WATCHDOG_ENABLED is "true". Manual dispatch always runs.
+# - Its own concurrency group: never blocks or queues behind the live cycle.
+
+on:
+  schedule:
+    # Off the live cycle's minutes (Cloudflare 9,24,39,54; GitHub 14,29,44,59).
+    - cron: "18,48 * * * *"
+  workflow_dispatch:
+    inputs:
+      manage_issue:
+        description: "Open / update / close the nba-alert issue (false: report in the job summary only)"
+        type: boolean
+        default: true
+
+concurrency:
+  group: nba-watchdog
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  actions: read   # list Backup runs
+  issues: write   # the nba-alert issue
+
+env:
+  # When automatic snapshots were switched on (NBA_OUTLOOK_SNAPSHOTS_ENABLED=true).
+  # Windows whose target cutoff is earlier were never expected to be frozen.
+  SNAPSHOTS_SINCE: "2026-10-29T01:28:47Z"
+  BACKUP_MAX_AGE_DAYS: "8"
+
+jobs:
+  watchdog:
+    name: NBA watchdog (read-only)
+    runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.NBA_WATCHDOG_ENABLED == 'true' }}
+    timeout-minutes: 10
+    env:
+      IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gather read-only checks
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        # Each check records its own exit code; a failing check is reported,
+        # never allowed to stop the others.
+        run: |
+          set +e
+          mkdir -p out
+          READONLY='-c default_transaction_read_only=on'
+
+          docker run --rm -e DATABASE_URL -e PGOPTIONS="$READONLY" -e APP_ENV=production "$IMAGE" \
+            python -m app.nba.cli evidence-health > out/health.txt 2>&1
+          echo $? > out/health.exit
+
+          # psql needs plain postgresql://, not the SQLAlchemy driver suffix
+          export PGURL="$(printf '%s' "$DATABASE_URL" | sed -e 's#^postgresql+psycopg://#postgresql://#' -e 's#^postgres+psycopg://#postgresql://#')"
+          for check in expected_snapshots box_scores; do
+            docker run --rm -e PGURL -e PGOPTIONS="$READONLY -c watchdog.since=$SNAPSHOTS_SINCE" \
+              -v "$PWD/backend/app/nba/watchdog_sql:/sql:ro" postgres:18-alpine \
+              psql "$PGURL" -v ON_ERROR_STOP=1 -X -q --csv -f "/sql/$check.sql" > "out/$check.csv" 2> "out/$check.err"
+            echo $? > "out/$check.exit"
+          done
+
+          gh run list -R "$GITHUB_REPOSITORY" --workflow backup.yml --status success --limit 5 --json createdAt > out/backups.json
+          echo $? > out/backups.exit
+          exit 0
+
+      - name: Evaluate
+        id: evaluate
+        run: |
+          set +e
+          python3 backend/app/nba/watchdog.py \
+            --health out/health.txt --health-exit "$(cat out/health.exit)" \
+            --snapshots out/expected_snapshots.csv --snapshots-exit "$(cat out/expected_snapshots.exit)" \
+            --box-scores out/box_scores.csv --box-scores-exit "$(cat out/box_scores.exit)" \
+            --backups out/backups.json --backups-exit "$(cat out/backups.exit)" \
+            --backup-max-age-days "$BACKUP_MAX_AGE_DAYS" --since "$SNAPSHOTS_SINCE" \
+            --summary out/summary.md --problems out/problems.txt
+          echo "problems=$?" >> "$GITHUB_OUTPUT"
+          cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+          for f in out/expected_snapshots.err out/box_scores.err; do
+            [ -s "$f" ] && { echo "$f:"; cat "$f"; }
+          done
+          exit 0
+
+      - name: Open, update or close the nba-alert issue
+        if: ${{ github.event_name == 'schedule' || inputs.manage_issue }}
+        env:
+          PROBLEMS: ${{ steps.evaluate.outputs.problems }}
+          OWNER: ${{ github.repository_owner }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -e
+          open_issue="$(gh issue list -R "$GITHUB_REPOSITORY" --label nba-alert --state open --limit 1 --json number -q '.[0].number')"
+          if [ "$PROBLEMS" != "0" ]; then
+            # One fingerprint per distinct problem list, ignoring digits (ages and
+            # times change every run): comment only when the problems change.
+            fingerprint="$(sed 's/[0-9]//g' out/problems.txt | sort | sha256sum | cut -c1-16)"
+            {
+              echo "<!-- nba-watchdog:$fingerprint -->"
+              echo "@$OWNER the NBA watchdog found problems in production ([run]($RUN_URL)):"
+              echo
+              sed 's/^/- /' out/problems.txt
+              echo
+              echo "Read-only check; nothing was changed. Coverage and evidence ages are in the run's job summary."
+            } > out/issue.md
+            if [ -z "$open_issue" ]; then
+              gh label create nba-alert -R "$GITHUB_REPOSITORY" --color B60205 --description "NBA production watchdog alert" 2>/dev/null || true
+              gh issue create -R "$GITHUB_REPOSITORY" --title "NBA watchdog: production problem" --label nba-alert --body-file out/issue.md
+            elif ! gh issue view "$open_issue" -R "$GITHUB_REPOSITORY" --json body,comments -q '[.body] + [.comments[].body] | last' | grep -q "nba-watchdog:$fingerprint"; then
+              gh issue comment "$open_issue" -R "$GITHUB_REPOSITORY" --body-file out/issue.md
+            else
+              echo "issue #$open_issue already reports these problems"
+            fi
+          elif [ -n "$open_issue" ]; then
+            gh issue close "$open_issue" -R "$GITHUB_REPOSITORY" --comment "Recovered: the NBA watchdog found no problems ([run]($RUN_URL))."
+          fi
+
+      - name: Fail the run when there are problems
+        if: ${{ steps.evaluate.outputs.problems != '0' }}
+        run: |
+          echo "::error::NBA watchdog found problems - see the job summary"
+          cat out/problems.txt
+          exit 1
