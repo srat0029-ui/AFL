@@ -115,10 +115,46 @@ def test_summary_shows_coverage_backup_and_evidence():
     check_health(HEALTH_OK, 0, report)
     check_snapshots([_row(label, False, "") for label in watchdog.LABELS], 0, report)
     check_backups([{"createdAt": "2026-10-28T03:17:00Z"}], 0, NOW, 8, report)
-    text = render_summary(report, NOW, "2026-10-29T01:28:47Z")
+    text = render_summary(report, NOW, "2026-10-29T01:28:47Z", 24)
     assert text.startswith("## NBA watchdog: OK (2026-10-30 03:00Z)")
+    assert "Rolling monitoring window: games with a current tip-off from 2026-10-29 03:00Z to 2026-10-31 03:00Z (24 h either side)" in text
     assert "| MEM@POR (10937) | 2026-10-30T02:00Z | pending | pending | pending | pending |" in text
     assert "Latest successful database backup: 2026-10-28 03:17Z (2.0 days ago)" in text and "evidence health: OK" in text
+    assert watchdog.PERMANENT_GAPS_NOTE not in text  # only said when there is a snapshot gap
+
+
+def test_summary_says_snapshot_gaps_are_permanent_not_recoverable():
+    report = Report()
+    check_snapshots([_row("T-1h", True, "missed_window")], 0, report)
+    text = render_summary(report, NOW, "2026-10-29T01:28:47Z", 24)
+    assert "- snapshot MEM@POR 2026-10-30T02:00Z T-1h: missed_window" in text
+    assert watchdog.PERMANENT_GAPS_NOTE in text and "leaving the window is not a recovery" in text
+
+
+# --- alert de-duplication ---------------------------------------------------------
+
+STALE_FEED = "evidence: Injury / availability feed: last successful poll {} minutes ago (stale after 90)"
+
+
+def test_volatile_ages_are_normalised_but_identity_is_kept():
+    assert watchdog.problem_key(STALE_FEED.format(120)) == "evidence: Injury / availability feed: last successful poll <age> ago (stale after 90)"
+    assert watchdog.problem_key("latest successful database backup is 9.0 days old (limit 8)") == "latest successful database backup is <age> old (limit 8)"
+    # games, dates, labels, statuses, exit codes and limits are identity, not volatile
+    for stable in ("snapshot MEM@POR 2026-10-30T02:00Z T-1h: missed_window", "box score CLE@ATL 2026-10-29T00:00Z: game final, box score never fetched",
+                   "evidence-health could not run (exit 1): FATAL", "snapshot coverage query failed (exit 2)"):
+        assert watchdog.problem_key(stable) == stable
+
+
+def test_fingerprint_ignores_ages_but_not_which_games_or_dates():
+    base = [STALE_FEED.format(120), "snapshot MEM@POR 2026-10-30T02:00Z T-1h: missed_window"]
+    fp = watchdog.fingerprint(base)
+    assert watchdog.fingerprint([STALE_FEED.format(150), base[1]]) == fp  # the same outage, 30 minutes older
+    assert watchdog.fingerprint(list(reversed(base))) == fp  # order does not matter
+    assert watchdog.fingerprint([base[0], "snapshot SAC@NO 2026-10-30T02:00Z T-1h: missed_window"]) != fp  # another game
+    assert watchdog.fingerprint([base[0], "snapshot MEM@POR 2026-10-31T02:00Z T-1h: missed_window"]) != fp  # another date
+    assert watchdog.fingerprint([base[0], "snapshot MEM@POR 2026-10-30T02:00Z T-30m: missed_window"]) != fp  # another window
+    assert watchdog.fingerprint([base[0], "snapshot MEM@POR 2026-10-30T02:00Z T-1h: stale"]) != fp  # another status
+    assert watchdog.fingerprint(base + ["latest successful database backup is 9.0 days old (limit 8)"]) != fp  # a new problem
 
 
 def test_main_end_to_end(tmp_path):
@@ -131,21 +167,23 @@ def test_main_end_to_end(tmp_path):
         "--snapshots", str(tmp_path / "snap.csv"), "--snapshots-exit", "0",
         "--box-scores", str(tmp_path / "box.csv"), "--box-scores-exit", "0",
         "--backups", str(tmp_path / "backups.json"), "--backups-exit", "0",
-        "--since", "2026-10-29T01:28:47Z", "--now", NOW.isoformat(),
-        "--summary", str(tmp_path / "summary.md"), "--problems", str(tmp_path / "problems.txt"),
+        "--since", "2026-10-29T01:28:47Z", "--window-hours", "24", "--now", NOW.isoformat(),
+        "--summary", str(tmp_path / "summary.md"), "--problems", str(tmp_path / "problems.txt"), "--fingerprint", str(tmp_path / "fp.txt"),
     ]
     assert watchdog.main(args) == 1
     assert (tmp_path / "problems.txt").read_text(encoding="utf-8") == "snapshot MEM@POR 2026-10-30T02:00Z T-1h: missed_window\n"
+    assert (tmp_path / "fp.txt").read_text(encoding="utf-8") == watchdog.fingerprint(["snapshot MEM@POR 2026-10-30T02:00Z T-1h: missed_window"])
     (tmp_path / "snap.csv").write_text("game_id,tipoff,matchup,label,due,status\n10937,2026-10-30T02:00Z,MEM@POR,T-1h,t,produced\n", encoding="utf-8")
     assert watchdog.main(args) == 0 and (tmp_path / "problems.txt").read_text(encoding="utf-8") == ""
+    assert (tmp_path / "fp.txt").read_text(encoding="utf-8") == ""
 
 
 def test_missing_input_files_are_problems_not_crashes(tmp_path):
     missing = str(tmp_path / "absent")
     args = [
         "--health", missing, "--health-exit", "125", "--snapshots", missing, "--snapshots-exit", "1", "--box-scores", missing, "--box-scores-exit", "1",
-        "--backups", missing, "--backups-exit", "1", "--since", "2026-10-29T01:28:47Z", "--now", NOW.isoformat(),
-        "--summary", str(tmp_path / "s.md"), "--problems", str(tmp_path / "p.txt"),
+        "--backups", missing, "--backups-exit", "1", "--since", "2026-10-29T01:28:47Z", "--window-hours", "24", "--now", NOW.isoformat(),
+        "--summary", str(tmp_path / "s.md"), "--problems", str(tmp_path / "p.txt"), "--fingerprint", str(tmp_path / "fp.txt"),
     ]
     assert watchdog.main(args) == 1
     assert len((tmp_path / "p.txt").read_text(encoding="utf-8").splitlines()) == 4
@@ -154,15 +192,16 @@ def test_missing_input_files_are_problems_not_crashes(tmp_path):
 # --- the SQL, on real PostgreSQL ------------------------------------------------
 
 
-def _run_sql(db, name: str, since: datetime) -> list[dict]:
+def _run_sql(db, name: str, since: datetime, window_hours: int = 24) -> list[dict]:
     conn = db.connection()
     conn.exec_driver_sql(f"set local watchdog.since = '{since.isoformat()}'")
+    conn.exec_driver_sql(f"set local watchdog.window_hours = '{int(window_hours)}'")
     result = conn.exec_driver_sql((SQL_DIR / f"{name}.sql").read_text(encoding="utf-8"))
     return [dict(row._mapping) for row in result]
 
 
-def _snapshot(db, game, label, offset, status):
-    tip = game.scheduled_start
+def _snapshot(db, game, label, offset, status, tip=None):
+    tip = tip or game.scheduled_start
     db.add(
         NbaOutlookSnapshot(
             game_id=game.id, snapshot_label=label, offset_minutes=offset, scheduled_tipoff=tip, target_cutoff=tip - timedelta(minutes=offset),
@@ -221,6 +260,33 @@ def test_expected_snapshots_sql(db_session):
     assert not any(r["due"] for r in later if r["game_id"] == tipped.id)
 
 
+def test_a_snapshot_for_an_earlier_tipoff_does_not_cover_a_rescheduled_game(db_session):
+    _pg(db_session)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    game = _games(db_session, now)
+    moved = game("moved", now - timedelta(hours=1))  # now tips off 1 h ago, originally 3 h ago
+    original_tip = now - timedelta(hours=3)
+    for label, offset in (("T-24h", 1440), ("T-4h", 240), ("T-1h", 60), ("T-30m", 30)):
+        _snapshot(db_session, moved, label, offset, "produced", tip=original_tip)  # frozen for the old tip-off
+    _snapshot(db_session, moved, "T-24h", 1440, "produced")  # taken afresh for the new tip-off
+    db_session.flush()
+    rows = {r["label"]: (r["due"], r["status"]) for r in _run_sql(db_session, "expected_snapshots", since=now - timedelta(days=2))}
+    # Only the T-24h taken for the current tip-off counts; the old-tip-off T-4h / T-1h / T-30m do not.
+    assert rows == {"T-24h": (True, "produced"), "T-4h": (True, ""), "T-1h": (True, ""), "T-30m": (True, "")}
+
+
+def test_coverage_is_a_rolling_window(db_session):
+    _pg(db_session)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    game = _games(db_session, now)
+    inside = game("inside", now - timedelta(hours=20))
+    old = game("old", now - timedelta(hours=30))  # an unresolved gap from 30 h ago has aged out of a 24 h window
+    db_session.flush()
+    since = now - timedelta(days=3)
+    assert {r["game_id"] for r in _run_sql(db_session, "expected_snapshots", since=since, window_hours=24)} == {inside.id}
+    assert {r["game_id"] for r in _run_sql(db_session, "expected_snapshots", since=since, window_hours=36)} == {inside.id, old.id}
+
+
 def test_box_scores_sql(db_session):
     _pg(db_session)
     now = datetime.now(timezone.utc).replace(microsecond=0)
@@ -249,7 +315,17 @@ def test_watchdog_workflow_safeguards():
     assert wf.count('PGOPTIONS="$READONLY') == 2  # the evidence-health container and every psql check
     assert "python -m app.nba.cli evidence-health" in wf
     assert "issues: write" in wf and "actions: read" in wf and "contents: read" in wf
-    assert 'SNAPSHOTS_SINCE: "2026-10-29T01:28:47Z"' in wf
+    assert 'SNAPSHOTS_SINCE: "2026-10-29T01:28:47Z"' in wf and 'WINDOW_HOURS: "24"' in wf
+    assert "-c watchdog.window_hours=$WINDOW_HOURS" in wf and '--window-hours "$WINDOW_HOURS"' in wf  # one window for SQL and summary
+
+
+def test_watchdog_issue_deduplicates_on_the_evaluator_fingerprint_and_never_claims_a_repair():
+    wf = WORKFLOW.read_text(encoding="utf-8")
+    assert 'fingerprint="$(cat out/fingerprint.txt)"' in wf and "--fingerprint out/fingerprint.txt" in wf
+    assert "s/[0-9]//g" not in wf  # digits identify games and dates; only ages are normalised (watchdog.problem_key)
+    assert "Recovered" not in wf
+    close = wf[wf.index("gh issue close") - 900: wf.index("gh issue close")]
+    assert "were NOT repaired" in close and "grep -q '^- snapshot '" in close
     for forbidden in ("run-live-cycle", "outlooks.cli snapshot", "catch-up", "backfill", "alembic", "pg_restore", "gh variable", "vars.NBA_LIVE_CYCLE_ENABLED", "--force"):
         assert forbidden not in wf, forbidden
 

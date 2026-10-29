@@ -336,12 +336,22 @@ asked whether collection was actually happening.
   paused or unreachable cycle, because the injury feed goes stale after 90
   minutes. A database that refuses connections is reported as "could not
   run", never as a pass.
-- Every snapshot window due since snapshots were switched on
-  (`SNAPSHOTS_SINCE`, 2026-10-29T01:28:47Z) was frozen as `produced`. A
-  missing row, a missed window, or `stale` / `partial` / `missing_data`
-  is a problem
-  (`backend/app/nba/watchdog_sql/expected_snapshots.sql`). A window is due
-  20 minutes after its tolerance ends.
+- Snapshot coverage
+  (`backend/app/nba/watchdog_sql/expected_snapshots.sql`): every window due
+  since snapshots were switched on (`SNAPSHOTS_SINCE`,
+  2026-10-29T01:28:47Z) was frozen as `produced`. A missing row, a missed
+  window, or `stale` / `partial` / `missing_data` is a problem. A window is
+  due 20 minutes after its tolerance ends.
+  - **Rolling window:** only games whose current tip-off is within
+    `WINDOW_HOURS` (24) of now, either side, are checked. This is
+    deliberately not every snapshot since activation. A missed snapshot is
+    permanent, so a gap is reported while its game is in the window and
+    then ages out, rather than alerting forever. Leaving the window is not
+    a recovery: the summary says so, and the issue's closing comment says
+    the earlier snapshot gaps were *not* repaired.
+  - **Rescheduled games:** a snapshot only covers a window when it was
+    taken for the game's current tip-off (`scheduled_tipoff =
+    scheduled_start`). Snapshots frozen for an earlier tip-off don't count.
 - Competitive games 6 hours to 3 days past tip-off are final with a stored
   box score (`box_scores.sql`).
 - A successful Backup run within 8 days.
@@ -355,8 +365,11 @@ asked whether collection was actually happening.
 
 **Alerts:**
 - One GitHub issue labelled `nba-alert`, mentioning the repository owner.
-- It gets a new comment only when the problems change; it is closed
-  automatically on recovery.
+- It gets a new comment only when the set of problems changes. The
+  fingerprint normalises volatile ages ("120 minutes ago" becomes
+  "<age> ago") but keeps games, dates, labels, statuses and limits, so a
+  newly affected game is a change and an older age is not.
+- It is closed automatically when there are no current problems.
 - The run is also marked failed.
 - Every run's job summary shows snapshot coverage for games within 24 hours
   either side, evidence ages and the latest backup.

@@ -4,8 +4,13 @@ name: NBA Watchdog
 # Every 30 minutes it checks, from outside the live cycle:
 # - evidence-health (the live cycle's own monitor) - also catches a stopped,
 #   paused or unreachable cycle: the injury feed is stale after 90 minutes;
-# - every snapshot window due since snapshots were switched on was frozen as
-#   "produced" (backend/app/nba/watchdog_sql/expected_snapshots.sql);
+# - within a ROLLING monitoring window (games whose current tip-off is within
+#   WINDOW_HOURS of now, either side), every snapshot window due since
+#   snapshots were switched on was frozen as "produced" for the game's
+#   current tip-off (backend/app/nba/watchdog_sql/expected_snapshots.sql).
+#   Snapshot gaps are permanent, so each is reported while its game is in the
+#   window and then ages out - never an alert that can't be resolved, and
+#   never described as a recovery;
 # - recent competitive games have stored box scores (box_scores.sql);
 # - a successful database Backup run within the last 8 days.
 # Problems open (or update) ONE GitHub issue labelled nba-alert, mentioning
@@ -49,6 +54,9 @@ env:
   # When automatic snapshots were switched on (NBA_OUTLOOK_SNAPSHOTS_ENABLED=true).
   # Windows whose target cutoff is earlier were never expected to be frozen.
   SNAPSHOTS_SINCE: "2026-10-29T01:28:47Z"
+  # Rolling snapshot-coverage window: games tipping off within this many
+  # hours of now, either side.
+  WINDOW_HOURS: "24"
   BACKUP_MAX_AGE_DAYS: "8"
 
 jobs:
@@ -80,7 +88,7 @@ jobs:
           # psql needs plain postgresql://, not the SQLAlchemy driver suffix
           export PGURL="$(printf '%s' "$DATABASE_URL" | sed -e 's#^postgresql+psycopg://#postgresql://#' -e 's#^postgres+psycopg://#postgresql://#')"
           for check in expected_snapshots box_scores; do
-            docker run --rm -e PGURL -e PGOPTIONS="$READONLY -c watchdog.since=$SNAPSHOTS_SINCE" \
+            docker run --rm -e PGURL -e PGOPTIONS="$READONLY -c watchdog.since=$SNAPSHOTS_SINCE -c watchdog.window_hours=$WINDOW_HOURS" \
               -v "$PWD/backend/app/nba/watchdog_sql:/sql:ro" postgres:18-alpine \
               psql "$PGURL" -v ON_ERROR_STOP=1 -X -q --csv -f "/sql/$check.sql" > "out/$check.csv" 2> "out/$check.err"
             echo $? > "out/$check.exit"
@@ -99,8 +107,8 @@ jobs:
             --snapshots out/expected_snapshots.csv --snapshots-exit "$(cat out/expected_snapshots.exit)" \
             --box-scores out/box_scores.csv --box-scores-exit "$(cat out/box_scores.exit)" \
             --backups out/backups.json --backups-exit "$(cat out/backups.exit)" \
-            --backup-max-age-days "$BACKUP_MAX_AGE_DAYS" --since "$SNAPSHOTS_SINCE" \
-            --summary out/summary.md --problems out/problems.txt
+            --backup-max-age-days "$BACKUP_MAX_AGE_DAYS" --since "$SNAPSHOTS_SINCE" --window-hours "$WINDOW_HOURS" \
+            --summary out/summary.md --problems out/problems.txt --fingerprint out/fingerprint.txt
           echo "problems=$?" >> "$GITHUB_OUTPUT"
           cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
           for f in out/expected_snapshots.err out/box_scores.err; do
@@ -118,15 +126,20 @@ jobs:
           set -e
           open_issue="$(gh issue list -R "$GITHUB_REPOSITORY" --label nba-alert --state open --limit 1 --json number -q '.[0].number')"
           if [ "$PROBLEMS" != "0" ]; then
-            # One fingerprint per distinct problem list, ignoring digits (ages and
-            # times change every run): comment only when the problems change.
-            fingerprint="$(sed 's/[0-9]//g' out/problems.txt | sort | sha256sum | cut -c1-16)"
+            # Identifies the set of problems with volatile ages normalised but
+            # games, labels, dates and statuses kept (app/nba/watchdog.py):
+            # comment only when the problems themselves change.
+            fingerprint="$(cat out/fingerprint.txt)"
             {
               echo "<!-- nba-watchdog:$fingerprint -->"
               echo "@$OWNER the NBA watchdog found problems in production ([run]($RUN_URL)):"
               echo
               sed 's/^/- /' out/problems.txt
               echo
+              if grep -q '^snapshot ' out/problems.txt; then
+                echo "Snapshot gaps are permanent (frozen snapshots are never redone). They are checked within a rolling ${WINDOW_HOURS} h window either side of now and stop being reported once their game leaves it; that is not a recovery."
+                echo
+              fi
               echo "Read-only check; nothing was changed. Coverage and evidence ages are in the run's job summary."
             } > out/issue.md
             if [ -z "$open_issue" ]; then
@@ -138,7 +151,14 @@ jobs:
               echo "issue #$open_issue already reports these problems"
             fi
           elif [ -n "$open_issue" ]; then
-            gh issue close "$open_issue" -R "$GITHUB_REPOSITORY" --comment "Recovered: the NBA watchdog found no problems ([run]($RUN_URL))."
+            {
+              echo "No current problems: evidence, backups and every snapshot window due inside the rolling ${WINDOW_HOURS} h monitoring window are healthy ([run]($RUN_URL))."
+              if gh issue view "$open_issue" -R "$GITHUB_REPOSITORY" --json body,comments -q '[.body] + [.comments[].body] | .[]' | grep -q '^- snapshot '; then
+                echo
+                echo "Snapshot gaps reported in this issue were NOT repaired: frozen snapshots are never redone, and those games have left the monitoring window. They remain permanent gaps in the prospective record."
+              fi
+            } > out/close.md
+            gh issue close "$open_issue" -R "$GITHUB_REPOSITORY" --comment "$(cat out/close.md)"
           fi
 
       - name: Fail the run when there are problems

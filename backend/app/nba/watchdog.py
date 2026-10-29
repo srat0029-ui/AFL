@@ -11,9 +11,14 @@ minutes, from outside the live cycle:
 - evidence-health (the live cycle's own read-only monitor, app/nba/monitoring.py)
   exited 0 and reported OK - this also catches a stopped or paused cycle,
   because the injury feed goes stale after 90 minutes without a cycle;
-- every snapshot window that has come due since snapshots were switched on
-  (`--since`) was frozen with status "produced" - a missing row, a missed
-  window, or stale / partial / missing_data evidence is a problem;
+- within a ROLLING monitoring window (games whose current tip-off is within
+  `--window-hours` of now, either side), every snapshot window that has come
+  due since snapshots were switched on (`--since`) was frozen with status
+  "produced" for the game's current tip-off - a missing row, a missed
+  window, or stale / partial / missing_data evidence is a problem. Snapshot
+  gaps are permanent (frozen snapshots are never redone), so each one is
+  reported while its game is in the window and then ages out; leaving the
+  window is not a recovery, and the summary and alert issue say so;
 - every competitive game that tipped off 6 h to 3 days ago is final with a
   stored box score;
 - the latest successful Backup run is at most `--backup-max-age-days` old.
@@ -21,18 +26,43 @@ minutes, from outside the live cycle:
 A check that cannot run at all (database unreachable, query error) is itself
 a problem. Nothing here, or in the workflow, writes to the database.
 
+`--fingerprint` identifies the current set of problems for alert
+de-duplication: each problem is keyed with its volatile ages normalised
+("120 minutes ago" -> "<age> ago", "9.0 days old" -> "<age> old"), while
+games, labels, dates, statuses and limits are kept, so a new affected game
+or a different failure changes the fingerprint and an older age does not.
+
 Exit 1 when there is any problem, 0 otherwise.
 """
 
 import argparse
 import csv
+import hashlib
 import json
+import re
 import sys
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 LABELS = ("T-24h", "T-4h", "T-1h", "T-30m")
 PRODUCED = "produced"
+SNAPSHOT_PROBLEM_PREFIX = "snapshot "
+
+# An age followed by "ago" / "old": the only part of a problem message that
+# changes from run to run while the problem itself stays the same.
+_VOLATILE_AGE = re.compile(r"\b\d+(?:\.\d+)?\s*(?:minutes?|mins?|hours?|days?)(?=\s+(?:ago|old)\b)")
+
+
+def problem_key(problem: str) -> str:
+    """The problem's identity: its message with volatile ages normalised."""
+    return _VOLATILE_AGE.sub("<age>", problem)
+
+
+def fingerprint(problems: list[str]) -> str:
+    """Stable for the same set of problems; changes when any problem's
+    identity (game, label, date, status, source, limit) changes."""
+    keys = "\n".join(sorted({problem_key(p) for p in problems}))
+    return hashlib.sha256(keys.encode("utf-8")).hexdigest()[:16]
 
 
 @dataclass
@@ -73,7 +103,7 @@ def check_snapshots(rows: list[dict] | None, exit_code: int, report: Report) -> 
         due = row["due"].strip().lower() in ("t", "true")
         status = row["status"].strip()
         if due and status != PRODUCED:
-            report.problems.append(f"snapshot {row['matchup']} {row['tipoff']} {row['label']}: {status or 'no snapshot'}")
+            report.problems.append(f"{SNAPSHOT_PROBLEM_PREFIX}{row['matchup']} {row['tipoff']} {row['label']}: {status or 'no snapshot'}")
         if status:
             cell = status
         elif due:
@@ -110,17 +140,33 @@ def check_backups(runs: list[dict] | None, exit_code: int, now: datetime, max_ag
         report.problems.append(f"latest successful database backup is {age_days:.1f} days old (limit {max_age_days:g})")
 
 
-def render_summary(report: Report, now: datetime, since: str) -> str:
+PERMANENT_GAPS_NOTE = (
+    "Snapshot gaps are permanent: frozen snapshots are never redone. Each is reported while its game is inside the "
+    "rolling monitoring window and then ages out - leaving the window is not a recovery."
+)
+
+
+def render_summary(report: Report, now: datetime, since: str, window_hours: int) -> str:
+    window = timedelta(hours=window_hours)
     out = [f"## NBA watchdog: {'PROBLEMS' if report.problems else 'OK'} ({now:%Y-%m-%d %H:%MZ})", ""]
     if report.problems:
         out += ["### Problems", ""] + [f"- {p}" for p in report.problems] + [""]
-    out += [f"### Snapshot coverage (games tipping off within 24 h either side; windows due since {since})", ""]
+        if any(p.startswith(SNAPSHOT_PROBLEM_PREFIX) for p in report.problems):
+            out += [PERMANENT_GAPS_NOTE, ""]
+    out += [
+        "### Snapshot coverage",
+        "",
+        f"Rolling monitoring window: games with a current tip-off from {now - window:%Y-%m-%d %H:%MZ} to {now + window:%Y-%m-%d %H:%MZ} "
+        f"({window_hours} h either side). Windows count as due only if their target cutoff is at or after {since} (when snapshots were "
+        "switched on), and only a snapshot taken for the game's current tip-off covers them. Gaps outside this window are not shown.",
+        "",
+    ]
     if report.coverage:
         out += ["| Game | Tip-off (UTC) | " + " | ".join(LABELS) + " |", "|---|---|" + "---|" * len(LABELS)]
         for game in report.coverage:
             out.append(f"| {game['matchup']} ({game['game_id']}) | {game['tipoff']} | " + " | ".join(game["cells"].get(label, "-") for label in LABELS) + " |")
     else:
-        out.append("No competitive games within 24 hours either side.")
+        out.append("No competitive games in the monitoring window.")
     out += ["", f"Latest successful database backup: {report.latest_backup}", "", "### Evidence health", "", "```"] + report.health_lines + ["```", ""]
     return "\n".join(out)
 
@@ -161,9 +207,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--backups-exit", type=int, required=True)
     p.add_argument("--backup-max-age-days", type=float, default=8.0)
     p.add_argument("--since", required=True, help="when snapshots were switched on (ISO 8601)")
+    p.add_argument("--window-hours", type=int, required=True, help="rolling monitoring window used by expected_snapshots.sql")
     p.add_argument("--now", default=None, help="ISO 8601; default the wall clock (tests)")
     p.add_argument("--summary", required=True, help="markdown summary to write")
     p.add_argument("--problems", required=True, help="problem list to write, one per line (empty when healthy)")
+    p.add_argument("--fingerprint", required=True, help="file to write the problems' fingerprint to (empty when healthy)")
     args = p.parse_args(argv)
 
     now = _parse_time(args.now) if args.now else datetime.now(timezone.utc)
@@ -173,9 +221,11 @@ def main(argv: list[str] | None = None) -> int:
     check_box_scores(_read_csv(args.box_scores), args.box_scores_exit, report)
     check_backups(_read_json(args.backups), args.backups_exit, now, args.backup_max_age_days, report)
     with open(args.summary, "w", encoding="utf-8") as fh:
-        fh.write(render_summary(report, now, args.since))
+        fh.write(render_summary(report, now, args.since, args.window_hours))
     with open(args.problems, "w", encoding="utf-8") as fh:
         fh.write("".join(f"{problem}\n" for problem in report.problems))
+    with open(args.fingerprint, "w", encoding="utf-8") as fh:
+        fh.write(fingerprint(report.problems) if report.problems else "")
     print("\n".join(report.problems) or "no problems")
     return 1 if report.problems else 0
 
