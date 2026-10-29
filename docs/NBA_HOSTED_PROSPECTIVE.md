@@ -324,6 +324,77 @@ Approval step:
    `to=2026-10-24`, `confirm=catch-up-2026-10-20-2026-10-24` and
    `image_override=ghcr.io/srat0029-ui/afl/backend:sha-<merge>`.
 
+## 8b. Watchdog: noticing an outage within hours, not weeks
+
+The 9–28 October outage showed up only as red, then skipped, runs. Nothing
+asked whether collection was actually happening.
+`.github/workflows/nba-watchdog.yml` asks every 30 minutes (cron
+`18,48 * * * *`, off the live cycle's minutes), from outside the live cycle.
+
+**What it checks (all read-only):**
+- `evidence-health` from the pinned image. This also catches a stopped,
+  paused or unreachable cycle, because the injury feed goes stale after 90
+  minutes. A database that refuses connections is reported as "could not
+  run", never as a pass.
+- Snapshot coverage
+  (`backend/app/nba/watchdog_sql/expected_snapshots.sql`): every window due
+  since snapshots were switched on (`SNAPSHOTS_SINCE`,
+  2026-10-29T01:28:47Z) was frozen as `produced`. A missing row, a missed
+  window, or `stale` / `partial` / `missing_data` is a problem. A window is
+  due 20 minutes after its tolerance ends.
+  - **Rolling window:** only games whose current tip-off is within
+    `WINDOW_HOURS` (24) of now, either side, are checked. This is
+    deliberately not every snapshot since activation. A missed snapshot is
+    permanent, so a gap is reported while its game is in the window and
+    then ages out, rather than alerting forever. Leaving the window is not
+    a recovery: the summary says so, and the issue's closing comment says
+    the earlier snapshot gaps were *not* repaired.
+  - **Rescheduled games:** a snapshot only covers a window when it was
+    taken for the game's current tip-off (`scheduled_tipoff =
+    scheduled_start`). Snapshots frozen for an earlier tip-off don't count.
+- Competitive games 6 hours to 3 days past tip-off are final with a stored
+  box score (`box_scores.sql`).
+- A successful Backup run within 8 days.
+
+**How it runs safely:**
+- Every database session is opened with
+  `default_transaction_read_only=on`.
+- The evaluation (`backend/app/nba/watchdog.py`) uses only the standard
+  library and runs in the runner's Python.
+- It never repairs, re-runs or back-fills anything.
+
+**Alerts:**
+- One GitHub issue labelled `nba-alert`, mentioning the repository owner.
+- It gets a new comment only when the set of problems changes. The
+  fingerprint normalises volatile ages ("120 minutes ago" becomes
+  "<age> ago") but keeps games, dates, labels, statuses and limits, so a
+  newly affected game is a change and an older age is not.
+- It is closed automatically when there are no current problems.
+- The run is also marked failed.
+- Every run's job summary shows snapshot coverage for games within 24 hours
+  either side, evidence ages and the latest backup.
+
+**Activation (needs approval):**
+1. Run it manually first: Actions → NBA Watchdog, with
+   `manage_issue=false`.
+2. Set `NBA_WATCHDOG_ENABLED=true`. Until then, scheduled runs are skipped.
+3. Weekly backups:
+   - dispatch `backup.yml` once and confirm it succeeds;
+   - set `BACKUP_ENABLED=true`.
+
+   Until then, the watchdog will report that the latest backup is too old,
+   which is deliberate.
+4. A deliberate pause (`NBA_LIVE_CYCLE_ENABLED=false`) also raises an alert
+   after about 90 minutes. Set `NBA_WATCHDOG_ENABLED=false` during planned
+   maintenance.
+
+**Limits:**
+- GitHub runs scheduled workflows on a best-effort basis; the live cycle's
+  own GitHub backup schedule fires about 5 times a day. Expect detection
+  within hours rather than exactly 30 minutes, which is still far better
+  than 19 days.
+- If GitHub Actions itself is down, nothing alerts.
+
 ## 9. Season-opener finding (unchanged, not patched)
 
 - Reconstructed historical universes contain departed players early in a
