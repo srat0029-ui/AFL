@@ -12,7 +12,10 @@ name: NBA Outlook Admin
 #   hosted registry (append-only, idempotent). Never trains anything.
 # - snapshot-dry-run: computes the snapshots that would be due now and
 #   prints them with timing / rows read / peak memory; writes nothing.
-#   Optional custom labels (dry runs only), e.g. T-372h.
+#   Optional custom labels (dry runs only), e.g. T-372h, and rows_per_game
+#   (how many player rows to print per game; 60 prints a whole game). Its
+#   database session is opened with default_transaction_read_only=on, so
+#   PostgreSQL itself would reject any write.
 # - registry: lists the serving runs in the hosted registry (read-only).
 # - db-size: pg_database_size and the largest tables (read-only).
 #
@@ -31,6 +34,10 @@ on:
         description: "snapshot-dry-run only: comma-separated labels (default T-24h,T-4h,T-1h,T-30m)"
         type: string
         default: ""
+      rows_per_game:
+        description: "snapshot-dry-run only: player rows printed per game, 1-60 (default 8)"
+        type: string
+        default: "8"
       image_override:
         description: "verify-serving-models only: a pinned image to verify instead of NBA_LIVE_CYCLE_IMAGE (no database access)"
         type: string
@@ -53,6 +60,7 @@ jobs:
       OVERRIDE: ${{ inputs.image_override }}
       COMMAND: ${{ inputs.command }}
       LABELS: ${{ inputs.labels }}
+      ROWS_PER_GAME: ${{ inputs.rows_per_game }}
     steps:
       - name: Check configuration
         run: |
@@ -79,9 +87,19 @@ jobs:
               if [ -n "$LABELS" ]; then
                 case "$LABELS" in *[!T0-9hm,.-]*) echo "::error::labels may contain only T, digits, h, m, '.', '-' and ','"; exit 1 ;; esac
                 set -- "$@" --labels "$LABELS"
-              fi ;;
+              fi
+              case "$ROWS_PER_GAME" in
+                ""|*[!0-9]*) echo "::error::rows_per_game must be a whole number from 1 to 60, got '$ROWS_PER_GAME'"; exit 1 ;;
+              esac
+              if [ "$ROWS_PER_GAME" -lt 1 ] || [ "$ROWS_PER_GAME" -gt 60 ]; then
+                echo "::error::rows_per_game must be from 1 to 60, got '$ROWS_PER_GAME'"; exit 1
+              fi
+              set -- "$@" --rows-per-game "$ROWS_PER_GAME"
+              # The database itself rejects any write from this session.
+              export PGOPTIONS='-c default_transaction_read_only=on' ;;
             registry) set -- python -m app.nba.outlooks.cli registry ;;
             db-size) set -- python -m app.nba.outlooks.cli db-size ;;
             *) echo "::error::unknown command '$COMMAND'"; exit 1 ;;
           esac
-          docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" "$@"
+          # -e PGOPTIONS passes it only when set (snapshot-dry-run).
+          docker run --rm -e DATABASE_URL -e PGOPTIONS -e APP_ENV=production "$IMAGE" "$@"

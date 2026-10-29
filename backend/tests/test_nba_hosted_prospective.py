@@ -157,6 +157,17 @@ def test_outlook_admin_workflow_is_manual_and_limited():
     assert "snapshot --dry-run" in wf and "alembic" not in wf and "backfill" not in wf
 
 
+def test_admin_dry_run_prints_whole_games_on_a_read_only_session():
+    wf = (WORKFLOWS / "nba-outlook-admin.yml").read_text(encoding="utf-8")
+    dry_block = wf[wf.index("snapshot-dry-run)"): wf.index("registry) set --")]
+    assert 'set -- "$@" --rows-per-game "$ROWS_PER_GAME"' in dry_block
+    assert '[ "$ROWS_PER_GAME" -gt 60 ]' in dry_block and "*[!0-9]*" in dry_block
+    assert "export PGOPTIONS='-c default_transaction_read_only=on'" in dry_block
+    # only the dry run is read-only: import-serving-models must still be able to write
+    assert wf.count("default_transaction_read_only=on") == 2  # the header comment and the dry-run branch
+    assert '-e DATABASE_URL -e PGOPTIONS -e APP_ENV=production "$IMAGE" "$@"' in wf
+
+
 def test_custom_snapshot_labels_are_refused_outside_dry_run():
     from app.nba.outlooks.cli import main
 
@@ -178,6 +189,9 @@ def test_db_size_workflow_is_manual_and_read_only():
     wf = (WORKFLOWS / "nba-db-size.yml").read_text(encoding="utf-8")
     assert "workflow_dispatch:" in wf and "schedule:" not in wf
     assert "default_transaction_read_only=on" in wf and "pg_database_size" in wf
+    # exact counts, not the planner's n_live_tup estimate, for proving a dry run wrote nothing
+    for exact in ("count(*) from nba_outlook_snapshots", "count(*) from nba_rotation_predictions", "count(*) from nba_minutes_predictions"):
+        assert exact in wf, exact
     for forbidden in ("INSERT", "UPDATE ", "DELETE", "DROP", "TRUNCATE", "ALTER", "pg_restore", "alembic"):
         assert forbidden not in wf.upper(), forbidden
 
