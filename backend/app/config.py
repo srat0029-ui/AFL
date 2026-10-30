@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     # kept for other sports (NBA odds ingestion later); NBA is unaffected.
     afl_odds_api_enabled: bool = False
 
+    # Open every PostgreSQL session with default_transaction_read_only=on, so
+    # the database itself refuses any write (the only startup option
+    # Layerbase's pooler accepts). For viewing production data from a local
+    # backend - see docs/OPERATIONS.md "Viewing production data locally".
+    # Pages that only read work normally; anything that writes (e.g. the AFL
+    # Refresh Data button) fails with a read-only error and changes nothing.
+    database_read_only: bool = False
+
     # How often the automatic scheduler (app/player_modelling/scheduler.py)
     # calls run_live_cycle when left running unattended. This just paces how
     # often the free Squiggle/AFL Tables scrapers get polled - it does NOT

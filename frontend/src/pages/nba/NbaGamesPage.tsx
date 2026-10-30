@@ -76,6 +76,14 @@ function CollectorStatus({ data, loadedAt }: { data: NbaOutlookGames; loadedAt: 
     <section className={`card nba-collector ${ev.healthy ? "" : "nba-collector--problem"}`}>
       <div>
         <span className={`chip ${ev.healthy ? "chip--success" : "chip--danger"}`}>{ev.healthy ? "Evidence collector healthy" : "Evidence collector problem"}</span>
+        {data.database_read_only && (
+          <>
+            {" "}
+            <span className="chip chip--accent" title="This backend opened its database read-only: it can display data but cannot change it.">
+              Read-only database
+            </span>
+          </>
+        )}
         <span className="nba-muted"> Last cycle {formatAge(lastRun)}{ev.latest_run_status ? ` (${ev.latest_run_status})` : ""}.</span>
       </div>
       {ev.problems.length > 0 && (

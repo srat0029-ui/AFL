@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.nba_schemas import NbaAvailabilityAsOfRead, NbaStatusRead
+from app.config import get_settings
 from app.core.prospective import ensure_utc
 from app.database import get_db
 from app.models.nba import NbaPlayer
@@ -82,6 +83,7 @@ def get_outlook_games(
     plus the live evidence collector's health. Reads stored data only."""
     out = list_outlook_games(db, hours_back=hours_back, hours_ahead=hours_ahead)
     out["live_evidence"] = _live_evidence(db)
+    out["database_read_only"] = get_settings().database_read_only
     return out
 
 
