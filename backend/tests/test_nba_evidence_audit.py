@@ -56,6 +56,8 @@ def _run(db, name: str) -> list[dict]:
 
 
 def _seed(db):
+    # The season opener defines "since the season start" for the feed queries.
+    seed_game(db, tipoff=TIP - timedelta(days=7), source_game_id="audit-opener")
     game, home, away = seed_game(db, tipoff=TIP, source_game_id="audit")
     game.status, game.box_score_state, game.season_type = "final", "ingested", "regular"
     out, dtd, unlisted_bench, newcomer = (seed_player(db, home, f"P{i}", f"a{i}") for i in range(4))
