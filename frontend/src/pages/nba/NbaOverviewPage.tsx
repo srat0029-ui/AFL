@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { fetchNbaStatus, type NbaStatus } from "../../api/client";
 import EmptyState from "../../components/ui/EmptyState";
 import PageHeader from "../../components/ui/PageHeader";
@@ -38,6 +39,11 @@ function NbaOverviewPage() {
         eyebrow="NBA"
         title="NBA player props"
         description="Points, rebounds and assists singles, tracked prospectively: every prediction is frozen before tip-off, compared with the closing line, then settled against the box score."
+        actions={
+          <Link to="/nba/games" className="btn btn--primary">
+            Games and rotation outlooks
+          </Link>
+        }
       />
 
       {state.status === "loading" && <Skeleton height="8rem" />}

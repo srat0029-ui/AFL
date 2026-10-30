@@ -3726,3 +3726,125 @@ export interface NbaStatus {
 export function fetchNbaStatus(signal?: AbortSignal): Promise<NbaStatus> {
   return request("/api/nba/status", { signal });
 }
+
+// --- NBA dashboard: frozen V1.5 outlooks (read-only) ------------------------
+
+/** A snapshot window's state: a frozen snapshot's own status, "upcoming"
+ * (its target cutoff is still ahead) or "none" (passed with nothing frozen
+ * for the game's current tip-off). */
+export type NbaWindowState = "produced" | "stale" | "partial" | "missing_data" | "missed_window" | "upcoming" | "none" | (string & {});
+
+export interface NbaTeamRef {
+  id: number;
+  abbreviation: string;
+  name: string;
+}
+
+export interface NbaWindowSummary {
+  label: string;
+  state: NbaWindowState;
+  target_cutoff: string;
+  snapshot_id: number | null;
+  generated_at?: string | null;
+}
+
+export interface NbaFreshnessEntry {
+  age_minutes?: number | null;
+  class?: string;
+  [key: string]: unknown;
+}
+
+export interface NbaWindowDetail extends NbaWindowSummary {
+  reason?: string | null;
+  information_cutoff?: string | null;
+  model_versions?: Record<string, string>;
+  counts?: Record<string, unknown>;
+  evidence_freshness?: Record<string, unknown>;
+  availability_feed_last_read_at?: string | null;
+}
+
+export interface NbaLiveEvidence {
+  checked_at: string;
+  healthy: boolean;
+  latest_run_at: string | null;
+  latest_run_status: string | null;
+  latest_successful_run_at: string | null;
+  problems: string[];
+  checks: { kind: string; label: string; age_minutes: number | null; stale: boolean; expected: boolean }[];
+}
+
+export interface NbaOutlookGameSummary {
+  game_id: number;
+  tipoff: string;
+  status: string;
+  season_type: string;
+  home: NbaTeamRef;
+  away: NbaTeamRef;
+  windows: NbaWindowSummary[];
+  latest_produced: string | null;
+}
+
+export interface NbaOutlookGames {
+  as_of: string;
+  window: { hours_back: number; hours_ahead: number };
+  games: NbaOutlookGameSummary[];
+  live_evidence: NbaLiveEvidence;
+}
+
+/** The injury-feed state as stored with an outlook (or read now). */
+export interface NbaAvailabilityEvidence {
+  state?: string;
+  status?: string | null;
+  source_status?: string | null;
+  observed_since?: string | null;
+  since?: string | null;
+  injury_type?: string | null;
+  expected_return_date?: string | null;
+  last_feed_read_at?: string | null;
+}
+
+export interface NbaPlayerOutlook {
+  p_play: number;
+  p_rotation: number;
+  expected_minutes_if_plays: number | null;
+  quantiles: Record<string, number> | null;
+  tier: string;
+  history_games: number;
+  team_source: string;
+  roster_listed: boolean;
+  availability_evidence: NbaAvailabilityEvidence;
+  generated_at: string | null;
+  information_cutoff: string | null;
+}
+
+export interface NbaPlayerOutlookRow {
+  player_id: number;
+  team_id: number;
+  name: string;
+  position: string | null;
+  outlooks: Record<string, NbaPlayerOutlook>;
+  latest_label: string | null;
+  current_availability: NbaAvailabilityEvidence;
+  result: { dressed: boolean; played: boolean; minutes: number | null } | null;
+}
+
+export interface NbaOutlookGameDetail {
+  as_of: string;
+  game_id: number;
+  tipoff: string;
+  status: string;
+  season_type: string;
+  box_score_state: string | null;
+  labels: string[];
+  windows: NbaWindowDetail[];
+  home: NbaTeamRef & { players: NbaPlayerOutlookRow[] };
+  away: NbaTeamRef & { players: NbaPlayerOutlookRow[] };
+}
+
+export function fetchNbaOutlookGames(signal?: AbortSignal): Promise<NbaOutlookGames> {
+  return request("/api/nba/outlooks/games", { signal });
+}
+
+export function fetchNbaOutlookGame(gameId: number, signal?: AbortSignal): Promise<NbaOutlookGameDetail> {
+  return request(`/api/nba/outlooks/games/${gameId}`, { signal });
+}

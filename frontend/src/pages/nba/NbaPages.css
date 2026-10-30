@@ -1,0 +1,81 @@
+.nba-page .card {
+  margin-top: 1rem;
+}
+
+.nba-muted {
+  color: var(--text-muted);
+}
+
+.nba-small {
+  font-size: 0.8rem;
+}
+
+.nba-collector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.nba-collector--problem {
+  border-color: var(--danger-border);
+}
+
+.nba-problems {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--danger-text);
+}
+
+.nba-matchup {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.nba-games-table td,
+.nba-players-table td {
+  vertical-align: top;
+}
+
+.nba-table-wrap {
+  overflow-x: auto;
+}
+
+.nba-window__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.nba-window__meta {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.8rem 0 0;
+}
+
+.nba-window__meta dt {
+  color: var(--text-muted);
+}
+
+.nba-window__meta dd {
+  margin: 0;
+}
+
+.nba-freshness {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+}
+
+.nba-changed {
+  color: var(--warning-text);
+}
+
+@media (max-width: 640px) {
+  .nba-games-table th:nth-child(3),
+  .nba-games-table td:nth-child(3) {
+    display: none;
+  }
+}
