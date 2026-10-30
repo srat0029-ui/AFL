@@ -2,7 +2,11 @@
 read-only SQL checks against real PostgreSQL, and the workflow's safeguards."""
 
 import json
+import os
 import re
+import shlex
+import shutil
+import subprocess
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -85,7 +89,32 @@ def test_failed_queries_are_problems():
     report = Report()
     check_snapshots(None, 2, report)
     check_box_scores([], 1, report)
-    assert report.problems == ["snapshot coverage query failed (exit 2)", "box-score coverage query failed (exit 1)"]
+    assert report.problems == ["coverage query failed: snapshots (exit 2)", "coverage query failed: box scores (exit 1)"]
+
+
+def test_a_failed_coverage_query_is_not_reported_as_a_missing_snapshot():
+    # Run 40822012075: both queries were refused at connection, and the summary
+    # added the permanent-gaps note because the failure began "snapshot ".
+    report = Report()
+    check_health(HEALTH_OK, 0, report)
+    check_snapshots(None, 2, report)
+    check_box_scores(None, 2, report)
+    text = render_summary(report, NOW, "2026-10-29T01:28:47Z", 24)
+    assert not any(p.startswith(watchdog.SNAPSHOT_PROBLEM_PREFIX) for p in report.problems)
+    assert not any(re.match(r"^snapshot ", p) for p in report.problems)  # the workflow's grep for snapshot gaps
+    assert watchdog.PERMANENT_GAPS_NOTE not in text
+
+
+def test_a_failed_coverage_query_shows_coverage_unavailable_not_no_games():
+    report = Report()
+    check_snapshots(None, 2, report)
+    text = render_summary(report, NOW, "2026-10-29T01:28:47Z", 24)
+    assert "Snapshot coverage unavailable" in text
+    assert "No competitive games" not in text
+    empty = Report()
+    check_snapshots([], 0, empty)  # the query ran and found nothing: that is a real "no games"
+    text = render_summary(empty, NOW, "2026-10-29T01:28:47Z", 24)
+    assert "No competitive games in the monitoring window." in text and "Snapshot coverage unavailable" not in text
 
 
 def test_missing_box_scores_are_problems():
@@ -141,7 +170,7 @@ def test_volatile_ages_are_normalised_but_identity_is_kept():
     assert watchdog.problem_key("latest successful database backup is 9.0 days old (limit 8)") == "latest successful database backup is <age> old (limit 8)"
     # games, dates, labels, statuses, exit codes and limits are identity, not volatile
     for stable in ("snapshot MEM@POR 2026-10-30T02:00Z T-1h: missed_window", "box score CLE@ATL 2026-10-29T00:00Z: game final, box score never fetched",
-                   "evidence-health could not run (exit 1): FATAL", "snapshot coverage query failed (exit 2)"):
+                   "evidence-health could not run (exit 1): FATAL", "coverage query failed: snapshots (exit 2)"):
         assert watchdog.problem_key(stable) == stable
 
 
@@ -312,11 +341,67 @@ def test_watchdog_workflow_safeguards():
     assert "vars.NBA_WATCHDOG_ENABLED == 'true'" in wf  # scheduled runs are off until enabled
     assert "group: nba-watchdog" in wf and "group: nba-live-cycle" not in wf  # never blocks the live cycle
     assert "READONLY='-c default_transaction_read_only=on'" in wf
-    assert wf.count('PGOPTIONS="$READONLY') == 2  # the evidence-health container and every psql check
+    assert wf.count('PGOPTIONS="$READONLY"') == 2  # the evidence-health container and every psql check
     assert "python -m app.nba.cli evidence-health" in wf
     assert "issues: write" in wf and "actions: read" in wf and "contents: read" in wf
     assert 'SNAPSHOTS_SINCE: "2026-10-29T01:28:47Z"' in wf and 'WINDOW_HOURS: "24"' in wf
-    assert "-c watchdog.window_hours=$WINDOW_HOURS" in wf and '--window-hours "$WINDOW_HOURS"' in wf  # one window for SQL and summary
+    assert "set local watchdog.window_hours = '$WINDOW_HOURS'" in wf and '--window-hours "$WINDOW_HOURS"' in wf  # one window for SQL and summary
+
+
+def test_watchdog_settings_are_set_local_in_the_query_transaction_not_startup_options():
+    # Layerbase's pooler refuses custom settings at connection startup
+    # ("FATAL: unsupported startup parameter in options: watchdog.since").
+    wf = WORKFLOW.read_text(encoding="utf-8")
+    for line in wf.splitlines():
+        if "PGOPTIONS" in line:
+            assert "watchdog." not in line, line
+    assert "-c watchdog." not in wf
+    psql = _psql_command(wf)
+    assert "--single-transaction" in psql and "ON_ERROR_STOP=1" in psql
+    assert psql.index("set local watchdog.since = '$SNAPSHOTS_SINCE'") < psql.index('-f "/sql/$check.sql"')
+    assert psql.index("set local watchdog.window_hours = '$WINDOW_HOURS'") < psql.index('-f "/sql/$check.sql"')
+
+
+def _psql_command(wf: str) -> str:
+    """The workflow's psql invocation, continuation lines joined, up to its redirects."""
+    joined = re.sub(r"\\\n\s*", " ", wf)
+    start = joined.index('psql "$PGURL"')
+    return joined[start:joined.index(" > ", start)]
+
+
+def test_the_workflows_psql_command_runs_the_sql_with_set_local_in_one_transaction(db_session):
+    """Runs the workflow's exact psql arguments against the test database (already
+    migrated, as in CI) with the production read-only startup option. The query
+    reads current_setting('watchdog.since'), which errors if the setting is not
+    visible; SET LOCAL outside a transaction block has no effect, so success
+    proves the settings and the query share one transaction. CSV must stay
+    clean: no BEGIN / SET / COMMIT tags."""
+    _pg(db_session)
+    psql = shutil.which("psql")
+    if psql is None:
+        if os.environ.get("CI"):
+            pytest.fail("psql is required in CI to test the watchdog's psql command")
+        pytest.skip("psql is not installed")
+    url = os.environ["TEST_DATABASE_URL"].replace("postgresql+psycopg://", "postgresql://")
+    env = {**os.environ, "PGOPTIONS": "-c default_transaction_read_only=on"}
+    variables = {"$PGURL": url, "$SNAPSHOTS_SINCE": "2026-10-29T01:28:47Z", "$WINDOW_HOURS": "24"}
+    expected_header = {"expected_snapshots": "game_id,tipoff,matchup,label,due,status", "box_scores": "game_id,tipoff,matchup,status,box_score_state"}
+    for check, header in expected_header.items():
+        command = _psql_command(WORKFLOW.read_text(encoding="utf-8"))
+        for name, value in {**variables, "/sql/$check": (SQL_DIR / check).as_posix()}.items():
+            command = command.replace(name, value)
+        args = shlex.split(command)
+        args[0] = psql
+        done = subprocess.run(args, env=env, capture_output=True, text=True, timeout=60)
+        assert done.returncode == 0, done.stderr
+        assert done.stdout.splitlines()[0] == header, done.stdout
+        assert not re.search(r"^(BEGIN|SET|COMMIT)$", done.stdout, re.M)
+        assert "transaction blocks" not in done.stderr  # "SET LOCAL can only be used in transaction blocks"
+        if check == "expected_snapshots":  # the SQL that reads the settings (box_scores.sql needs none)
+            # Without the single transaction the SET LOCALs do nothing and the query fails.
+            args.remove("--single-transaction")
+            bare = subprocess.run(args, env=env, capture_output=True, text=True, timeout=60)
+            assert bare.returncode != 0 and "transaction blocks" in bare.stderr, bare.stderr
 
 
 def test_watchdog_issue_deduplicates_on_the_evaluator_fingerprint_and_never_claims_a_repair():
