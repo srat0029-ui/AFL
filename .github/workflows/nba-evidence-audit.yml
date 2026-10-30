@@ -1,0 +1,60 @@
+name: NBA Evidence Audit (read-only)
+
+# Manual, read-only audit of the 2026-27 pregame evidence collected so far,
+# to decide what Minutes V2 can use (docs/NBA_MINUTES_V2_PLAN.md, step 0):
+# - 1_volume:          how much evidence and how many frozen outlooks with outcomes
+# - 2_feed_vocabulary: which injury statuses ESPN actually publishes in season
+# - 3_lineup_timing:   whether / when starters and the active list appear pre-tip
+# - 4_status_outcomes: injury-feed state at each snapshot vs dressed / played
+# - 5_coverage:        players who played without an outlook
+# Every query returns aggregate counts only - no names, no free-text comments.
+#
+# Safety:
+# - Manual dispatch only; no schedule.
+# - Strictly read-only: the session is opened with
+#   default_transaction_read_only=on (the only startup option Layerbase's
+#   pooler accepts), and each file runs in one transaction, so PostgreSQL
+#   itself rejects any write.
+# - Uses PostgreSQL's own psql image; no app image, no migration, no settings.
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: nba-evidence-audit
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: NBA evidence audit (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the audit queries
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          set -e
+          READONLY='-c default_transaction_read_only=on'
+          # psql needs plain postgresql://, not the SQLAlchemy driver suffix
+          export PGURL="$(printf '%s' "$DATABASE_URL" | sed -e 's#^postgresql+psycopg://#postgresql://#' -e 's#^postgres+psycopg://#postgresql://#')"
+          docker pull -q postgres:18-alpine > /dev/null
+          echo "## NBA evidence audit ($(date -u +%Y-%m-%dT%H:%MZ))" >> "$GITHUB_STEP_SUMMARY"
+          for path in backend/app/nba/audit_sql/*.sql; do
+            name="$(basename "$path" .sql)"
+            {
+              echo
+              echo "### $name"
+              echo
+              echo '```'
+              docker run --rm -e PGURL -e PGOPTIONS="$READONLY" \
+                -v "$PWD/backend/app/nba/audit_sql:/sql:ro" postgres:18-alpine \
+                psql "$PGURL" -v ON_ERROR_STOP=1 -X -q -P pager=off --single-transaction -f "/sql/$name.sql"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done

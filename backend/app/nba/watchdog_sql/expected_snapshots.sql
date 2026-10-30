@@ -19,8 +19,9 @@
 -- tolerance (min(30 min, offset / 2), as in app/nba/outlooks/snapshots.py)
 -- + 20 minutes of grace for the 15-minute cycle has passed.
 --
--- Both settings are passed in PGOPTIONS, e.g.
--- "-c watchdog.since=2026-10-29T01:28:47Z -c watchdog.window_hours=24".
+-- Both settings are SET LOCAL in the same transaction as this query (psql
+-- --single-transaction; see the workflow). Layerbase's pooler refuses them
+-- as startup options.
 with params as (
     select
         current_setting('watchdog.since')::timestamptz as since,
