@@ -150,7 +150,8 @@ jobs:
             tests/test_nba_live_cycle.py \
             tests/test_nba_catch_up.py \
             tests/test_nba_watchdog.py \
-            tests/test_nba_evidence_audit.py
+            tests/test_nba_evidence_audit.py \
+            tests/test_nba_outlook_api.py
 
   frontend-test:
     name: Frontend tests

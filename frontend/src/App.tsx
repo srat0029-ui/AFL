@@ -9,6 +9,8 @@ import HomePage from "./pages/HomePage";
 import MatchDetailPage from "./pages/MatchDetailPage";
 import MatchesPage from "./pages/MatchesPage";
 import MultisPage from "./pages/MultisPage";
+import NbaGamePage from "./pages/nba/NbaGamePage";
+import NbaGamesPage from "./pages/nba/NbaGamesPage";
 import NbaOverviewPage from "./pages/nba/NbaOverviewPage";
 import MarketMonitorPage from "./pages/MarketMonitorPage";
 import MarketMovementExplorerPage from "./pages/MarketMovementExplorerPage";
@@ -292,6 +294,8 @@ function App() {
           <Route path="/backtest" element={<BacktestPage />} />
           <Route path="/status" element={<StatusPage />} />
           <Route path="/nba" element={<NbaOverviewPage />} />
+          <Route path="/nba/games" element={<NbaGamesPage />} />
+          <Route path="/nba/games/:gameId" element={<NbaGamePage />} />
         </Routes>
       </main>
     </div>

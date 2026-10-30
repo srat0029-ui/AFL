@@ -6,7 +6,7 @@ Read-only: nothing here triggers a provider request.
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.api.nba_schemas import NbaAvailabilityAsOfRead, NbaStatusRead
@@ -15,6 +15,7 @@ from app.database import get_db
 from app.models.nba import NbaPlayer
 from app.nba.asof import availability_known_at
 from app.nba.monitoring import evidence_health
+from app.nba.outlooks.read import get_outlook_game, list_outlook_games
 from app.nba.status import load_nba_status
 
 router = APIRouter(prefix="/api/nba", tags=["nba"])
@@ -70,3 +71,28 @@ def get_player_availability(player_id: int, as_of: datetime | None = None, db: S
         first_observed_at=evidence.first_observed_at,
         last_confirmed_at=evidence.last_confirmed_at,
     )
+
+
+@router.get("/outlooks/games")
+def get_outlook_games(
+    hours_back: float = Query(6.0, ge=0, le=72), hours_ahead: float = Query(48.0, ge=0, le=168), db: Session = Depends(get_db)
+) -> dict:
+    """Competitive games around now, each with the state of its T-24h / T-4h /
+    T-1h / T-30m windows (a frozen snapshot's status, "upcoming", or "none"),
+    plus the live evidence collector's health. Reads stored data only."""
+    out = list_outlook_games(db, hours_back=hours_back, hours_ahead=hours_ahead)
+    out["live_evidence"] = _live_evidence(db)
+    return out
+
+
+@router.get("/outlooks/games/{game_id}")
+def get_outlook_game_detail(game_id: int, db: Session = Depends(get_db)) -> dict:
+    """One game's frozen V1.5 outlooks: every player in any of its snapshots,
+    per window (P(play), P(10+ min), expected minutes if he plays, quantiles,
+    tier, the injury-feed state that snapshot saw), the player's current
+    injury-feed state, snapshot timestamps, model versions and evidence
+    freshness, and - once final - what happened. Reads stored data only."""
+    out = get_outlook_game(db, game_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail=f"No NBA game with id {game_id}.")
+    return out
