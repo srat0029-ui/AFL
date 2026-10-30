@@ -90,7 +90,9 @@ from app.player_modelling.request_cache import clear_model_fit_cache, clear_ttl_
 from app.player_modelling.team_odds_ingestion import ingest_team_odds
 from app.player_modelling.upcoming_features import count_missing_lineup_candidates, load_all_lineup_player_ids, load_next_upcoming_round
 from app.player_modelling.weather_ingestion import refresh_weather_for_matches
-from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiError, TheOddsApiProvider
+from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiError, TheOddsApiProvider, odds_api_enabled_for
+
+AFL_ODDS_DISABLED = "AFL odds fetching is disabled (AFL_ODDS_API_ENABLED is not true). Nothing was sent to The Odds API."
 
 
 def _report_confidence_distributions(run) -> None:
@@ -247,6 +249,9 @@ def _refresh_prop_odds(force: bool = False, min_interval_minutes: float | None =
         for m in upcoming_matches:
             print(f"  match {m.match_id}: round {m.round_number}, {m.season_year}, kickoff {m.scheduled_start.isoformat()}")
 
+        if not odds_api_enabled_for("AFL"):
+            print(f"\n{AFL_ODDS_DISABLED}")
+            return 0
         settings = get_settings()
         provider = TheOddsApiProvider(api_key=settings.the_odds_api_key)
         if not provider.is_available:
@@ -341,6 +346,9 @@ def _refresh_team_odds() -> int:
     stale manual entries (Section 22)."""
     db = SessionLocal()
     try:
+        if not odds_api_enabled_for("AFL"):
+            print(AFL_ODDS_DISABLED)
+            return 0
         settings = get_settings()
         provider = TheOddsApiProvider(api_key=settings.the_odds_api_key)
         if not provider.is_available:

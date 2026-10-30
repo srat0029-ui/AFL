@@ -151,6 +151,32 @@ docs during this phase's audit, not assumed from marketing copy:
 Nothing here requires a payment method anywhere, and every failure mode is
 a degrade-or-pause, never an automatic charge.
 
+### AFL Odds API credits (`AFL_ODDS_API_ENABLED`)
+
+Every AFL request to The Odds API (player props, team markets, the events
+list) is refused unless `AFL_ODDS_API_ENABLED=true`. The default is off.
+`TheOddsApiProvider` checks it before building any AFL request, and the live
+cycle and the CLI `refresh-prop-odds` / `refresh-team-odds` commands report
+"AFL odds fetching is disabled" instead of fetching. That covers the
+frontend Refresh Data button (`POST /api/afl/refresh`), the CLI, the local
+scheduler and the GitHub live-cycle workflow. `THE_ODDS_API_KEY` is kept;
+NBA requests are not switched off.
+
+Where it applies:
+- **Local backend** (`uvicorn app.main:app` from this checkout): code from
+  this change onward; restart the server after pulling. Leave
+  `AFL_ODDS_API_ENABLED` unset (or `false`) in `backend/.env`.
+- **`.github/workflows/live-cycle.yml`**: its pinned image predates the
+  setting, so the workflow itself withholds `THE_ODDS_API_KEY` unless the
+  repository variable `AFL_ODDS_API_ENABLED` is `true`.
+- **Any other running image built before this change** (e.g. a Render
+  service pinned to an older tag) ignores the setting. Protect it by
+  removing `THE_ODDS_API_KEY` from that service's environment (the key stays
+  in GitHub secrets and your local `.env`), or redeploy a newer image.
+
+To turn AFL odds back on: set `AFL_ODDS_API_ENABLED=true` where it should
+apply (and the repository variable for the workflow).
+
 ## Common failure scenarios
 
 | Scenario | Behavior today |

@@ -4,6 +4,7 @@ live-operations stage brief): step ordering/reuse, failure classification
 Every external provider is monkeypatched at its import site inside
 live_cycle.py — these tests never make a real network call."""
 
+import pytest
 from datetime import datetime, timedelta, timezone
 
 import app.player_modelling.live_cycle as live_cycle_module
@@ -29,6 +30,8 @@ from app.models import (
 )
 from app.player_modelling.live_cycle import run_live_cycle
 from app.providers.types import Fixture
+
+pytestmark = pytest.mark.usefixtures("afl_odds_enabled")  # AFL Odds API fetching is off by default
 
 NOW = datetime.now(timezone.utc)
 

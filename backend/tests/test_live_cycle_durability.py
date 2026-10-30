@@ -33,6 +33,8 @@ from tests.test_live_cycle import (
     _seed_scheduled_match,
 )
 
+pytestmark = pytest.mark.usefixtures("afl_odds_enabled")  # AFL Odds API fetching is off by default
+
 
 def _patch_normal_providers(monkeypatch):
     monkeypatch.setattr(live_cycle_module, "SquiggleFixtureProvider", lambda: FakeFixtureProvider())
