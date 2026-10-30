@@ -7,6 +7,8 @@ name: NBA Evidence Audit (read-only)
 # - 3_lineup_timing:   whether / when starters and the active list appear pre-tip
 # - 4_status_outcomes: injury-feed state at each snapshot vs dressed / played
 # - 5_coverage:        players who played without an outlook
+# - 6_list_vs_dressed: whether the per-game list known at each snapshot cutoff
+#                      is the active list (player-by-player vs the box score)
 # Every query returns aggregate counts only - no names, no free-text comments.
 #
 # Safety:

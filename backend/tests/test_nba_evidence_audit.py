@@ -20,15 +20,18 @@ TIP = datetime(2026, 10, 30, 2, 0, tzinfo=timezone.utc)
 
 def test_audit_sql_is_read_only_and_aggregate():
     files = sorted(SQL_DIR.glob("*.sql"))
-    assert [f.stem for f in files] == ["1_volume", "2_feed_vocabulary", "3_lineup_timing", "4_status_outcomes", "5_coverage"]
+    assert [f.stem for f in files] == ["1_volume", "2_feed_vocabulary", "3_lineup_timing", "4_status_outcomes", "5_coverage", "6_list_vs_dressed"]
     for path in files:
         sql = re.sub(r"--.*", "", path.read_text(encoding="utf-8")).upper()
         assert sql.strip().startswith(("WITH", "SELECT")), path.name
         for forbidden in ("INSERT", "UPDATE ", "DELETE", "DROP", "TRUNCATE", "ALTER", "CREATE", "GRANT", "COPY", "SET "):
             assert forbidden not in sql, (path.name, forbidden)
         # aggregates only: never player names or ESPN's free-text comments
-        for column in ("DISPLAY_NAME", "SHORT_COMMENT", "LONG_COMMENT", "INJURY_DETAIL", "PAYLOAD"):
+        for column in ("DISPLAY_NAME", "SHORT_COMMENT", "LONG_COMMENT", "INJURY_DETAIL"):
             assert column not in sql, (path.name, column)
+        # a payload is read only for the per-game list's player ids
+        for use in re.findall(r"PAYLOAD\S*\s*\S*\s*\S*", sql):
+            assert use.startswith("PAYLOAD::JSON -> 'ENTRIES'"), (path.name, use)
 
 
 def test_audit_workflow_safeguards():
@@ -61,6 +64,8 @@ def _seed(db):
     game, home, away = seed_game(db, tipoff=TIP, source_game_id="audit")
     game.status, game.box_score_state, game.season_type = "final", "ingested", "regular"
     out, dtd, unlisted_bench, newcomer = (seed_player(db, home, f"P{i}", f"a{i}") for i in range(4))
+    for p in (out, dtd, unlisted_bench, newcomer):
+        p.source = "espn"  # lineup entries carry ESPN ids
     add_game_log(db, game=game, player=dtd, team=home, opponent=away, minutes=20)  # questionable-type, played
     add_game_log(db, game=game, player=unlisted_bench, team=home, opponent=away, minutes=None, did_not_play=True)  # dressed, DNP
     add_game_log(db, game=game, player=newcomer, team=home, opponent=away, minutes=12)  # played, no outlook
@@ -80,6 +85,16 @@ def _seed(db):
     db.add(NbaGameLineupObservation(
         poll_id=lineup_poll.id, game_id=game.id, team_id=home.id, source="test", observed_at=TIP - timedelta(minutes=20), tipoff_at_observation=TIP,
         game_status_at_observation="scheduled", lineup_available=True, has_starter_field=True, starters_flagged=5, players_listed=13, payload={}, content_hash="x",
+    ))
+    # The list known at the T-1h cutoff: without `out`, plus one id unknown to nba_players.
+    early_poll = NbaEvidencePoll(kind="lineups", source="test", observed_at=TIP - timedelta(minutes=90), items_seen=1, observations_added=1)
+    db.add(early_poll)
+    db.flush()
+    entries = [{"id": pid, "starter": None, "active": None, "did_not_play": None, "reason": None} for pid in ("a1", "a2", "a3", "unknown")]
+    db.add(NbaGameLineupObservation(
+        poll_id=early_poll.id, game_id=game.id, team_id=home.id, source="test", observed_at=TIP - timedelta(minutes=90), tipoff_at_observation=TIP,
+        game_status_at_observation="scheduled", lineup_available=False, has_starter_field=False, starters_flagged=0, players_listed=4,
+        payload={"entries": entries}, content_hash="y",
     ))
 
     run = NbaMinutesModelRun(
@@ -118,13 +133,13 @@ def test_audit_sql_on_postgresql(db_session):
     volume = {r["item"]: r["value"] for r in _run(db_session, "1_volume")}
     assert volume["final competitive 2026-27 games with a full box score"] == "1"
     assert volume["produced T-1h snapshots of those games"] == "1"
-    assert volume["pregame lineup observations (competitive 2026-27 games)"] == "1"
+    assert volume["pregame lineup observations (competitive 2026-27 games)"] == "2"
 
     vocab = {(r["source_status"], r["status"]): r["observations"] for r in _run(db_session, "2_feed_vocabulary")}
     assert vocab == {("Out", "out"): 1, ("Day-To-Day", ""): 1}
 
     lineup = _run(db_session, "3_lineup_timing")
-    assert [(r["bucket"], r["with_starters"], r["mean_players_listed"]) for r in lineup] == [("4 15-30 min before", 1, 13)]
+    assert [(r["bucket"], r["with_starters"], r["mean_players_listed"]) for r in lineup] == [("2 1-4 h before", 0, 4), ("4 15-30 min before", 1, 13)]
 
     outcomes = {(r["state"], r["status"]): r for r in _run(db_session, "4_status_outcomes")}
     assert set(outcomes) == {("listed", "out"), ("listed", "day-to-day"), ("never_listed", "")}
@@ -135,3 +150,10 @@ def test_audit_sql_on_postgresql(db_session):
     (coverage,) = _run(db_session, "5_coverage")
     assert (coverage["played"], coverage["played_without_outlook"]) == (2, 1)
     assert float(coverage["minutes_share_without_outlook"]) == pytest.approx(12 / 32, abs=1e-4)
+
+    # Home team: the 90-min list is the latest at the T-1h cutoff (the 20-min one is after it).
+    # Away team: no list. Dressed: dtd, bench, newcomer - all on the list; `out` is off it.
+    (lists,) = _run(db_session, "6_list_vs_dressed")
+    assert (lists["snapshot_label"], lists["team_games"], lists["with_list"], lists["mean_list_age_min_before_tip"]) == ("T-1h", 2, 1, 90)
+    assert (lists["list_entries"], lists["list_entries_unresolved"], lists["dressed"], lists["dressed_on_list"], lists["on_list_not_dressed"]) == (4, 1, 3, 3, 1)
+    assert (lists["candidates_on_list"], lists["dressed_rate_on_list"], lists["candidates_off_list"], lists["dressed_rate_off_list"]) == (2, 1, 1, 0)
