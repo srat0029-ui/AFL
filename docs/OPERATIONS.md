@@ -177,6 +177,38 @@ Where it applies:
 To turn AFL odds back on: set `AFL_ODDS_API_ENABLED=true` where it should
 apply (and the repository variable for the workflow).
 
+## Viewing production data locally (read-only)
+
+The NBA dashboard (`/nba/games`) shows the frozen outlooks the hosted live
+cycle writes to the production database; a local SQLite database has none.
+To look at them, run the local backend against production with
+`DATABASE_READ_ONLY=true`: every session then opens with
+`default_transaction_read_only=on`, so PostgreSQL itself refuses any write
+(the same mechanism the watchdog and evidence audit use, and the one
+startup option Layerbase's pooler accepts). The dashboard shows a
+"Read-only database" chip when it is on.
+
+In a new PowerShell window (the variables last only for that window, and
+take precedence over `backend/.env`):
+
+```powershell
+cd C:\Users\resol\AFL\backend
+$env:DATABASE_URL = "<the production connection string from the Layerbase dashboard>"
+$env:DATABASE_READ_ONLY = "true"
+.\run_dev.bat
+```
+
+Then start the frontend as usual and open `http://localhost:5173/nba/games`.
+Close that window to go back to the local database.
+
+- Read-only pages work normally. Anything that writes (e.g. the AFL
+  Refresh Data button) fails with "cannot execute ... in a read-only
+  transaction" and changes nothing.
+- `DATABASE_READ_ONLY` is refused for SQLite rather than silently ignored.
+- AFL Odds API fetching stays off (`AFL_ODDS_API_ENABLED` unset).
+- Each page load is a handful of small queries; it does not keep the
+  database awake on its own (unlike the 15-minute live cycle).
+
 ## Common failure scenarios
 
 | Scenario | Behavior today |

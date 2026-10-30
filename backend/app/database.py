@@ -9,16 +9,37 @@ timezone=True, and no code anywhere uses SQLite-specific SQL, so this really
 is a one-line env var swap (see docs/DEPLOYMENT.md).
 """
 
+import logging
 from collections.abc import Generator
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-from app.config import get_settings
+from app.config import Settings, get_settings
+
+logger = logging.getLogger(__name__)
+
+READ_ONLY_OPTION = "-c default_transaction_read_only=on"
+
+
+def engine_connect_args(settings: Settings) -> dict:
+    """Driver connect arguments. With DATABASE_READ_ONLY every PostgreSQL
+    session starts read-only, so PostgreSQL itself rejects writes; it is
+    refused for SQLite rather than silently not applied."""
+    if settings.database_url.startswith("sqlite"):
+        if settings.database_read_only:
+            raise ValueError("DATABASE_READ_ONLY is only supported for PostgreSQL; it would not be enforced for SQLite.")
+        return {"check_same_thread": False}
+    if settings.database_read_only:
+        return {"options": READ_ONLY_OPTION}
+    return {}
+
 
 settings = get_settings()
 
-_connect_args = {"check_same_thread": False} if settings.database_url.startswith("sqlite") else {}
+_connect_args = engine_connect_args(settings)
+if settings.database_read_only:
+    logger.warning("DATABASE_READ_ONLY: every database session is read-only; writes will be refused by PostgreSQL.")
 
 # pool_pre_ping: a cheap SELECT 1 before handing out a pooled connection -
 # avoids "server closed the connection unexpectedly" errors against managed

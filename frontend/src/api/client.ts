@@ -3789,6 +3789,8 @@ export interface NbaOutlookGames {
   window: { hours_back: number; hours_ahead: number };
   games: NbaOutlookGameSummary[];
   live_evidence: NbaLiveEvidence;
+  /** The backend opened its database read-only (DATABASE_READ_ONLY). */
+  database_read_only?: boolean;
 }
 
 /** The injury-feed state as stored with an outlook (or read now). */
