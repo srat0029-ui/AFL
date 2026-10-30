@@ -74,6 +74,29 @@ is the obvious first comparator. No rate here is precise enough to use.
 Every player who played in those games had an outlook (0 without; 0% of
 minutes).
 
+## 5. Per-game list vs who dressed (run 41013899976, same 3 games)
+
+The latest per-game list known at each snapshot's cutoff, compared player
+by player with the box score (6 team-games at T-1h / T-30m, 4 at T-4h; no
+unresolved ids):
+
+| Snapshot | Listed | Dressed | Dressed and listed | Listed, did not dress | Candidates on list: dressed | Candidates off list: dressed |
+|---|---:|---:|---:|---:|---:|---:|
+| T-4h | 53 | 51 | 45 (88%) | 8 | 0.85 of 53 | 0.42 of 12 |
+| T-1h | 79 | 76 | 70 (92%) | 9 | 0.90 of 78 | 0.22 of 23 |
+| T-30m | 82 | 76 | 74 (97%) | 8 | 0.91 of 80 | 0.10 of 21 |
+
+- The list is **informative but not the active list**: about 10% of listed
+  players do not dress, and some players off it do, less so nearer tip-off.
+  Step 1's oracle is therefore not reachable at T-1h from the list alone.
+- "Mean list age" is large (≈ 10 h at T-1h) because observations are stored
+  only when the list changes; it says when the list last changed, not how
+  stale our reading was.
+- Not yet known: how much of the list overlaps with the injury feed's Out
+  entries (20 Out vs 21 off-list candidates at T-30m suggests heavily). If
+  the list adds little beyond Out, it is not worth a separate input.
+- 6 team-games: indicative only.
+
 ## Implications
 
 1. Participation (step 2) remains the priority: Out is already decisive;
