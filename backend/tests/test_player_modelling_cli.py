@@ -10,7 +10,10 @@ instead of the intended controlled 0/1/2). These tests never touch a real
 database - `run_live_cycle` and `SessionLocal` are both monkeypatched.
 """
 
+import pytest
 import app.player_modelling.cli as cli_module
+
+pytestmark = pytest.mark.usefixtures("afl_odds_enabled")  # AFL Odds API fetching is off by default
 
 
 class _FakeDb:

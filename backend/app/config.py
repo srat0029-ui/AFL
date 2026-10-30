@@ -52,6 +52,15 @@ class Settings(BaseSettings):
     # provider as unavailable and manual prop entry keeps working unaffected.
     the_odds_api_key: str = ""
 
+    # Master switch for every AFL request to The Odds API (player props, team
+    # markets and the free events list alike). OFF unless explicitly set to
+    # true (AFL_ODDS_API_ENABLED=true), so a deployment that does not know
+    # about this setting spends no AFL credits. Enforced inside
+    # TheOddsApiProvider itself, so the frontend Refresh button, the CLI, the
+    # scheduler and the live-cycle workflow are all covered. The key above is
+    # kept for other sports (NBA odds ingestion later); NBA is unaffected.
+    afl_odds_api_enabled: bool = False
+
     # How often the automatic scheduler (app/player_modelling/scheduler.py)
     # calls run_live_cycle when left running unattended. This just paces how
     # often the free Squiggle/AFL Tables scrapers get polled - it does NOT

@@ -103,3 +103,16 @@ def _reset_backtests_route_cache():
     backtests_route._logistic_comparison_cache = None
     backtests_route._boosting_comparison_cache = None
     backtests_route._poisson_revision_cache = None
+
+
+@pytest.fixture()
+def afl_odds_enabled(monkeypatch):
+    """AFL Odds API fetching is OFF by default (AFL_ODDS_API_ENABLED). Tests
+    of the enabled path - always against fake providers or a mock HTTP
+    transport - opt in with this fixture."""
+    from app.config import get_settings
+
+    monkeypatch.setenv("AFL_ODDS_API_ENABLED", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()

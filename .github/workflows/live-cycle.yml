@@ -95,7 +95,13 @@ jobs:
         # it the same way - see docs/DEPLOYMENT.md.
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          THE_ODDS_API_KEY: ${{ secrets.THE_ODDS_API_KEY }}
+          # AFL odds are off unless the repository variable
+          # AFL_ODDS_API_ENABLED is "true". The pinned image above predates
+          # that setting, so the key itself is withheld: with no key the
+          # image's own odds steps skip ("not configured") and send nothing.
+          # Newer images also refuse AFL requests when the setting is off.
+          THE_ODDS_API_KEY: ${{ vars.AFL_ODDS_API_ENABLED == 'true' && secrets.THE_ODDS_API_KEY || '' }}
+          AFL_ODDS_API_ENABLED: ${{ vars.AFL_ODDS_API_ENABLED == 'true' && 'true' || 'false' }}
         # -e VAR (no =value) reads the value from this shell's environment
         # instead of writing it into the command line itself - the secret
         # value is never part of the invoked command text, only of the
@@ -105,6 +111,7 @@ jobs:
           docker run --rm \
             -e DATABASE_URL \
             -e THE_ODDS_API_KEY \
+            -e AFL_ODDS_API_ENABLED \
             -e APP_ENV=production \
             ghcr.io/srat0029-ui/afl/backend:sha-c069109 \
             python -m app.player_modelling.cli run-live-cycle

@@ -11,6 +11,8 @@ import pytest
 from app.providers.afl.the_odds_api import AFL_SPORT_KEY, TheOddsApiError, TheOddsApiProvider
 from app.providers.player_prop_odds import QuotaStatus
 
+pytestmark = pytest.mark.usefixtures("afl_odds_enabled")  # AFL Odds API fetching is off by default
+
 
 def _client_with_handler(handler) -> httpx.Client:
     transport = httpx.MockTransport(handler)

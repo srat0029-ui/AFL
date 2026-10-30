@@ -105,6 +105,22 @@ class TheOddsApiError(Exception):
     per-item try/except convention (see e.g. backfill_player_stats)."""
 
 
+class OddsApiSportDisabledError(TheOddsApiError):
+    """The sport's Odds API fetching is switched off by configuration
+    (AFL: AFL_ODDS_API_ENABLED). Raised BEFORE any request is built."""
+
+
+def odds_api_enabled_for(sport_code: str) -> bool:
+    """Whether this deployment may send `sport_code` requests to The Odds API
+    at all. AFL is off unless AFL_ODDS_API_ENABLED=true; other sports are not
+    switched here."""
+    if sport_code == "AFL":
+        from app.config import get_settings
+
+        return get_settings().afl_odds_api_enabled
+    return True
+
+
 def _parse_quota_headers(headers: httpx.Headers) -> QuotaStatus:
     def _int_or_none(value: str | None) -> int | None:
         if value is None:
@@ -148,9 +164,13 @@ class TheOddsApiProvider(PlayerPropOddsProvider):
         self._regions = regions
 
     def _sport(self, sport_code: str) -> OddsApiSport:
+        """Every request method resolves its sport here before building a
+        request, so this is the one place a disabled sport is refused."""
         sport = SPORTS.get(sport_code)
         if sport is None:
             raise ValueError(f"TheOddsApiProvider supports {sorted(SPORTS)}, got {sport_code!r}")
+        if not odds_api_enabled_for(sport_code):
+            raise OddsApiSportDisabledError(f"{sport_code} odds fetching is disabled (AFL_ODDS_API_ENABLED is not true) - no request sent")
         return sport
 
     @property

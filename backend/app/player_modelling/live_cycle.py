@@ -98,7 +98,7 @@ from app.player_modelling.upcoming_features import UpcomingMatchTeams, load_next
 from app.player_modelling.weather_ingestion import refresh_weather_for_matches
 from app.providers.afl.afltables_players import AFLTablesPlayerStatsProvider
 from app.providers.afl.squiggle import SquiggleFixtureProvider
-from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiProvider
+from app.providers.afl.the_odds_api import MODELLED_MARKET_KEYS, TheOddsApiProvider, odds_api_enabled_for
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +110,10 @@ logger = logging.getLogger(__name__)
 # soonest to bounce - the same match that would need the tightest player-
 # prop refresh interval right now.
 TEAM_ODDS_STALENESS_MULTIPLIER = 1
+
+# AFL_ODDS_API_ENABLED is off: both odds steps are skipped before a provider
+# request is built (TheOddsApiProvider refuses AFL requests too).
+AFL_ODDS_DISABLED_MESSAGE = "skipped — AFL odds fetching is disabled (AFL_ODDS_API_ENABLED is not true); no request sent to The Odds API"
 
 # Safely above live-cycle.yml's job timeout-minutes (30): a row still
 # RUN_IN_PROGRESS after this long cannot legitimately still be executing.
@@ -565,7 +569,9 @@ def _run_steps(db: Session, row: LiveCycleRun, report: LiveCycleReport, now: dat
     try:
         settings = get_settings()
         odds_provider = TheOddsApiProvider(api_key=settings.the_odds_api_key)
-        if not odds_provider.is_available:
+        if not odds_api_enabled_for("AFL"):
+            report.add("refresh_prop_odds", STEP_SUCCESS, AFL_ODDS_DISABLED_MESSAGE, duration_seconds=time.monotonic() - _t0)
+        elif not odds_provider.is_available:
             report.add("refresh_prop_odds", STEP_WARNING, "THE_ODDS_API_KEY not configured — skipped (manual prop entry still works)", duration_seconds=time.monotonic() - _t0)
         else:
             odds_report = run_prop_odds_refresh(db, odds_provider, upcoming_matches, MODELLED_MARKET_KEYS)  # min_refresh_interval=None -> match-time-aware policy
@@ -601,7 +607,9 @@ def _run_steps(db: Session, row: LiveCycleRun, report: LiveCycleReport, now: dat
     try:
         settings = get_settings()
         team_odds_provider = TheOddsApiProvider(api_key=settings.the_odds_api_key)
-        if not team_odds_provider.is_available:
+        if not odds_api_enabled_for("AFL"):
+            report.add("refresh_team_odds", STEP_SUCCESS, AFL_ODDS_DISABLED_MESSAGE, duration_seconds=time.monotonic() - _t0)
+        elif not team_odds_provider.is_available:
             report.add("refresh_team_odds", STEP_WARNING, "THE_ODDS_API_KEY not configured — skipped (manual team odds entry still works)", duration_seconds=time.monotonic() - _t0)
         elif not _team_odds_needs_refresh(db, upcoming_matches):
             report.add("refresh_team_odds", STEP_SUCCESS, "skipped — still within the match-time-aware refresh interval", duration_seconds=time.monotonic() - _t0)
