@@ -162,3 +162,23 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
         run: docker run --rm -e DATABASE_URL -e APP_ENV=production "$IMAGE" python -m app.nba.outlooks.cli snapshot
+
+      - name: Freeze Stat Model V1 predictions (isolated)
+        # Off until NBA_STAT_PREDICTIONS_ENABLED is "true". Uses its own pinned
+        # image, so the steps above stay on NBA_LIVE_CYCLE_IMAGE. It only reads
+        # frozen snapshots and appends to nba_prop_projections. A failure or
+        # timeout leaves a warning and never fails the cycle.
+        # See docs/NBA_STAT_PREDICTIONS_PROSPECTIVE.md.
+        if: ${{ !cancelled() && vars.NBA_STAT_PREDICTIONS_ENABLED == 'true' && vars.NBA_STAT_PREDICTIONS_IMAGE != '' && (github.event_name != 'workflow_dispatch' || inputs.command == 'run-live-cycle') }}
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          STAT_IMAGE: ${{ vars.NBA_STAT_PREDICTIONS_IMAGE }}
+        run: |
+          case "$STAT_IMAGE" in
+            *@sha256:*|*:sha-*) ;;
+            *) echo "::warning::NBA_STAT_PREDICTIONS_IMAGE is not pinned; skipped."; exit 0 ;;
+          esac
+          docker run --rm -e DATABASE_URL -e APP_ENV=production "$STAT_IMAGE" python -m app.nba.stats.cli freeze \
+            || { echo "::warning::Stat prediction freeze failed; V1.5 is unaffected."; exit 1; }
