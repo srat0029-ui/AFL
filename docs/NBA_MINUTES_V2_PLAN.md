@@ -86,6 +86,38 @@ gains little, V2's minutes part is not built.
   with significantly worse calibration. A failure is reported, not tuned
   away on the test period.
 
+## Amendment 1 (2026-10-30, after step 1 and the audit; before step 1b ran)
+
+Step 1 passed under an oracle. The audit showed the oracle is not available
+at T-1h (the per-game list is ~90% precise, the feed has only Out /
+Day-To-Day). So V2 cannot serve "who dressed"; it must serve **P(dresses)**,
+and the minutes model must take teammate absences as probabilities.
+
+**V2 composition:**
+1. P(dress | history): roster-universe classifier, target = listed.
+2. P(dress | history, evidence): recalibration of (1) by injury-feed state,
+   fitted on design-period snapshots (step 2). Before that, (1) alone.
+3. P(play | dressed, history): the listed-scenario classifier.
+4. P(play) = (2) × (3).
+5. E(minutes | plays): the step-1 model C's features, computed as
+   **expectations** over teammates' P(dress) q_j (with q_j ∈ {0, 1} they
+   equal the oracle features exactly).
+
+**Step 1b — history-only V2, offline (rule fixed before running):** with
+q_j = P(dress | history) only (no evidence, so fully reconstructable), on
+the step-1 rows and folds:
+- **E-hist**: minutes from C trained on oracle features, served with
+  expected features. **F-hist**: the same model form trained on the expected
+  features themselves (train = serve).
+- Participation: P(play) = q × P(play | dressed) vs V1.5's direct P(play).
+- **Rule:** the history-only minutes model is a candidate to replace V1
+  inside V2 if E-hist or F-hist beats A on test conditional MAE with a 95%
+  CI excluding 0 and the selection folds agree in sign (no minimum size:
+  any reliable gain without evidence is free). The factorised P(play) is
+  kept only if its test log loss is no worse than V1.5's by more than 0.002
+  (the V1.5 tie tolerance); otherwise V2 recalibrates V1.5's P(play)
+  directly. Neither result changes steps 2–3's pre-registered rules.
+
 ## Not planned
 
 More model complexity for V1 (LightGBM tied HGB), overtime modelling (no
