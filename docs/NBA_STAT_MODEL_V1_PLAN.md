@@ -116,3 +116,12 @@ excluding 0, and the selection folds agree in sign.
 Failing either is reported as a negative result, not tuned away. Passing
 adopts nothing into production: serving is a separate decision that needs
 approval, and the real test is frozen pregame predictions in 2026-27.
+
+## Deviation recorded after the run
+
+The plan says half-life and shrinkage are chosen on season S−1 with `stat_v1`'s
+form, but V1 has no out-of-sample minutes for 2019-20. So the 2020-21 fold's
+validation season used recent minutes instead of V1 minutes. This was not in
+the plan above when it was written. It affects tuning for that one selection
+fold only, not the test folds. See the limits in
+[NBA_STAT_MODEL_V1_RESULTS.md](NBA_STAT_MODEL_V1_RESULTS.md).
