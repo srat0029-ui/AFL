@@ -215,6 +215,23 @@ def freeze_due(db: Session, *, now: datetime | None = None, dry_run: bool = Fals
 # --- evaluation: read-only, frozen rows only ---------------------------------
 
 
+def _coverage(db: Session, version: str) -> dict:
+    """Per label, from this version's first frozen cutoff: the snapshots with
+    player rows, and which of them have no predictions (permanent gaps)."""
+    frozen = {(g, ensure_utc(c)) for g, c in db.execute(select(NbaPropProjection.game_id, NbaPropProjection.information_cutoff).where(NbaPropProjection.model_version == version).distinct()).all()}
+    first = min(c for _, c in frozen)
+    snapshots = db.scalars(select(NbaOutlookSnapshot).where(NbaOutlookSnapshot.snapshot_label.in_(FREEZE_LABELS), NbaOutlookSnapshot.status.in_(SNAPSHOT_STATUSES_WITH_ROWS), NbaOutlookSnapshot.information_cutoff >= first)).all()
+    coverage = {label: {"snapshots_with_rows": 0, "frozen": 0, "missing_snapshot_ids": []} for label in FREEZE_LABELS}
+    for snap in snapshots:
+        block = coverage[snap.snapshot_label]
+        block["snapshots_with_rows"] += 1
+        if (snap.game_id, ensure_utc(snap.information_cutoff)) in frozen:
+            block["frozen"] += 1
+        else:
+            block["missing_snapshot_ids"].append(snap.id)
+    return coverage
+
+
 def evaluate_frozen(db: Session, *, model_version: str | None = None) -> dict:
     """Score the exact frozen predictions and baselines against final box
     scores. Nothing is recomputed. A DNP or a missing box score is void."""
@@ -243,9 +260,10 @@ def evaluate_frozen(db: Session, *, model_version: str | None = None) -> dict:
                 "after_tipoff": ensure_utc(p.generated_at) >= tipoff, "before_cutoff": ensure_utc(p.generated_at) < ensure_utc(p.information_cutoff), **{f"b_{k}": v for k, v in p.inputs["baselines"].items()},
             }
         )
-    report: dict = {"model_version": version, "rows": len(records), "integrity": {"generated_at_or_after_tipoff": 0, "generated_before_cutoff": 0}, "groups": {}}
+    report: dict = {"model_version": version, "rows": len(records), "integrity": {"generated_at_or_after_tipoff": 0, "generated_before_cutoff": 0}, "coverage": {}, "groups": {}}
     if not records:
         return report
+    report["coverage"] = _coverage(db, version)
     frame = pd.DataFrame(records)
     report["integrity"] = {"generated_at_or_after_tipoff": int(frame["after_tipoff"].sum()), "generated_before_cutoff": int(frame["before_cutoff"].sum())}
     for (stat, label), group in frame.groupby(["stat", "label"]):

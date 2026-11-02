@@ -12,7 +12,12 @@ name: NBA Watchdog
 #   window and then ages out - never an alert that can't be resolved, and
 #   never described as a recovery;
 # - recent competitive games have stored box scores (box_scores.sql);
-# - a successful database Backup run within the last 8 days.
+# - a successful database Backup run within the last 8 days;
+# - once NBA_STAT_PREDICTIONS_ENABLED is "true", every T-4h and T-1h snapshot
+#   with player rows has frozen stat predictions after its window closes
+#   (backend/app/nba/watchdog_sql/stat_predictions.sql). The freeze step uses
+#   continue-on-error, so a green live cycle does not show this.
+#   NBA_STAT_PREDICTIONS_SINCE must be set with it.
 # Problems open (or update) ONE GitHub issue labelled nba-alert, mentioning
 # the repository owner, so GitHub notifies them; it is closed on recovery.
 # The run is also marked failed. The job summary always shows snapshot
@@ -68,6 +73,8 @@ jobs:
     env:
       IMAGE: ${{ vars.NBA_LIVE_CYCLE_IMAGE }}
       GH_TOKEN: ${{ github.token }}
+      STAT_ENABLED: ${{ vars.NBA_STAT_PREDICTIONS_ENABLED }}
+      STAT_SINCE: ${{ vars.NBA_STAT_PREDICTIONS_SINCE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -94,12 +101,15 @@ jobs:
           # query (--single-transaction wraps every -c and -f in BEGIN/COMMIT):
           # a transaction pooler keeps a transaction on one server connection,
           # and SET LOCAL ends at COMMIT, so nothing leaks into the pool.
-          for check in expected_snapshots box_scores; do
+          STAT_CHECK=""
+          if [ "$STAT_ENABLED" = "true" ] && [ -n "$STAT_SINCE" ]; then STAT_CHECK="stat_predictions"; fi
+          for check in expected_snapshots box_scores $STAT_CHECK; do
             docker run --rm -e PGURL -e PGOPTIONS="$READONLY" \
               -v "$PWD/backend/app/nba/watchdog_sql:/sql:ro" postgres:18-alpine \
               psql "$PGURL" -v ON_ERROR_STOP=1 -X -q --csv --single-transaction \
                 -c "set local watchdog.since = '$SNAPSHOTS_SINCE'" \
                 -c "set local watchdog.window_hours = '$WINDOW_HOURS'" \
+                -c "set local watchdog.stat_since = '$STAT_SINCE'" \
                 -f "/sql/$check.sql" > "out/$check.csv" 2> "out/$check.err"
             echo $? > "out/$check.exit"
           done
@@ -117,11 +127,13 @@ jobs:
             --snapshots out/expected_snapshots.csv --snapshots-exit "$(cat out/expected_snapshots.exit)" \
             --box-scores out/box_scores.csv --box-scores-exit "$(cat out/box_scores.exit)" \
             --backups out/backups.json --backups-exit "$(cat out/backups.exit)" \
+            --stat-enabled "$STAT_ENABLED" --stat-since "$STAT_SINCE" \
+            --stat-predictions out/stat_predictions.csv --stat-predictions-exit "$(cat out/stat_predictions.exit 2>/dev/null || echo 0)" \
             --backup-max-age-days "$BACKUP_MAX_AGE_DAYS" --since "$SNAPSHOTS_SINCE" --window-hours "$WINDOW_HOURS" \
             --summary out/summary.md --problems out/problems.txt --fingerprint out/fingerprint.txt
           echo "problems=$?" >> "$GITHUB_OUTPUT"
           cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
-          for f in out/expected_snapshots.err out/box_scores.err; do
+          for f in out/expected_snapshots.err out/box_scores.err out/stat_predictions.err; do
             [ -s "$f" ] && { echo "$f:"; cat "$f"; }
           done
           exit 0

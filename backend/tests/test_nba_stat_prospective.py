@@ -237,6 +237,17 @@ def test_evaluation_scores_the_frozen_rows_and_voids_dnps(db_session, artifact_d
     assert voided["scored_rows"] == 0 and voided["void_rows"] == voided["frozen_rows"]
 
 
+def test_evaluation_reports_snapshots_with_no_predictions(db_session, artifact_dir):  # noqa: F811
+    _world_with_stats(db_session)
+    _snapshot(db_session)
+    freeze_due(db_session, now=AT_T4H + timedelta(minutes=2))
+    _snapshot(db_session, T1H, TIP - timedelta(hours=1))  # this one is never frozen
+    gap = db_session.query(NbaOutlookSnapshot).filter_by(snapshot_label="T-1h").one()
+    coverage = evaluate_frozen(db_session)["coverage"]
+    assert coverage["T-4h"] == {"snapshots_with_rows": 1, "frozen": 1, "missing_snapshot_ids": []}
+    assert coverage["T-1h"] == {"snapshots_with_rows": 1, "frozen": 0, "missing_snapshot_ids": [gap.id]}
+
+
 def test_distribution_prices_half_and_whole_lines():
     d = NbBucketDistribution(20.0, 0.1)
     assert d.prob_over(19.5) + d.prob_under(19.5) == pytest.approx(1.0)

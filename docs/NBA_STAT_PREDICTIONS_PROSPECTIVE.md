@@ -71,8 +71,24 @@ read this status from the row. A changed status is a new model version.
   stay on `NBA_LIVE_CYCLE_IMAGE`, so activating this does not repin V1.5.
 - It writes only to `nba_prop_projections`, and a test confirms V1.5 rows do not
   change.
-- The watchdog is unchanged and does not monitor this step. Gaps show in the
-  evaluation report. Alerting can wait until collection has proved useful.
+
+## Detecting failures
+
+**A green live cycle does not show this step worked.** `continue-on-error` keeps
+the run green after a failure, and a closed window exits 0. So:
+
+- Once enabled, the watchdog checks that each T-4h and T-1h snapshot with player
+  rows has predictions 50 minutes after its target cutoff. A gap opens or updates
+  the `nba-alert` issue. It is permanent, and ages out of the 24-hour window
+  without being repaired.
+- While `NBA_STAT_PREDICTIONS_ENABLED` is not `true`, nothing is checked.
+- `NBA_STAT_PREDICTIONS_SINCE` must be set with it, or the watchdog reports a
+  problem. Earlier windows are never expected.
+- `evaluate` lists missing snapshots by label, from the first frozen cutoff.
+
+The watchdog can only alert when it runs. GitHub has fired its 30-minute schedule
+only every 4 to 6 hours, so an alert can lag by that long, and a whole night's
+slate could be lost before anyone hears.
 
 ## Activation, after approval
 
@@ -80,7 +96,8 @@ read this status from the row. A changed status is a new model version.
 2. Set `NBA_STAT_PREDICTIONS_IMAGE` to that pinned digest.
 3. Run `nba-stat-predictions.yml` with `freeze-dry-run` when a snapshot is due.
    It is read-only, and reports rows, time and memory.
-4. Set `NBA_STAT_PREDICTIONS_ENABLED=true`.
+4. Set `NBA_STAT_PREDICTIONS_SINCE` to the current UTC time (ISO 8601), then
+   `NBA_STAT_PREDICTIONS_ENABLED=true`.
 5. Check the next due snapshot, then `evaluate`, and confirm V1.5 counts still
    grow as before.
 
@@ -111,6 +128,7 @@ Read-only, and scores only frozen rows. It recomputes no prediction or baseline.
 For each stat and label it reports:
 
 - frozen, pending, void and scored rows, and any integrity violations
+- snapshots with no predictions, by label
 - MAE, RMSE and bias for V1 and all five baselines
 - paired bootstrap against each baseline, clustered by date
 - log score, CRPS, 80% coverage and near-mean line calibration, beside the status

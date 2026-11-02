@@ -21,7 +21,10 @@ minutes, from outside the live cycle:
   window is not a recovery, and the summary and alert issue say so;
 - every competitive game that tipped off 6 h to 3 days ago is final with a
   stored box score;
-- the latest successful Backup run is at most `--backup-max-age-days` old.
+- the latest successful Backup run is at most `--backup-max-age-days` old;
+- once stat predictions are switched on, every T-4h and T-1h snapshot with
+  player rows has frozen predictions after its window closes. That step uses
+  continue-on-error, so a green live cycle does not show this.
 
 A check that cannot run at all (database unreachable, query error) is itself
 a problem. Nothing here, or in the workflow, writes to the database.
@@ -47,6 +50,7 @@ from datetime import datetime, timedelta, timezone
 LABELS = ("T-24h", "T-4h", "T-1h", "T-30m")
 PRODUCED = "produced"
 SNAPSHOT_PROBLEM_PREFIX = "snapshot "
+STAT_PREDICTIONS_OFF = "Off: not checked."
 
 # An age followed by "ago" / "old": the only part of a problem message that
 # changes from run to run while the problem itself stays the same.
@@ -72,6 +76,7 @@ class Report:
     coverage: list[dict] = field(default_factory=list)  # one row per game: game, tipoff, matchup, {label: cell}
     coverage_checked: bool = True  # False when the coverage query failed: nothing is known about the snapshots
     latest_backup: str = "unknown"
+    stat_predictions: str = STAT_PREDICTIONS_OFF
 
 
 def _parse_time(text: str) -> datetime:
@@ -128,6 +133,24 @@ def check_box_scores(rows: list[dict] | None, exit_code: int, report: Report) ->
         report.problems.append(f"box score {row['matchup']} {row['tipoff']}: game {row['status']}, box score {row['box_score_state'] or 'never fetched'}")
 
 
+def check_stat_predictions(rows: list[dict] | None, exit_code: int, *, enabled: bool, since: str, report: Report) -> None:
+    """rows from stat_predictions.sql: closed windows with no frozen predictions.
+    Nothing is expected while collection is off."""
+    if not enabled:
+        return
+    if not since:
+        report.stat_predictions = "Not checked: NBA_STAT_PREDICTIONS_SINCE is not set."
+        report.problems.append("stat predictions are enabled but NBA_STAT_PREDICTIONS_SINCE is not set, so missing predictions can't be detected")
+        return
+    if rows is None or exit_code != 0:
+        report.stat_predictions = "Not checked: the query failed."
+        report.problems.append(f"coverage query failed: stat predictions (exit {exit_code})")
+        return
+    for row in rows:
+        report.problems.append(f"stat predictions {row['matchup']} {row['tipoff']} {row['label']}: none frozen for snapshot {row['snapshot_id']} (a permanent gap)")
+    report.stat_predictions = f"Checked windows since {since}: {len(rows)} missing."
+
+
 def check_backups(runs: list[dict] | None, exit_code: int, now: datetime, max_age_days: float, report: Report) -> None:
     """runs: `gh run list --workflow backup.yml --status success --json createdAt` output."""
     if runs is None or exit_code != 0:
@@ -174,7 +197,7 @@ def render_summary(report: Report, now: datetime, since: str, window_hours: int)
             out.append(f"| {game['matchup']} ({game['game_id']}) | {game['tipoff']} | " + " | ".join(game["cells"].get(label, "-") for label in LABELS) + " |")
     else:
         out.append("No competitive games in the monitoring window.")
-    out += ["", f"Latest successful database backup: {report.latest_backup}", "", "### Evidence health", "", "```"] + report.health_lines + ["```", ""]
+    out += ["", f"Stat predictions: {report.stat_predictions}", "", f"Latest successful database backup: {report.latest_backup}", "", "### Evidence health", "", "```"] + report.health_lines + ["```", ""]
     return "\n".join(out)
 
 
@@ -213,6 +236,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--backups", required=True, help="gh run list JSON output")
     p.add_argument("--backups-exit", type=int, required=True)
     p.add_argument("--backup-max-age-days", type=float, default=8.0)
+    p.add_argument("--stat-enabled", default="", help="the NBA_STAT_PREDICTIONS_ENABLED value")
+    p.add_argument("--stat-since", default="", help="when stat predictions were switched on (ISO 8601)")
+    p.add_argument("--stat-predictions", default="", help="stat_predictions.sql CSV output")
+    p.add_argument("--stat-predictions-exit", type=int, default=0)
     p.add_argument("--since", required=True, help="when snapshots were switched on (ISO 8601)")
     p.add_argument("--window-hours", type=int, required=True, help="rolling monitoring window used by expected_snapshots.sql")
     p.add_argument("--now", default=None, help="ISO 8601; default the wall clock (tests)")
@@ -226,6 +253,7 @@ def main(argv: list[str] | None = None) -> int:
     check_health(_read_text(args.health), args.health_exit, report)
     check_snapshots(_read_csv(args.snapshots), args.snapshots_exit, report)
     check_box_scores(_read_csv(args.box_scores), args.box_scores_exit, report)
+    check_stat_predictions(_read_csv(args.stat_predictions), args.stat_predictions_exit, enabled=args.stat_enabled == "true", since=args.stat_since, report=report)
     check_backups(_read_json(args.backups), args.backups_exit, now, args.backup_max_age_days, report)
     with open(args.summary, "w", encoding="utf-8") as fh:
         fh.write(render_summary(report, now, args.since, args.window_hours))
