@@ -1,0 +1,43 @@
+name: NBA Stat Predictions (read-only)
+
+# Manual, read-only checks for frozen Stat Model V1 predictions
+# (docs/NBA_STAT_PREDICTIONS_PROSPECTIVE.md):
+# - freeze-dry-run: computes what is due now and measures it; writes nothing.
+# - evaluate: scores the exact frozen rows against final box scores.
+# Every session is opened with default_transaction_read_only=on, so PostgreSQL
+# itself rejects any write. No schedule, and no odds calls.
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: "What to run"
+        type: choice
+        options: [freeze-dry-run, evaluate]
+        default: freeze-dry-run
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Stat predictions (read-only)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      IMAGE: ${{ vars.NBA_STAT_PREDICTIONS_IMAGE }}
+      COMMAND: ${{ inputs.command }}
+    steps:
+      - name: Run from the pinned image
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          case "$IMAGE" in
+            *@sha256:*|*:sha-*) ;;
+            *) echo "::error::NBA_STAT_PREDICTIONS_IMAGE must be pinned to a sha-<commit> tag or an @sha256 digest."; exit 1 ;;
+          esac
+          case "$COMMAND" in
+            freeze-dry-run) set -- python -m app.nba.stats.cli freeze --dry-run ;;
+            evaluate) set -- python -m app.nba.stats.cli evaluate ;;
+          esac
+          docker run --rm -e DATABASE_URL -e PGOPTIONS='-c default_transaction_read_only=on' -e APP_ENV=production "$IMAGE" "$@"

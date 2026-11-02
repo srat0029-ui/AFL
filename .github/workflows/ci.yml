@@ -141,6 +141,7 @@ jobs:
             tests/test_nba_minutes_prospective.py \
             tests/test_nba_rotation_prospective.py \
             tests/test_nba_outlook_snapshots.py \
+            tests/test_nba_stat_prospective.py \
             tests/test_nba_hosted_prospective.py \
             tests/test_nba_asof.py \
             tests/test_nba_foundation.py \
