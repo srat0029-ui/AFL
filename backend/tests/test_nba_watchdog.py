@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from app.models.nba import NbaGame, NbaOutlookSnapshot, NbaTeam
+from app.models.nba import NbaGame, NbaOutlookSnapshot, NbaPlayer, NbaPropProjection, NbaTeam
 from app.nba import watchdog
-from app.nba.watchdog import Report, check_backups, check_box_scores, check_health, check_snapshots, render_summary
+from app.nba.watchdog import Report, check_backups, check_box_scores, check_health, check_snapshots, check_stat_predictions, render_summary
 
 REPO = Path(__file__).resolve().parents[2]
 WORKFLOW = REPO / ".github" / "workflows" / "nba-watchdog.yml"
@@ -158,6 +158,62 @@ def test_summary_says_snapshot_gaps_are_permanent_not_recoverable():
     text = render_summary(report, NOW, "2026-10-29T01:28:47Z", 24)
     assert "- snapshot MEM@POR 2026-10-30T02:00Z T-1h: missed_window" in text
     assert watchdog.PERMANENT_GAPS_NOTE in text and "leaving the window is not a recovery" in text
+
+
+# --- stat predictions -------------------------------------------------------------
+
+STAT_SINCE = "2026-11-03T00:00:00Z"
+STAT_ROW = {"game_id": "10937", "tipoff": "2026-11-03T02:00Z", "matchup": "MEM@POR", "label": "T-1h", "snapshot_id": "120"}
+
+
+def test_stat_predictions_are_not_checked_while_off():
+    report = Report()
+    check_stat_predictions([STAT_ROW], 0, enabled=False, since=STAT_SINCE, report=report)
+    assert report.problems == [] and report.stat_predictions == watchdog.STAT_PREDICTIONS_OFF
+
+
+def test_a_missing_stat_prediction_is_a_problem_even_when_the_live_cycle_is_green():
+    report = Report()
+    check_stat_predictions([STAT_ROW], 0, enabled=True, since=STAT_SINCE, report=report)
+    assert report.problems == ["stat predictions MEM@POR 2026-11-03T02:00Z T-1h: none frozen for snapshot 120 (a permanent gap)"]
+    assert not report.problems[0].startswith(watchdog.SNAPSHOT_PROBLEM_PREFIX)
+    assert "1 missing" in report.stat_predictions
+
+
+def test_complete_stat_predictions_are_not_a_problem():
+    report = Report()
+    check_stat_predictions([], 0, enabled=True, since=STAT_SINCE, report=report)
+    assert report.problems == [] and "0 missing" in report.stat_predictions
+
+
+@pytest.mark.parametrize(("rows", "exit_code", "since", "text"), [(None, 2, STAT_SINCE, "coverage query failed: stat predictions (exit 2)"), ([], 3, STAT_SINCE, "coverage query failed: stat predictions (exit 3)"), (None, 0, "", "NBA_STAT_PREDICTIONS_SINCE is not set")])
+def test_a_stat_check_that_cannot_run_is_a_problem_not_a_pass(rows, exit_code, since, text):
+    report = Report()
+    check_stat_predictions(rows, exit_code, enabled=True, since=since, report=report)
+    assert len(report.problems) == 1 and text in report.problems[0] and "Not checked" in report.stat_predictions
+
+
+def test_summary_shows_stat_prediction_status():
+    report = Report()
+    assert "Stat predictions: Off: not checked." in render_summary(report, NOW, "2026-10-29T01:28:47Z", 24)
+
+
+def test_main_reports_stat_predictions_when_enabled(tmp_path):
+    (tmp_path / "health.txt").write_text(HEALTH_OK, encoding="utf-8")
+    (tmp_path / "snap.csv").write_text("game_id,tipoff,matchup,label,due,status\n", encoding="utf-8")
+    (tmp_path / "box.csv").write_text("game_id,tipoff,matchup,status,box_score_state\n", encoding="utf-8")
+    (tmp_path / "backups.json").write_text(json.dumps([{"createdAt": "2026-10-28T03:17:00Z"}]), encoding="utf-8")
+    (tmp_path / "stat.csv").write_text("game_id,tipoff,matchup,label,snapshot_id\n10937,2026-11-03T02:00Z,MEM@POR,T-1h,120\n", encoding="utf-8")
+    args = [
+        "--health", str(tmp_path / "health.txt"), "--health-exit", "0", "--snapshots", str(tmp_path / "snap.csv"), "--snapshots-exit", "0",
+        "--box-scores", str(tmp_path / "box.csv"), "--box-scores-exit", "0", "--backups", str(tmp_path / "backups.json"), "--backups-exit", "0",
+        "--since", "2026-10-29T01:28:47Z", "--window-hours", "24", "--now", NOW.isoformat(),
+        "--summary", str(tmp_path / "s.md"), "--problems", str(tmp_path / "p.txt"), "--fingerprint", str(tmp_path / "fp.txt"),
+        "--stat-predictions", str(tmp_path / "stat.csv"), "--stat-predictions-exit", "0", "--stat-since", STAT_SINCE,
+    ]
+    assert watchdog.main([*args, "--stat-enabled", ""]) == 0  # off: no alert, whatever the file says
+    assert watchdog.main([*args, "--stat-enabled", "true"]) == 1
+    assert "stat predictions MEM@POR" in (tmp_path / "p.txt").read_text(encoding="utf-8")
 
 
 # --- alert de-duplication ---------------------------------------------------------
@@ -332,6 +388,48 @@ def test_box_scores_sql(db_session):
     assert {r["game_id"]: (r["status"], r["box_score_state"]) for r in rows} == {missing.id: ("final", ""), stuck.id: ("scheduled", "")}
 
 
+def _run_stat_sql(db, since: datetime, window_hours: int = 24) -> list[dict]:
+    conn = db.connection()
+    conn.exec_driver_sql(f"set local watchdog.stat_since = '{since.isoformat()}'")
+    return _run_sql(db, "stat_predictions", since=since, window_hours=window_hours)
+
+
+def test_stat_predictions_sql(db_session):
+    _pg(db_session)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
+    game = _games(db_session, now)
+    missing = game("missing", now + timedelta(hours=1))
+    frozen = game("frozen", now + timedelta(hours=1))
+    other_model = game("other", now + timedelta(hours=1))
+    open_window = game("open", now + timedelta(hours=3, minutes=30))  # T-4h 30 min ago: inside tolerance and grace
+    no_rows = game("norows", now + timedelta(hours=1))
+    ppd = game("ppd", now + timedelta(hours=1), status="postponed")
+    old = game("old", now - timedelta(hours=30))
+    for g in (missing, frozen, other_model, ppd, old):
+        _snapshot(db_session, g, "T-4h", 240, "stale" if g is missing else "produced")
+    _snapshot(db_session, open_window, "T-4h", 240, "produced")
+    _snapshot(db_session, no_rows, "T-4h", 240, "missed_window")
+    _snapshot(db_session, missing, "T-24h", 1440, "produced")  # not a frozen label
+    db_session.flush()
+    player = NbaPlayer(display_name="P", source="espn", source_player_id="1")
+    db_session.add(player)
+    db_session.flush()
+    for g, name in ((frozen, "stat_v1"), (other_model, "another_model")):
+        db_session.add(
+            NbaPropProjection(
+                game_id=g.id, player_id=player.id, team_id=g.home_team_id, market="player_points", model_name=name, model_version="v", generated_at=now,
+                information_cutoff=g.scheduled_start - timedelta(minutes=240), predicted_mean=10.0, distribution_kind="nb_bucket", distribution_params={}, games_of_history=5, inputs={},
+            )
+        )
+    db_session.flush()
+
+    rows = _run_stat_sql(db_session, since=now - timedelta(days=3))
+    assert {(r["game_id"], r["label"]) for r in rows} == {(missing.id, "T-4h"), (other_model.id, "T-4h")}
+    assert {r["matchup"] for r in rows} == {"AWY@HOM"} and all(re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\dZ", r["tipoff"]) for r in rows)
+    # Windows before collection was switched on are never expected.
+    assert _run_stat_sql(db_session, since=now) == []
+
+
 # --- workflow --------------------------------------------------------------------
 
 
@@ -402,6 +500,15 @@ def test_the_workflows_psql_command_runs_the_sql_with_set_local_in_one_transacti
             args.remove("--single-transaction")
             bare = subprocess.run(args, env=env, capture_output=True, text=True, timeout=60)
             assert bare.returncode != 0 and "transaction blocks" in bare.stderr, bare.stderr
+
+
+def test_the_stat_check_runs_only_when_enabled_with_a_start_time():
+    wf = WORKFLOW.read_text(encoding="utf-8")
+    assert "vars.NBA_STAT_PREDICTIONS_ENABLED" in wf and "vars.NBA_STAT_PREDICTIONS_SINCE" in wf
+    assert 'if [ "$STAT_ENABLED" = "true" ] && [ -n "$STAT_SINCE" ]; then STAT_CHECK="stat_predictions"; fi' in wf
+    assert "for check in expected_snapshots box_scores $STAT_CHECK; do" in wf
+    assert '--stat-enabled "$STAT_ENABLED" --stat-since "$STAT_SINCE"' in wf
+    assert "gh variable" not in wf
 
 
 def test_watchdog_issue_deduplicates_on_the_evaluator_fingerprint_and_never_claims_a_repair():
