@@ -17,6 +17,7 @@ from app.models.nba import NbaPlayer
 from app.nba.asof import availability_known_at
 from app.nba.monitoring import evidence_health
 from app.nba.outlooks.read import get_outlook_game, list_outlook_games
+from app.nba.stats.read import get_stat_predictions
 from app.nba.status import load_nba_status
 
 router = APIRouter(prefix="/api/nba", tags=["nba"])
@@ -95,6 +96,20 @@ def get_outlook_game_detail(game_id: int, db: Session = Depends(get_db)) -> dict
     injury-feed state, snapshot timestamps, model versions and evidence
     freshness, and - once final - what happened. Reads stored data only."""
     out = get_outlook_game(db, game_id)
+    if out is None:
+        raise HTTPException(status_code=404, detail=f"No NBA game with id {game_id}.")
+    return out
+
+
+@router.get("/stat-predictions/games/{game_id}")
+def get_stat_prediction_game(game_id: int, db: Session = Depends(get_db)) -> dict:
+    """Research only: one game's frozen Stat Model V1 points, rebounds and
+    assists predictions per window (T-4h, T-1h), each with its stored
+    baselines and offline validation status, and - once final - what
+    happened. An 80% range is given only where the distribution passed its
+    offline rule (not points). No odds, lines or recommendations. Reads stored
+    data only."""
+    out = get_stat_predictions(db, game_id)
     if out is None:
         raise HTTPException(status_code=404, detail=f"No NBA game with id {game_id}.")
     return out

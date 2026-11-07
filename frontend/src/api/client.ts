@@ -3850,3 +3850,44 @@ export function fetchNbaOutlookGames(signal?: AbortSignal): Promise<NbaOutlookGa
 export function fetchNbaOutlookGame(gameId: number, signal?: AbortSignal): Promise<NbaOutlookGameDetail> {
   return request(`/api/nba/outlooks/games/${gameId}`, { signal });
 }
+
+// --- NBA Stat Model V1 research panel (frozen predictions; no odds) ---------
+
+export type NbaStatName = "points" | "rebounds" | "assists";
+
+export interface NbaStatPrediction {
+  mean: number;
+  rate_per_minute: number | null;
+  /** 10th–90th percentile of the stored distribution; null where the distribution failed its offline rule (points). */
+  interval_80: { p10: number; p90: number } | null;
+  calibrated: boolean;
+  baselines: Record<string, number>;
+}
+
+export interface NbaStatPlayerRow {
+  player_id: number;
+  team_id: number;
+  name: string;
+  position: string | null;
+  predictions: Record<string, { expected_minutes: number | null; p_play: number | null; stats: Partial<Record<NbaStatName, NbaStatPrediction>> }>;
+  result: ({ played: boolean; minutes: number | null } & Record<NbaStatName, number | null>) | null;
+}
+
+export interface NbaStatPredictionGame {
+  game_id: number;
+  status: string;
+  tipoff: string;
+  model_name: string;
+  model_version: string;
+  labels: string[];
+  windows: { label: string; information_cutoff: string; generated_at: string; snapshot_id: number }[];
+  validation: Partial<Record<NbaStatName, { mean: string; distribution: string; calibrated: boolean; distribution_kind: string }>>;
+  baselines: string[];
+  rows: number;
+  home: { id: number; name: string | null; abbreviation: string | null; players: NbaStatPlayerRow[] };
+  away: { id: number; name: string | null; abbreviation: string | null; players: NbaStatPlayerRow[] };
+}
+
+export function fetchNbaStatPredictions(gameId: number, signal?: AbortSignal): Promise<NbaStatPredictionGame> {
+  return request(`/api/nba/stat-predictions/games/${gameId}`, { signal });
+}

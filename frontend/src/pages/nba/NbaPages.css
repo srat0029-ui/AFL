@@ -79,3 +79,33 @@
     display: none;
   }
 }
+
+.nba-research {
+  border-style: dashed;
+}
+
+.nba-research .section-title {
+  margin: 0;
+}
+
+.nba-research__team {
+  margin-top: 1rem;
+}
+
+.nba-research__team-name {
+  font-size: 1rem;
+  margin: 0 0 0.4rem;
+}
+
+.nba-research__baselines > td {
+  background: var(--card-bg);
+}
+
+.nba-chip-inline {
+  margin-left: 0.5rem;
+}
+
+.btn--small {
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+}

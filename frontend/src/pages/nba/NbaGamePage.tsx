@@ -16,6 +16,7 @@ import {
   windowStateDisplay,
 } from "../../features/nbaOutlook";
 import { formatClockTime, formatCompactDateTime, formatFullDateTime } from "../../lib/datetime";
+import StatPredictionsPanel from "./StatPredictionsPanel";
 import "./NbaPages.css";
 
 type LoadState = { status: "loading" } | { status: "ready"; data: NbaOutlookGameDetail; loadedAt: Date } | { status: "error"; message: string };
@@ -34,6 +35,7 @@ function NbaGamePage() {
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [refreshing, setRefreshing] = useState(false);
   const [label, setLabel] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const load = useCallback(
     (signal?: AbortSignal) => {
@@ -89,7 +91,11 @@ function NbaGamePage() {
             <Link to="/nba/games" className="btn">
               All games
             </Link>
-            <button type="button" className="btn" onClick={() => load()} disabled={refreshing} title="Re-read the stored outlooks. Does not fetch odds or run any collector.">
+            <button type="button" className="btn" onClick={() => {
+                load();
+                setReloadKey((k) => k + 1);
+              }}
+              disabled={refreshing} title="Re-read the stored outlooks. Does not fetch odds or run any collector.">
               {refreshing ? "Refreshing…" : "Refresh"}
             </button>
           </>
@@ -112,6 +118,8 @@ function NbaGamePage() {
           <TeamTable team={data.home} label={active} final={data.status === "final"} />
         </>
       )}
+
+      <StatPredictionsPanel gameId={id} activeLabel={active} reloadKey={reloadKey} />
 
       <p className="nba-muted nba-small">
         Loaded {formatClockTime(state.loadedAt.toISOString())}. Outlooks are V1.5 and were frozen at each window's cutoff; they are never edited. "Now" shows the injury feed as
